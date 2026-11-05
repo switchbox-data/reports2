@@ -1,10 +1,13 @@
 ---
-title: "CIEC-1(b) and CIEC-1(c): Rate HP enrollment bounds"
+title: "CIEC-1: Rate HP revenue reduction and enrollment bounds"
 date: 2026-11-04
 bibliography: ../../references.yaml
 csl: ../../chicago-author-date-switchbox.csl
 reference-location: margin
 citation-location: document
+execute:
+  warning: false
+  message: false
 format:
   html:
     theme: ../../.style/switchbox.scss
@@ -12,6 +15,357 @@ format:
     toc: true
     toc-location: left
 ---
+
+```{python}
+#| echo: false
+
+from __future__ import annotations
+
+import pickle
+from pathlib import Path
+
+import yaml
+import polars as pl
+from lib.rdp import fetch_rdp_file
+from lib.rates_analysis.hh_summary_funcs import resstock_metadata_path, scan_utility_bldg_ids
+from lib.rates_analysis.rate_case_funcs import (
+    extract_tariff_rates,
+    load_billing_kwh_8760,
+    load_tariff_json,
+    monthly_bill_from_profile,
+    segment_name,
+    segment_upgrade,
+    weighted_avg_monthly,
+)
+
+# "00": homes that already have a heat pump. "02": homes after the heat pump upgrade.
+# Read that upgrade's metadata, keep Eversource buildings with has_hp, and
+# weight-average their billing load.
+UPGRADE = "00"
+
+STATE = "CT"
+BATCH = "ct_20261015_a"
+RDP_REF = "e97a3ca"
+UTILITY = "ct_eversource"
+RELEASE = "res_2024_amy2018_2_sb"
+SCENARIO = "default_ry1_r1_uncalibrated"
+WINTER_MONTHS = ["Jan", "Feb", "Mar", "Nov", "Dec"]
+WINTER_KEYS = ["2025-01", "2025-02", "2025-03", "2025-11", "2025-12"]
+BILL_ORDER = ["Customer Charge", "Distribution", "Transmission", "Generation", "Total"]
+
+# Rate HP winter rates from the representative-home cache. Distribution includes
+# the unchanged riders. Transmission is the service rate. These are the unrounded
+# rates behind Table 4 of the direct testimony.
+_rep_home = pickle.loads(Path("../cache/representative_home_vars.pkl").read_bytes())
+WINTER_DIST = float(_rep_home["fair_hp_winter_rate_dist"])
+WINTER_TX = float(_rep_home["fair_hp_winter_rate_tx"])
+
+# Enrollment bounds written out in CIEC-1(b) and CIEC-1(c) below.
+EXISTING_FLOOR = 7_928
+EXISTING_CEILING = 109_127
+NEW_FLOOR = [3_460, 3_460, 3_460, 3_460, 3_460]
+NEW_CEILING = [6_272, 7_056, 7_840, 9_408, 10_976]
+YEARS = [2027, 2028, 2029, 2030, 2031]
+
+
+def dollar(x: float, accuracy: int = 0) -> str:
+    return f"${x:,.{accuracy}f}"
+
+
+def num(x: float, accuracy: int = 0) -> str:
+    return f"{x:,.{accuracy}f}"
+
+
+def _sum_monthly_rates(*charge_dicts: dict) -> dict[str, float]:
+    result: dict[str, float] = {}
+    for charge in charge_dicts:
+        for month, rate in charge["monthly_rates"].items():
+            result[month] = result.get(month, 0.0) + rate
+    return result
+
+
+def _with_winter_rates(rate_components: dict, dist: float, tx: float) -> dict:
+    adjusted = {}
+    for name, spec in rate_components.items():
+        rates = dict(spec["monthly_rates"])
+        if name == "Distribution":
+            for month in WINTER_KEYS:
+                rates[month] = dist
+        elif name == "Transmission":
+            for month in WINTER_KEYS:
+                rates[month] = tx
+        adjusted[name] = {"charge_unit": spec["charge_unit"], "monthly_rates": rates}
+    return adjusted
+
+
+def _annual_bill(monthly_kwh: pl.DataFrame, rate_components: dict) -> dict[str, float]:
+    bills = monthly_bill_from_profile(monthly_kwh, rate_components)
+    totals = {
+        row["component"]: float(row["value"])
+        for row in bills.group_by("component").agg(pl.col("value").sum()).iter_rows(named=True)
+    }
+    totals["Total"] = sum(totals.values())
+    return totals
+
+
+def _hp_weights(upgrade: str) -> pl.DataFrame:
+    path = resstock_metadata_path(RELEASE, STATE, upgrade)
+    return (
+        pl.scan_parquet(path)
+        .select("bldg_id", "weight", pl.col("postprocess_group.has_hp").alias("has_hp"))
+        .join(scan_utility_bldg_ids(RELEASE, STATE, UTILITY), on="bldg_id", how="semi")
+        .filter(pl.col("has_hp"))
+        .collect()
+    )
+
+
+_rates_yaml = yaml.safe_load(
+    fetch_rdp_file(
+        "rate_design/hp_rates/ct/config/rev_requirement/top-ups/monthly_rates/"
+        "ct_eversource_rate1_proposed_monthly_rates_ry1.yaml",
+        ref=RDP_REF,
+    )
+)
+_drr = _rates_yaml["add_to_drr"]["charges"]
+_already = _rates_yaml["already_in_drr"]["charges"]
+_srr = _rates_yaml["add_to_srr"]["charges"]
+_dist_sub_charges = [
+    _already["core_delivery_rate"],
+    _drr["electric_system_improvements_esi"],
+    _drr["revenue_decoupling_mechanism_rdm"],
+    _drr["competitive_transition_assessment_cta"],
+    _drr["non_bypassable_fmcc_delivery"],
+    _drr["conservation_adjustment_mechanism_cam"],
+    _drr["renewable_energy_investment_clean_energy_fund"],
+    _drr["system_benefits_charge_sbc"],
+]
+rate1 = {
+    "Customer Charge": {
+        "charge_unit": "$/month",
+        "monthly_rates": _already["customer_charge"]["monthly_rates"],
+    },
+    "Distribution": {"charge_unit": "$/kWh", "monthly_rates": _sum_monthly_rates(*_dist_sub_charges)},
+    "Transmission": {
+        "charge_unit": "$/kWh",
+        "monthly_rates": _drr["transmission_charge"]["monthly_rates"],
+    },
+    "Generation": {
+        "charge_unit": "$/kWh",
+        "monthly_rates": _srr["supply_commodity_bundled"]["monthly_rates"],
+    },
+}
+rate_hp = _with_winter_rates(rate1, WINTER_DIST, WINTER_TX)
+
+_icos = extract_tariff_rates(
+    load_tariff_json(STATE, UTILITY, "ct_eversource_icos_fair_seasonal", RDP_REF)
+)
+_icos_winter = min(_icos["period_rates"].values())
+assert abs((WINTER_DIST + WINTER_TX) - _icos_winter) < 1e-5
+
+_core = float(_already["core_delivery_rate"]["monthly_rates"]["2025-01"])
+_dist_with_riders = float(rate1["Distribution"]["monthly_rates"]["2025-01"])
+_riders = _dist_with_riders - _core
+_tx = float(rate1["Transmission"]["monthly_rates"]["2025-01"])
+rate1_dist_energy_label = f"{_core * 100:.3f}"
+rate1_tx_label = f"{_tx * 100:.3f}"
+rate_hp_dist_energy_label = f"{(WINTER_DIST - _riders) * 100:.3f}"
+rate_hp_tx_label = f"{WINTER_TX * 100:.3f}"
+assert rate_hp_dist_energy_label == "3.533"
+assert rate_hp_tx_label == "1.258"
+
+_STAGE = {"00": "precalc", "02": "calibrated"}
+if UPGRADE not in _STAGE:
+    raise ValueError(f"UPGRADE must be '00' or '02', got {UPGRADE!r}")
+_segment = segment_name(SCENARIO, _STAGE[UPGRADE])
+_found = segment_upgrade(STATE, BATCH, _segment)
+if _found != int(UPGRADE):
+    raise RuntimeError(f"Segment {_segment} is upgrade {_found}, expected {int(UPGRADE)}")
+_weights = _hp_weights(UPGRADE)
+_kwh = load_billing_kwh_8760(STATE, UTILITY, BATCH, _segment)
+_id_dtype = _kwh.select("bldg_id").head(1).collect()["bldg_id"].dtype
+_weights = _weights.with_columns(pl.col("bldg_id").cast(_id_dtype))
+_monthly = weighted_avg_monthly(_kwh, _weights["bldg_id"].to_list(), _weights)
+home = {
+    "n_buildings": _weights.height,
+    "annual_kwh": float(_monthly["kwh"].sum()),
+    "winter_kwh": float(_monthly.filter(pl.col("month_label").is_in(WINTER_MONTHS))["kwh"].sum()),
+    "rate1": _annual_bill(_monthly, rate1),
+    "rate_hp": _annual_bill(_monthly, rate_hp),
+}
+
+def _cents(x: float) -> float:
+    return round(x, 2)
+
+
+def _presented_bills(source: dict) -> dict[str, dict[str, float]]:
+    """Cent-rounded component bills. The total row is the sum of those cents, so the table adds."""
+    presented = {"rate1": {}, "rate_hp": {}, "decrease": {}}
+    for component in BILL_ORDER:
+        if component == "Total":
+            continue
+        rate1_bill = _cents(source["rate1"][component])
+        rate_hp_bill = _cents(source["rate_hp"][component])
+        presented["rate1"][component] = rate1_bill
+        presented["rate_hp"][component] = rate_hp_bill
+        presented["decrease"][component] = _cents(rate1_bill - rate_hp_bill)
+    for key in ("rate1", "rate_hp", "decrease"):
+        presented[key]["Total"] = _cents(sum(presented[key][c] for c in BILL_ORDER if c != "Total"))
+    return presented
+
+
+bills = _presented_bills(home)
+assert bills["decrease"]["Customer Charge"] == 0.0
+assert bills["decrease"]["Generation"] == 0.0
+assert bills["decrease"]["Total"] == _cents(
+    bills["decrease"]["Distribution"] + bills["decrease"]["Transmission"]
+)
+
+n_bldg = home["n_buildings"]
+annual_kwh = home["annual_kwh"]
+winter_kwh = home["winter_kwh"]
+dec_dist = bills["decrease"]["Distribution"]
+dec_tx = bills["decrease"]["Transmission"]
+dec_total = bills["decrease"]["Total"]
+upgrade_who = {
+    "00": "These buildings already have a heat pump.",
+    "02": "Every Eversource building in this upgrade has a heat pump.",
+}[UPGRADE]
+
+
+def _money(x: float, accuracy: int) -> str:
+    """Dollar text for a markdown table. The backslash keeps Quarto from treating it as math."""
+    return f"\\${x:,.{accuracy}f}"
+
+
+def _bill_row(component: str) -> str:
+    return "| " + " | ".join(
+        [
+            component,
+            _money(bills["rate1"][component], 2),
+            _money(bills["rate_hp"][component], 2),
+            _money(bills["decrease"][component], 2),
+        ]
+    ) + " |"
+
+
+bill_table_md = "\n".join(
+    [
+        "| Component | Rate 1 | Rate HP | Decrease |",
+        "| --- | ---: | ---: | ---: |",
+        *[_bill_row(component) for component in BILL_ORDER],
+    ]
+)
+
+
+def _revenue_path(existing: int, annual_new: list[int]) -> list[dict[str, float]]:
+    """Every enrolled customer takes the selected upgrade's bill decrease."""
+    rows = []
+    enrolled_new = 0
+    for year, new in zip(YEARS, annual_new, strict=True):
+        enrolled_new += new
+        customers = existing + enrolled_new
+        dist = round(customers * dec_dist)
+        tx = round(customers * dec_tx)
+        rows.append(
+            {
+                "year": year,
+                "customers": customers,
+                "distribution": dist,
+                "transmission": tx,
+                "total": dist + tx,
+            }
+        )
+    return rows
+
+
+floor_years = _revenue_path(EXISTING_FLOOR, NEW_FLOOR)
+ceiling_years = _revenue_path(EXISTING_CEILING, NEW_CEILING)
+floor_dist_5 = sum(row["distribution"] for row in floor_years)
+floor_tx_5 = sum(row["transmission"] for row in floor_years)
+floor_total_5 = floor_dist_5 + floor_tx_5
+ceiling_dist_5 = sum(row["distribution"] for row in ceiling_years)
+ceiling_tx_5 = sum(row["transmission"] for row in ceiling_years)
+ceiling_total_5 = ceiling_dist_5 + ceiling_tx_5
+
+
+def _revenue_row(
+    floor: dict[str, float],
+    ceiling: dict[str, float],
+    label: str | None = None,
+    *,
+    customers: bool = True,
+) -> str:
+    year = label if label is not None else str(int(floor["year"]))
+    floor_customers = f"{int(floor['customers']):,}" if customers else "—"
+    ceiling_customers = f"{int(ceiling['customers']):,}" if customers else "—"
+    cells = [
+        year,
+        floor_customers,
+        _money(floor["distribution"], 0),
+        _money(floor["transmission"], 0),
+        ceiling_customers,
+        _money(ceiling["distribution"], 0),
+        _money(ceiling["transmission"], 0),
+    ]
+    return "| " + " | ".join(cells) + " |"
+
+
+_floor_total_row = {
+    "year": 0,
+    "customers": 0,
+    "distribution": floor_dist_5,
+    "transmission": floor_tx_5,
+    "total": floor_total_5,
+}
+_ceiling_total_row = {
+    "year": 0,
+    "customers": 0,
+    "distribution": ceiling_dist_5,
+    "transmission": ceiling_tx_5,
+    "total": ceiling_total_5,
+}
+revenue_table_md = "\n".join(
+    [
+        "| Year | Floor customers | Floor distribution | Floor transmission | Ceiling customers | Ceiling distribution | Ceiling transmission |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        *[_revenue_row(floor, ceiling) for floor, ceiling in zip(floor_years, ceiling_years, strict=True)],
+        _revenue_row(_floor_total_row, _ceiling_total_row, label="Five-year total", customers=False),
+    ]
+)
+```
+
+## CIEC-1(a)
+
+> Please provide Mr. Velez's estimate of the total annual reduction in (i) distribution revenue and (ii) transmission revenue that the Company would collect under Rate HP, relative to Rate 1, for each of the first five years after Rate HP takes effect. Provide all workpapers in Excel format with formulas intact [@ciec_Docket260510First_2026].
+
+**Response.** On upgrade `{python} UPGRADE`, the representative heat pump customer's annual bill is **`{python} dollar(dec_total, accuracy=2)`** lower under Rate HP: **`{python} dollar(dec_dist, accuracy=2)`** less distribution revenue and **`{python} dollar(dec_tx, accuracy=2)`** less transmission revenue. The customer charge and the generation charge are unchanged.
+
+The home is the sample-weighted average load of the `{python} num(n_bldg)` Eversource buildings in upgrade `{python} UPGRADE` with `has_hp` true. `{python} upgrade_who` It uses `{python} num(annual_kwh)` kWh a year, `{python} num(winter_kwh)` of them from November through March.
+
+Rate HP lowers the November–March distribution energy charge from `{python} rate1_dist_energy_label` ¢/kWh to `{python} rate_hp_dist_energy_label` ¢/kWh and the transmission service rate from `{python} rate1_tx_label` ¢/kWh to `{python} rate_hp_tx_label` ¢/kWh. Summer rates, riders, generation, and the customer charge stay at Rate 1 [@velez_Docket260510Direct_2026, p. 82, line 10].
+
+```{python}
+#| echo: false
+#| output: asis
+
+print(bill_table_md)
+```
+
+Applied to every customer in the CIEC-1(b) and CIEC-1(c) bounds, the five-year revenue reduction is **`{python} dollar(floor_total_5)`** to **`{python} dollar(ceiling_total_5)`**. Distribution is **`{python} dollar(floor_dist_5)`** to **`{python} dollar(ceiling_dist_5)`**. Transmission is **`{python} dollar(floor_tx_5)`** to **`{python} dollar(ceiling_tx_5)`**. The customer column counts customers on Rate HP that year. The five-year row sums the revenue columns.
+
+```{python}
+#| echo: false
+#| output: asis
+
+print(revenue_table_md)
+```
+
+Assumptions:
+
+- **Timing.** Five rate years, beginning July 1 of 2027 through 2031. Each figure is a full year of bills. A calendar year's installations are assigned to the rate year that begins that July, as in CIEC-1(c). The 2026 installations are in the existing-customer count.
+- **Load.** `UPGRADE` is `"00"` or `"02"`. One weight-averaged `has_hp` home from that upgrade is applied to every enrolled customer. Load and rates are held constant across years.
+- **Enrollment.** Floor and ceiling counts from CIEC-1(b) and CIEC-1(c). Every heat pump installer enrolls, none opt out, and enrollment persists.
+- **Distribution.** The distribution column includes riders. The riders match Rate 1, so the reduction is the winter energy charge.
 
 ## CIEC-1(b)
 

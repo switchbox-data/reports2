@@ -121,8 +121,8 @@ The study offers the following recommendations based on the findings:
 
 [PDF p. 5 | printed p. 5]
 
-  - 6.2 CONSUMER ELECTRONICS — 55
-  - 6.3 OTHER ENERGY-USING EQUIPMENT — 57
+- 6.2 CONSUMER ELECTRONICS — 55
+- 6.3 OTHER ENERGY-USING EQUIPMENT — 57
 - SECTION 7 NEWLY INSTALLED EQUIPMENT — 59
   - 7.1 HEATING - NEWLY INSTALLED EQUIPMENT — 61
   - 7.2 COOLING - NEWLY INSTALLED EQUIPMENT — 62
@@ -156,47 +156,47 @@ The study offers the following recommendations based on the findings:
 
 ## Acronyms and Terms
 
-| Acronym | Definition |
-| --- | --- |
-| AC | Air Conditioner |
-| AFUE | Annual Fuel Utilization Efficiency |
-| ASHP | Air-Source Heat Pump (centrally ducted, similar to central AC) |
-| Btu | British Thermal Unit |
-| Btu/h | British Thermal Units per Hour |
-| CFA | Conditioned Floor Area |
-| DHW | Domestic Hot Water |
-| EE | Energy Efficiency |
-| EER | Energy Efficiency Ratio |
-| EF | Energy Factor |
-| EUL | Effective Useful Life |
-| EV | Electric Vehicle |
-| GIS | Geographic Information System |
-| GSHP | Ground Source Heat Pump |
-| HPWH | Heat Pump Water Heater |
-| HSPF | Heating Season Performance Factor |
-| HSPF2 | An updated, more accurate version of the metric that took effect in 2023 |
-| HVAC | Heating Ventilation and Air Conditioning |
-| ISP | Industry Standard Practice |
-| kW | Kilowatt |
-| kWh | Kilowatt Hour |
-| LED | Light-Emitting Diode |
-| LI | Low-income |
-| MI | Moderate-income |
-| MF | Multifamily (5+ units) |
-| MSAC | Mini-split Air Conditioner (similar to MSHP that provide only cooling) |
-| MMBtu | One Million British Thermal Units |
-| MSHP | Mini or Multi-Split Heat Pump (commonly referred to as a ductless mini-split, but also can include ducted mini splits) |
-| Non-LMI | Non-low- or moderate-income |
-| NMR | NMR Group, Inc. |
-| PV | Photovoltaic |
-| RAC | Room Air Conditioner |
-| RECS | Residential Energy Consumption Survey |
-| R-value | A measure of a material’s resistance to the flow of heat |
-| SEER | Seasonal Energy Efficiency Ratio |
-| SEER2 | An updated, more accurate version of the metric that took effect in 2023 |
-| SF | Single-family (1-4 units) |
-| UEF | Uniform Energy Factor |
-| WSHP | Water Source Heat Pump |
+| Acronym | Definition                                                                                                             |
+| ------- | ---------------------------------------------------------------------------------------------------------------------- |
+| AC      | Air Conditioner                                                                                                        |
+| AFUE    | Annual Fuel Utilization Efficiency                                                                                     |
+| ASHP    | Air-Source Heat Pump (centrally ducted, similar to central AC)                                                         |
+| Btu     | British Thermal Unit                                                                                                   |
+| Btu/h   | British Thermal Units per Hour                                                                                         |
+| CFA     | Conditioned Floor Area                                                                                                 |
+| DHW     | Domestic Hot Water                                                                                                     |
+| EE      | Energy Efficiency                                                                                                      |
+| EER     | Energy Efficiency Ratio                                                                                                |
+| EF      | Energy Factor                                                                                                          |
+| EUL     | Effective Useful Life                                                                                                  |
+| EV      | Electric Vehicle                                                                                                       |
+| GIS     | Geographic Information System                                                                                          |
+| GSHP    | Ground Source Heat Pump                                                                                                |
+| HPWH    | Heat Pump Water Heater                                                                                                 |
+| HSPF    | Heating Season Performance Factor                                                                                      |
+| HSPF2   | An updated, more accurate version of the metric that took effect in 2023                                               |
+| HVAC    | Heating Ventilation and Air Conditioning                                                                               |
+| ISP     | Industry Standard Practice                                                                                             |
+| kW      | Kilowatt                                                                                                               |
+| kWh     | Kilowatt Hour                                                                                                          |
+| LED     | Light-Emitting Diode                                                                                                   |
+| LI      | Low-income                                                                                                             |
+| MI      | Moderate-income                                                                                                        |
+| MF      | Multifamily (5+ units)                                                                                                 |
+| MSAC    | Mini-split Air Conditioner (similar to MSHP that provide only cooling)                                                 |
+| MMBtu   | One Million British Thermal Units                                                                                      |
+| MSHP    | Mini or Multi-Split Heat Pump (commonly referred to as a ductless mini-split, but also can include ducted mini splits) |
+| Non-LMI | Non-low- or moderate-income                                                                                            |
+| NMR     | NMR Group, Inc.                                                                                                        |
+| PV      | Photovoltaic                                                                                                           |
+| RAC     | Room Air Conditioner                                                                                                   |
+| RECS    | Residential Energy Consumption Survey                                                                                  |
+| R-value | A measure of a material’s resistance to the flow of heat                                                               |
+| SEER    | Seasonal Energy Efficiency Ratio                                                                                       |
+| SEER2   | An updated, more accurate version of the metric that took effect in 2023                                               |
+| SF      | Single-family (1-4 units)                                                                                              |
+| UEF     | Uniform Energy Factor                                                                                                  |
+| WSHP    | Water Source Heat Pump                                                                                                 |
 
 [PDF p. 7 | printed p. 7]
 
@@ -286,13 +286,13 @@ The study also collected data on electric panels during virtual audits and found
 
 **Table 1: Electrification Status of Virtual Audit Homes**
 
-| Cooling System | All Homes | Homes with Delivered Fuels |
-| --- | --- | --- |
-| n (homes) | 133 | 64 |
-| Ready to Electrify | 35% | 31% |
-| Sub panel needed | 29% | 36% |
-| Service upgrade likely | 14% | 8% |
-| Service upgrade needed | 23% | 25% |
+| Cooling System         | All Homes | Homes with Delivered Fuels |
+| ---------------------- | --------- | -------------------------- |
+| n (homes)              | 133       | 64                         |
+| Ready to Electrify     | 35%       | 31%                        |
+| Sub panel needed       | 29%       | 36%                        |
+| Service upgrade likely | 14%       | 8%                         |
+| Service upgrade needed | 23%       | 25%                        |
 
 _Extractor note (not source text): The first column header of Table 1 is printed as "Cooling System" in the source._
 
@@ -338,28 +338,28 @@ average efficiency, and percentage of the measures that are ENERGY STAR®-qualif
 
 **Table 2: Penetration and Efficiency**
 
-| System type | Penetration (%) | Units (n) | Avg. Efficiency | ENERGY STAR®-qualified (%) |
-| --- | --- | --- | --- | --- |
-| **Heating & Cooling** | | | | |
-| Boiler | 53% | 341 | 85.5 AFUE | 51% |
-| Furnace | 33% | 166 | 85.7 AFUE | 44% |
-| Heat pump | 18% | 138 | 10.7 HSPF (9.1 HSPF2); 19.7 SEER (18.7 SEER2) | 54% |
-| Room AC | 47% | 234 | 11.6 CEER | 57% |
-| Central AC | 40% | 206 | 13.1 SEER (12.4 SEER2) | 26% |
-| **Water Heating** | | | | |
-| Traditional Storage | 60% | 287 | 0.75 UEF | 11% |
-| Indirect Storage | 14% | 120 | 0.80 UEF | 33% |
-| Instantaneous | 13% | 52 | 0.92 UEF | 74% |
-| HPWH | 5% | 35 | 3.40 UEF | 94% |
-| Tankless Coil | 5% | 13 | 0.45 EF | -- |
-| **Appliances** | | | | |
-| Refrigerator | 97% | 773 | 550 kWh/yr | 51% |
-| Standalone Freezer | 34% | 141 | 374 kWh/yr | 22% |
-| Dishwasher | 72% | 495 | 302 kWh/yr | 84% |
-| Clothes Dryer | 87% | 465 | 3.8 CEF | 21% |
-| Clothes Washer | 89% | 348 | 2.2 IMEF | 65% |
-| Air Purifier | 27% | 91 | 3.1 IEF | 72% |
-| Dehumidifier | 47% | 241 | 1.8 IEF | 85% |
+| System type           | Penetration (%) | Units (n) | Avg. Efficiency                               | ENERGY STAR®-qualified (%) |
+| --------------------- | --------------- | --------- | --------------------------------------------- | -------------------------- |
+| **Heating & Cooling** |                 |           |                                               |                            |
+| Boiler                | 53%             | 341       | 85.5 AFUE                                     | 51%                        |
+| Furnace               | 33%             | 166       | 85.7 AFUE                                     | 44%                        |
+| Heat pump             | 18%             | 138       | 10.7 HSPF (9.1 HSPF2); 19.7 SEER (18.7 SEER2) | 54%                        |
+| Room AC               | 47%             | 234       | 11.6 CEER                                     | 57%                        |
+| Central AC            | 40%             | 206       | 13.1 SEER (12.4 SEER2)                        | 26%                        |
+| **Water Heating**     |                 |           |                                               |                            |
+| Traditional Storage   | 60%             | 287       | 0.75 UEF                                      | 11%                        |
+| Indirect Storage      | 14%             | 120       | 0.80 UEF                                      | 33%                        |
+| Instantaneous         | 13%             | 52        | 0.92 UEF                                      | 74%                        |
+| HPWH                  | 5%              | 35        | 3.40 UEF                                      | 94%                        |
+| Tankless Coil         | 5%              | 13        | 0.45 EF                                       | --                         |
+| **Appliances**        |                 |           |                                               |                            |
+| Refrigerator          | 97%             | 773       | 550 kWh/yr                                    | 51%                        |
+| Standalone Freezer    | 34%             | 141       | 374 kWh/yr                                    | 22%                        |
+| Dishwasher            | 72%             | 495       | 302 kWh/yr                                    | 84%                        |
+| Clothes Dryer         | 87%             | 465       | 3.8 CEF                                       | 21%                        |
+| Clothes Washer        | 89%             | 348       | 2.2 IMEF                                      | 65%                        |
+| Air Purifier          | 27%             | 91        | 3.1 IEF                                       | 72%                        |
+| Dehumidifier          | 47%             | 241       | 1.8 IEF                                       | 85%                        |
 
 [PDF p. 14 | printed p. 14]
 
@@ -398,10 +398,10 @@ The study fielded a multi-modal web survey with 1,030 single-family and multifam
 
 **Table 3: Overview of Evaluation Tasks**
 
-| Task | Count | Objectives |
-| --- | --- | --- |
-| Survey | 1,030 | <ul><li>Nameplate info for mechanical equipment and appliances</li><li>Guided inventory of appliances, electronics, PV systems, electric vehicles, and other energy-using equipment</li><li>Appliance use and energy-saving behavior</li><li>Attitudes about heat pumps</li><li>Awareness of and participation in energy-efficiency programs</li><li>Demographics</li><li>Recruit for virtual audits</li></ul> |
-| Virtual | 140 | <ul><li>Collect data on building characteristics including appliances, HVAC, water heating, and water fixtures</li><li>Collect room-level data to assess heat pump suitability</li><li>Assess HPWH suitability</li><li>Verify web survey results for key equipment</li></ul> |
+| Task    | Count | Objectives                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Survey  | 1,030 | <ul><li>Nameplate info for mechanical equipment and appliances</li><li>Guided inventory of appliances, electronics, PV systems, electric vehicles, and other energy-using equipment</li><li>Appliance use and energy-saving behavior</li><li>Attitudes about heat pumps</li><li>Awareness of and participation in energy-efficiency programs</li><li>Demographics</li><li>Recruit for virtual audits</li></ul> |
+| Virtual | 140   | <ul><li>Collect data on building characteristics including appliances, HVAC, water heating, and water fixtures</li><li>Collect room-level data to assess heat pump suitability</li><li>Assess HPWH suitability</li><li>Verify web survey results for key equipment</li></ul>                                                                                                                                   |
 
 ### 1.3.1 Multi-Modal Web Survey
 
@@ -415,13 +415,13 @@ The survey targeted 1,000 responses from single-family and multifamily homes usi
 
 **Table 4: Survey Completes**
 
-| Home Type | Targeted Completes | Survey Responses Total | Self-Audit (with photos) | Survey-only (no photos) |
-| --- | --- | --- | --- | --- |
-| Total | 1,000 | 1,030 | 817 | 213 |
-| SF detached | 841 | 824 | 663 | 161 |
-| SF attached | 60 | 86 | 61 | 25 |
-| SF 2-4 unit | 57 | 79 | 58 | 21 |
-| MF 5+ units | 43 | 41 | 35 | 6 |
+| Home Type   | Targeted Completes | Survey Responses Total | Self-Audit (with photos) | Survey-only (no photos) |
+| ----------- | ------------------ | ---------------------- | ------------------------ | ----------------------- |
+| Total       | 1,000              | 1,030                  | 817                      | 213                     |
+| SF detached | 841                | 824                    | 663                      | 161                     |
+| SF attached | 60                 | 86                     | 61                       | 25                      |
+| SF 2-4 unit | 57                 | 79                     | 58                       | 21                      |
+| MF 5+ units | 43                 | 41                     | 35                       | 6                       |
 
 ### 1.3.2 Virtual Audits
 
@@ -431,11 +431,11 @@ Table 70, reproduced here in Table 5, shows the sample design and achieved compl
 
 **Table 5: Virtual Audit Sample Design**
 
-| | Sample Design | Achieved |
-| --- | --- | --- |
-| Eversource | 70 | 117 |
-| United Illuminating | 70 | 23 |
-| Total | 140 | 140 |
+|                     | Sample Design | Achieved |
+| ------------------- | ------------- | -------- |
+| Eversource          | 70            | 117      |
+| United Illuminating | 70            | 23       |
+| Total               | 140           | 140      |
 
 During virtual audits, technicians also assessed heat pump and heat pump water heater suitability for each home. Details on heat pump and heat pump water heater suitability assessments are provided in sections A.2.4 and A.2.5 in Appendix A.
 
@@ -447,13 +447,13 @@ In statistical tables, the means presented are weighted means unless otherwise n
 
 **Table 6: Sample Size and Achieved Completes**
 
-| Stratum | Population | Target | Target Sampling Error @ 90% Confidence | Achieved Completes | Achieved Sampling Error @ 90% Confidence |
-| --- | --- | --- | --- | --- | --- |
-| Eversource | 586,270 | 414 | 4.0% | 495 | 3.7% |
-| Eversource (EJ) | 477,106 | 256 | 5.1% | 354 | 4.4% |
-| UI | 129,595 | 127 | 7.3% | 74 | 9.6% |
-| UI (EJ) | 163,384 | 203 | 5.8% | 107 | 8.0% |
-| Overall | 1,356,355 | 1,000 | 2.7% | 1,030 | 2.6% |
+| Stratum         | Population | Target | Target Sampling Error @ 90% Confidence | Achieved Completes | Achieved Sampling Error @ 90% Confidence |
+| --------------- | ---------- | ------ | -------------------------------------- | ------------------ | ---------------------------------------- |
+| Eversource      | 586,270    | 414    | 4.0%                                   | 495                | 3.7%                                     |
+| Eversource (EJ) | 477,106    | 256    | 5.1%                                   | 354                | 4.4%                                     |
+| UI              | 129,595    | 127    | 7.3%                                   | 74                 | 9.6%                                     |
+| UI (EJ)         | 163,384    | 203    | 5.8%                                   | 107                | 8.0%                                     |
+| Overall         | 1,356,355  | 1,000  | 2.7%                                   | 1,030              | 2.6%                                     |
 
 ## 1.5 STUDY LIMITATIONS AND SOURCES OF UNCERTAINTY
 
@@ -547,10 +547,10 @@ Just over half (51%) of homes statewide have forced air duct systems. While most
 (Source: Self-audit and virtual audit data)
 
 | Heating system type | 2018 n | 2018 Avg. Efficiency | 2024 n | 2024 Avg. Efficiency[^10] |
-| --- | --- | --- | --- | --- |
-| Heat pumps* | 5 | 9.4 HSPF | 84 | 10.7 HSPF (9.1 HSPF2) |
-| Boilers* | 51 | 83.2 AFUE | 341 | 85.5 AFUE |
-| Furnaces | 35 | 86.9 AFUE | 166 | 85.7 AFUE |
+| ------------------- | ------ | -------------------- | ------ | ------------------------- |
+| Heat pumps*         | 5      | 9.4 HSPF             | 84     | 10.7 HSPF (9.1 HSPF2)     |
+| Boilers*            | 51     | 83.2 AFUE            | 341    | 85.5 AFUE                 |
+| Furnaces            | 35     | 86.9 AFUE            | 166    | 85.7 AFUE                 |
 
 *statistically significant difference at the 90% confidence interval
 
@@ -563,12 +563,12 @@ The decrease in furnace efficiency is small and does not seem to point to an ove
 **Table 8: Heating System Efficiency by Fuel and Type**
 (Source: Self-audit and virtual audit data)
 
-| System type and fuel | 2018 RASS n | 2018 Mean AFUE | 2018 Median AFUE | 2024 RASS n | 2024 Mean AFUE | 2024 Median AFUE | Current Standard AFUE |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Boiler – Natural gas* | 29 | 82.5 | 81.8 | 98 | 87.2 | 83.9 | 84 (2021) |
-| Boiler – Oil* | 20 | 83.1 | 83.5 | 233 | 84.5 | 85.3 | 86 (2021) |
-| Furnace – Natural gas | 26 | 88.4 | 92.3 | 75 | 86.7 | 90.0 | 80 (2015) |
-| Furnace - Oil | 9 | 82.7 | 82.8 | 68 | 83.4 | 83.0 | 83 (2015) |
+| System type and fuel  | 2018 RASS n | 2018 Mean AFUE | 2018 Median AFUE | 2024 RASS n | 2024 Mean AFUE | 2024 Median AFUE | Current Standard AFUE |
+| --------------------- | ----------- | -------------- | ---------------- | ----------- | -------------- | ---------------- | --------------------- |
+| Boiler – Natural gas* | 29          | 82.5           | 81.8             | 98          | 87.2           | 83.9             | 84 (2021)             |
+| Boiler – Oil*         | 20          | 83.1           | 83.5             | 233         | 84.5           | 85.3             | 86 (2021)             |
+| Furnace – Natural gas | 26          | 88.4           | 92.3             | 75          | 86.7           | 90.0             | 80 (2015)             |
+| Furnace - Oil         | 9           | 82.7           | 82.8             | 68          | 83.4           | 83.0             | 83 (2015)             |
 
 *statistically significant difference at the 90% confidence interval
 
@@ -577,22 +577,22 @@ Over half (56%) of fossil fuel fired boilers and furnaces statewide are condensi
 **Table 9: Condensing vs. Non-Condensing Heating Systems**
 (Source: Self-audit and virtual audit data)
 
-| | Overall | Boiler | Furnace |
-| --- | --- | --- | --- |
-| n | 268 | 153 | 115 |
-| Condensing | 56% | 57% | 55% |
-| Non-condensing | 44% | 43% | 45% |
+|                | Overall | Boiler | Furnace |
+| -------------- | ------- | ------ | ------- |
+| n              | 268     | 153    | 115     |
+| Condensing     | 56%     | 57%    | 55%     |
+| Non-condensing | 44%     | 43%    | 45%     |
 
 Only 44% of furnaces in the state are ENERGY STAR®-qualified, compared to 51% of boilers (Table 10).
 
 **Table 10: ENERGY STAR® Status of Heating Systems**
 (Source: Self-audit and virtual audit data)
 
-| | Boiler | Furnace | Heat Pump |
-| --- | --- | --- | --- |
-| n | 359 | 146 | 138 |
-| ENERGY STAR®-qualified | 51% | 44% | 54% |
-| Non-qualified | 49% | 54% | 46% |
+|                        | Boiler | Furnace | Heat Pump |
+| ---------------------- | ------ | ------- | --------- |
+| n                      | 359    | 146     | 138       |
+| ENERGY STAR®-qualified | 51%    | 44%     | 54%       |
+| Non-qualified          | 49%    | 54%     | 46%       |
 
 One-third of boilers (34%) and one-fifth of furnaces (21%) statewide are more than 20 years old (Table 11). These older systems are likely at the end of their useful life and are less efficient than newer equipment, representing an opportunity for either partial or full displacement with heat pumps. Older boilers are more concentrated in low-income (43% over 20 years old) and moderate income (69%) households.
 
@@ -603,17 +603,17 @@ Most heat pumps in Connecticut homes have been installed within the past five ye
 **Table 11: Age of Heating Systems by Type**
 (Source: Self-audit and virtual audit data)
 
-| Age of Equipment | Boiler | Furnace | Heat Pump |
-| --- | --- | --- | --- |
-| n | 241 | 84 | 105 |
-| 2022 and later | 6% | 16% | 31% |
-| 2019 to 2021 | 11% | 8% | 41% |
-| 2014 to 2018 | 20% | 24% | 22% |
-| 2009 to 2013 | 11% | 14% | 4% |
-| 2004 to 2008 | 17% | 16% | 2% |
-| 1994 to 2003 | 25% | 17% | - |
-| 1993 or earlier | 9% | 4% | - |
-| Average Age in Years | 16 | 13 | 5 |
+| Age of Equipment     | Boiler | Furnace | Heat Pump |
+| -------------------- | ------ | ------- | --------- |
+| n                    | 241    | 84      | 105       |
+| 2022 and later       | 6%     | 16%     | 31%       |
+| 2019 to 2021         | 11%    | 8%      | 41%       |
+| 2014 to 2018         | 20%    | 24%     | 22%       |
+| 2009 to 2013         | 11%    | 14%     | 4%        |
+| 2004 to 2008         | 17%    | 16%     | 2%        |
+| 1994 to 2003         | 25%    | 17%     | -         |
+| 1993 or earlier      | 9%     | 4%      | -         |
+| Average Age in Years | 16     | 13      | 5         |
 
 ## 2.1 CONTROLS
 
@@ -623,11 +623,11 @@ Most heat pumps in Connecticut homes have been installed within the past five ye
 (Source: Survey responses)
 
 | Thermostat type | 2018 RASS | 2024 RASS |
-| --- | --- | --- |
-| n (households) | 2,368 | 1,006 |
-| Manual* | 62% | 53% |
-| Programmable* | 45% | 51% |
-| Smart* | 5% | 38% |
+| --------------- | --------- | --------- |
+| n (households)  | 2,368     | 1,006     |
+| Manual*         | 62%       | 53%       |
+| Programmable*   | 45%       | 51%       |
+| Smart*          | 5%        | 38%       |
 
 *statistically significant difference at the 90% confidence interval
 
@@ -638,13 +638,13 @@ Most heat pumps in Connecticut homes have been installed within the past five ye
 **Table 13: Heating Thermostat Usage by Primary Heating Type**
 (Source: Survey data 1,030)
 
-| Thermostat use | All Heating | Furnaces/Boilers | Electric Baseboard | Central Heat Pumps | Ductless Mini-split HPs |
-| --- | --- | --- | --- | --- | --- |
-| n (households) | 1,030 | 784 | 54 | 61 | 22 |
-| Programmable or smart thermostat automatically adjusts temperature | 30% | 38% | 4% | 27% | 23% |
-| Set one temperature and leave it there most of the time | 33% | 31% | 34% | 45% | 36% |
-| Manually adjust temperature | 27% | 25% | 41% | 19% | 27% |
-| Turn equipment on or off as needed | 8% | 5% | 21% | 5% | 14% |
+| Thermostat use                                                     | All Heating | Furnaces/Boilers | Electric Baseboard | Central Heat Pumps | Ductless Mini-split HPs |
+| ------------------------------------------------------------------ | ----------- | ---------------- | ------------------ | ------------------ | ----------------------- |
+| n (households)                                                     | 1,030       | 784              | 54                 | 61                 | 22                      |
+| Programmable or smart thermostat automatically adjusts temperature | 30%         | 38%              | 4%                 | 27%                | 23%                     |
+| Set one temperature and leave it there most of the time            | 33%         | 31%              | 34%                | 45%                | 36%                     |
+| Manually adjust temperature                                        | 27%         | 25%              | 41%                | 19%                | 27%                     |
+| Turn equipment on or off as needed                                 | 8%          | 5%               | 21%                | 5%                 | 14%                     |
 
 The average home in Connecticut has 1.7 thermostats. Homes reporting manual and smart thermostats have slightly more of them per home than those with programmable thermostats.
 
@@ -652,15 +652,15 @@ The average home in Connecticut has 1.7 thermostats. Homes reporting manual and 
 (Source: Survey data 1,030)
 
 | Thermostat Count | All Homes | Manual | Programmable | Smart |
-| --- | --- | --- | --- | --- |
-| n (households) | 1,030 | 521* | 455 | 315 |
-| 1 | 60% | 60% | 64% | 54% |
-| 2 | 23% | 21% | 23% | 29% |
-| 3 | 9% | 8% | 9% | 10% |
-| 4 | 4% | 3% | 3% | 4% |
-| 5 | 2% | 3% | 1% | 2% |
-| 6 | 2% | 4% | 1% | 1% |
-| Average per home | 1.7 | 1.8 | 1.6 | 1.8 |
+| ---------------- | --------- | ------ | ------------ | ----- |
+| n (households)   | 1,030     | 521*   | 455          | 315   |
+| 1                | 60%       | 60%    | 64%          | 54%   |
+| 2                | 23%       | 21%    | 23%          | 29%   |
+| 3                | 9%        | 8%     | 9%           | 10%   |
+| 4                | 4%        | 3%     | 3%           | 4%    |
+| 5                | 2%        | 3%     | 1%           | 2%    |
+| 6                | 2%        | 4%     | 1%           | 1%    |
+| Average per home | 1.7       | 1.8    | 1.6          | 1.8   |
 
 *homes could report more than one type of thermostat, therefore these counts add up to more than the total homes
 
@@ -703,11 +703,11 @@ A single horizontal 100%-stacked bar. Legend: Central AC (dark green), Window/ro
 **Table 15: Average Cooling System Efficiency**
 (Source: Self-audit and virtual audit data)
 
-| Cooling system type | 2018 RASS n | 2018 Avg. Efficiency | 2018 Median | 2024 RASS n | 2024 Avg. Efficiency | 2024 Median |
-| --- | --- | --- | --- | --- | --- | --- |
-| Heat pumps* | 7 | 16.2 SEER | 16 SEER | 123 | 19.7 SEER | 19.9 SEER |
-| Room air conditioners | 109 | 10.2 EER | 10 EER | 234 | 11.6 CEER** | 11.2 CEER |
-| Central air conditioner | 39 | 13.1 SEER | 13 SEER | 206 | 13.1 SEER | 13 SEER |
+| Cooling system type     | 2018 RASS n | 2018 Avg. Efficiency | 2018 Median | 2024 RASS n | 2024 Avg. Efficiency | 2024 Median |
+| ----------------------- | ----------- | -------------------- | ----------- | ----------- | -------------------- | ----------- |
+| Heat pumps*             | 7           | 16.2 SEER            | 16 SEER     | 123         | 19.7 SEER            | 19.9 SEER   |
+| Room air conditioners   | 109         | 10.2 EER             | 10 EER      | 234         | 11.6 CEER**          | 11.2 CEER   |
+| Central air conditioner | 39          | 13.1 SEER            | 13 SEER     | 206         | 13.1 SEER            | 13 SEER     |
 
 *statistically significant difference at the 90% confidence interval
 **while there is no direct conversion between EER and CEER, the CEER value takes into account standby power and so is generally lower than the EER for the same equipment.
@@ -719,11 +719,11 @@ A single horizontal 100%-stacked bar. Legend: Central AC (dark green), Window/ro
 **Table 16: ENERGY STAR® Status of Cooling Systems**
 (Source: Self-audit and virtual audit data)
 
-| | Room AC | Central AC* | Heat Pump |
-| --- | --- | --- | --- |
-| n | 327 | 212 | 138 |
-| ENERGYSTAR®-qualified | 57% | 26% | 54% |
-| Non-qualified | 43% | 74% | 46% |
+|                       | Room AC | Central AC* | Heat Pump |
+| --------------------- | ------- | ----------- | --------- |
+| n                     | 327     | 212         | 138       |
+| ENERGYSTAR®-qualified | 57%     | 26%         | 54%       |
+| Non-qualified         | 43%     | 74%         | 46%       |
 
 *statistically significant difference at the 90% confidence interval
 
@@ -732,17 +732,17 @@ Fifteen percent of central AC systems statewide are more than 20 years old (Tabl
 **Table 17: Age of Cooling Systems by Type**
 (Source: Self-audit and virtual audit data)
 
-| Age of Equipment | Room AC | Central AC | Heat Pump |
-| --- | --- | --- | --- |
-| n | 265 | 204 | 105 |
-| 2022 and later | 21% | 13% | 31% |
-| 2019 to 2021 | 33% | 26% | 41% |
-| 2014 to 2018 | 25% | 16% | 22% |
-| 2009 to 2013 | 12% | 12% | 4% |
-| 2004 to 2008 | 7% | 14% | 2% |
-| 1994 to 2003 | 2% | 13% | - |
-| 1993 or earlier | 1% | 2% | - |
-| Average Age in Years | 8 | 12^a | 5^a,b |
+| Age of Equipment     | Room AC | Central AC | Heat Pump |
+| -------------------- | ------- | ---------- | --------- |
+| n                    | 265     | 204        | 105       |
+| 2022 and later       | 21%     | 13%        | 31%       |
+| 2019 to 2021         | 33%     | 26%        | 41%       |
+| 2014 to 2018         | 25%     | 16%        | 22%       |
+| 2009 to 2013         | 12%     | 12%        | 4%        |
+| 2004 to 2008         | 7%      | 14%        | 2%        |
+| 1994 to 2003         | 2%      | 13%        | -         |
+| 1993 or earlier      | 1%      | 2%         | -         |
+| Average Age in Years | 8       | 12^a       | 5^a,b     |
 
 ^a statistically significant difference from room AC at the 90% confidence level
 ^b statistically significant difference from central AC at the 90% confidence level
@@ -766,18 +766,18 @@ have more uncooled space in their home than non-LMI households. Low-income house
 **Table 18: Rooms Not Cooled by Cooling System**
 (Source: Survey data)
 
-| Uncooled room | Count of homes with room type | Count reporting room uncooled | % Uncooled (homes with room type) | % Uncooled (all homes) |
-| --- | --- | --- | --- | --- |
-| Garage | 711 | 641 | 90% | 62% |
-| Three season porch or sunroom | 138 | 121 | 88% | 9% |
-| Basement | 812 | 665 | 82% | 65% |
-| Kitchen or dining room | 1030 | 334 | 32% | 32% |
-| Bedrooms | 998 | 276 | 30% | 28% |
-| Living Room | 1030 | 234 | 23% | 23% |
-| Other rooms | 858 | 162 | 19% | 16% |
-| Bathrooms | 1030 | 54 | 5% | 5% |
-| Office/study | NA | 13 | 2% | NA |
-| Utility/laundry/storage | NA | 10 | 2% | NA |
+| Uncooled room                 | Count of homes with room type | Count reporting room uncooled | % Uncooled (homes with room type) | % Uncooled (all homes) |
+| ----------------------------- | ----------------------------- | ----------------------------- | --------------------------------- | ---------------------- |
+| Garage                        | 711                           | 641                           | 90%                               | 62%                    |
+| Three season porch or sunroom | 138                           | 121                           | 88%                               | 9%                     |
+| Basement                      | 812                           | 665                           | 82%                               | 65%                    |
+| Kitchen or dining room        | 1030                          | 334                           | 32%                               | 32%                    |
+| Bedrooms                      | 998                           | 276                           | 30%                               | 28%                    |
+| Living Room                   | 1030                          | 234                           | 23%                               | 23%                    |
+| Other rooms                   | 858                           | 162                           | 19%                               | 16%                    |
+| Bathrooms                     | 1030                          | 54                            | 5%                                | 5%                     |
+| Office/study                  | NA                            | 13                            | 2%                                | NA                     |
+| Utility/laundry/storage       | NA                            | 10                            | 2%                                | NA                     |
 
 Room air conditioners and mini-split heat pump systems most commonly only serve less than half of the rooms in homes in Connecticut. Residents in more than three-quarters of homes with central air conditioning reported the system cooled all of their rooms. More than one-half (64%) of Connecticut homes are served by a permanent cooling system (central air conditioner or heat pump). This estimate is based on survey data. Survey respondents also estimated how much of their home each cooling system served (Table 19). While central air conditioners and ground source/air source heat pumps generally provide whole-house cooling coverage, only 15% of mini-split heat pumps and 24% of room air conditioners provide cooling to the entire home.[^13]
 
@@ -788,13 +788,13 @@ Room air conditioners and mini-split heat pump systems most commonly only serve 
 **Table 19: Coverage of Cooling Systems**
 (Source: Survey data)
 
-| Portion of home cooled* | MSHP | GSHP/ASHP | Room AC | Central AC |
-| --- | --- | --- | --- | --- |
-| n (respondents) | 119 | 67 | 402 | 476 |
-| All of the rooms in my home | 15% | 59% | 24% | 79% |
-| More than half of the rooms | 29% | 14% | 31% | 17% |
-| Less than half of the rooms | 42% | 6% | 41% | 2% |
-| I’m not sure | 14% | 21% | 4% | 2% |
+| Portion of home cooled*     | MSHP | GSHP/ASHP | Room AC | Central AC |
+| --------------------------- | ---- | --------- | ------- | ---------- |
+| n (respondents)             | 119  | 67        | 402     | 476        |
+| All of the rooms in my home | 15%  | 59%       | 24%     | 79%        |
+| More than half of the rooms | 29%  | 14%       | 31%     | 17%        |
+| Less than half of the rooms | 42%  | 6%        | 41%     | 2%         |
+| I’m not sure                | 14%  | 21%       | 4%      | 2%         |
 
 _Extractor note (not source text): the asterisk after "Portion of home cooled" in the table header has no corresponding note printed on the page._
 
@@ -803,18 +803,18 @@ Room air conditioners and MSHPs often do not serve the whole home; rather, they 
 **Table 20: Rooms Cooled by Room AC & MSHPs**
 (Source: Survey data)
 
-| Rooms cooled | Room AC: Homes with Room AC | Room AC: % of All Homes | MSHP: Homes with MSHP | MSHP: % of All Homes |
-| --- | --- | --- | --- | --- |
-| n (homes) | 352 | 1,030 | 100 | 1,030 |
-| Bedrooms | 89% | 30% | 61% | 6% |
-| Living room | 62% | 21% | 65% | 6% |
-| Kitchen or dining room | 34% | 12% | 52% | 5% |
-| Other room(s) | 7% | 2% | 19% | 2% |
-| Basement* | 2% | 1% | 7% | 1% |
-| Garage* | -- | -- | 2% | <1% |
-| Three season porch or sunroom* | <1% | <1% | 5% | <1% |
-| Office/study | 1% | <1% | -- | -- |
-| Utility/laundry/storage | <1% | <1% | -- | -- |
+| Rooms cooled                   | Room AC: Homes with Room AC | Room AC: % of All Homes | MSHP: Homes with MSHP | MSHP: % of All Homes |
+| ------------------------------ | --------------------------- | ----------------------- | --------------------- | -------------------- |
+| n (homes)                      | 352                         | 1,030                   | 100                   | 1,030                |
+| Bedrooms                       | 89%                         | 30%                     | 61%                   | 6%                   |
+| Living room                    | 62%                         | 21%                     | 65%                   | 6%                   |
+| Kitchen or dining room         | 34%                         | 12%                     | 52%                   | 5%                   |
+| Other room(s)                  | 7%                          | 2%                      | 19%                   | 2%                   |
+| Basement*                      | 2%                          | 1%                      | 7%                    | 1%                   |
+| Garage*                        | --                          | --                      | 2%                    | <1%                  |
+| Three season porch or sunroom* | <1%                         | <1%                     | 5%                    | <1%                  |
+| Office/study                   | 1%                          | <1%                     | --                    | --                   |
+| Utility/laundry/storage        | <1%                         | <1%                     | --                    | --                   |
 
 *Room types only displayed as options for respondents who had previously confirmed their presence at their home.
 
@@ -829,12 +829,12 @@ and 61% of homes that primarily cool with a central heat pump (ducted air source
 **Table 21: Thermostats in Home by Primary Cooling System**
 (Source: Survey data)
 
-| Thermostat use | Central Air Conditioner | Room Air Conditioner | Central Heat Pumps | Ductless Mini-split HPs |
-| --- | --- | --- | --- | --- |
-| n (households) | 449 | 316 | 51 | 70 |
-| Manual adjustable | 36% | 57% | 30% | 58% |
-| Basic programmable | 46% | 38% | 45% | 60% |
-| Internet-connected or smart learning thermostat | 47% | 15% | 61% | 20% |
+| Thermostat use                                  | Central Air Conditioner | Room Air Conditioner | Central Heat Pumps | Ductless Mini-split HPs |
+| ----------------------------------------------- | ----------------------- | -------------------- | ------------------ | ----------------------- |
+| n (households)                                  | 449                     | 316                  | 51                 | 70                      |
+| Manual adjustable                               | 36%                     | 57%                  | 30%                | 58%                     |
+| Basic programmable                              | 46%                     | 38%                  | 45%                | 60%                     |
+| Internet-connected or smart learning thermostat | 47%                     | 15%                  | 61%                | 20%                     |
 
 Multiple responses permitted.
 
@@ -847,13 +847,13 @@ As with heating systems, despite the increase in programmable and smart thermost
 **Table 22: Thermostat Usage by Primary Cooling System**
 (Source: Survey data)
 
-| Thermostat use | All Cooling | Central Air Conditioner | Room Air Conditioner | Central Heat Pumps | Ductless Mini-split HPs |
-| --- | --- | --- | --- | --- | --- |
-| n (households) | 960 | 449 | 316 | 51 | 70 |
-| Programmable or smart thermostat automatically adjusts temperature | 20% | 37% | 5% | 40% | 8% |
-| Set one temperature and leave it there most of the time | 23% | 31% | 17% | 29% | 22% |
-| Manually adjust temperature | 26% | 25% | 27% | 20% | 27% |
-| Turn equipment on or off as needed | 30% | 6% | 50% | 11% | 42% |
+| Thermostat use                                                     | All Cooling | Central Air Conditioner | Room Air Conditioner | Central Heat Pumps | Ductless Mini-split HPs |
+| ------------------------------------------------------------------ | ----------- | ----------------------- | -------------------- | ------------------ | ----------------------- |
+| n (households)                                                     | 960         | 449                     | 316                  | 51                 | 70                      |
+| Programmable or smart thermostat automatically adjusts temperature | 20%         | 37%                     | 5%                   | 40%                | 8%                      |
+| Set one temperature and leave it there most of the time            | 23%         | 31%                     | 17%                  | 29%                | 22%                     |
+| Manually adjust temperature                                        | 26%         | 25%                     | 27%                  | 20%                | 27%                     |
+| Turn equipment on or off as needed                                 | 30%         | 6%                      | 50%                  | 11%                | 42%                     |
 
 [PDF p. 33 | printed p. 33]
 
@@ -896,40 +896,40 @@ A stacked-column chart with two columns, 2018 and 2024. Legend (top to bottom): 
 **Table 23: Water Heating Efficiency by Fuel and Type (UEF)**
 (Source: Self-audit and virtual audit data)
 
-| Equipment Type/Fuel | n | Average Efficiency | Median Efficiency |
-| --- | --- | --- | --- |
-| **Fuel** | | | |
-| Natural gas | 173 | 0.69 | 0.64 |
-| Electric | 166 | 1.31 | 0.92 |
-| Oil | 134 | 0.72 | 0.78 |
-| Propane | 30 | 0.71 | 0.82 |
-| **Equipment Type** | | | |
-| Traditional storage | 294 | 0.75 | 0.67 |
-| Indirect storage | 120 | 0.79 | 0.79 |
-| Instantaneous | 36 | 0.91 | 0.93 |
-| HPWH | 35 | 3.40 | 3.55 |
+| Equipment Type/Fuel | n   | Average Efficiency | Median Efficiency |
+| ------------------- | --- | ------------------ | ----------------- |
+| **Fuel**            |     |                    |                   |
+| Natural gas         | 173 | 0.69               | 0.64              |
+| Electric            | 166 | 1.31               | 0.92              |
+| Oil                 | 134 | 0.72               | 0.78              |
+| Propane             | 30  | 0.71               | 0.82              |
+| **Equipment Type**  |     |                    |                   |
+| Traditional storage | 294 | 0.75               | 0.67              |
+| Indirect storage    | 120 | 0.79               | 0.79              |
+| Instantaneous       | 36  | 0.91               | 0.93              |
+| HPWH                | 35  | 3.40               | 3.55              |
 
 **Table 24: Average Water Heating System Efficiency**
 
-| System Type | Fuel Type | 2018 n | 2018 Avg. Efficiency (UEF) | 2018 Median Efficiency (UEF) | 2024 n | 2024 Avg. Efficiency (UEF) | 2024 Median Efficiency (UEF) |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Traditional storage | Natural gas* | 34 | 0.59 | 0.60 | 119 | 0.61 | 0.61 |
-| Traditional storage | Electric | 16 | 0.91 | 0.92 | 129 | 0.91 | 0.92 |
-| Traditional storage | Oil | 3 | 0.56 | 0.56 | 24 | 0.65 | 0.64 |
-| Traditional storage | Propane | 1 | 0.68 | - | 14 | 0.62 | 0.63 |
-| Indirect storage | Oil* | 11 | 0.76 | 0.77 | 93 | 0.78 | 0.79 |
-| Indirect storage | Natural gas* | 7 | 0.79 | 0.80 | 20 | 0.84 | 0.86 |
-| Indirect storage | Propane | 1 | 0.85 | - | 5 | 0.87 | 0.88 |
-| Tankless coil** | Oil* | 7 | 0.53 | 0.50 | 14 | 0.45 | 0.45 |
-| Tankless coil** | Natural gas | 1 | 0.50 | - | 0 | - | - |
-| Combi boiler*** | Natural gas | 2 | 0.94 | 0.94 | 10 | 0.95 | 0.95 |
-| Combi boiler*** | Oil | - | - | 0.96 | 3 | 0.86 | 0.87 |
-| Combi boiler*** | Propane | - | - | - | 3 | 0.95 | 0.95 |
-| Instantaneous | Natural gas | 2 | 0.96 | 0.60 | 24 | 0.92 | 0.93 |
-| Instantaneous | Electric | - | - | 0.92 | 1 | 0.94 | - |
-| Instantaneous | Propane | - | - | 0.56 | 8 | 0.89 | 0.88 |
-| HPWH**** | Electric | 1 | 3.19 | - | 35 | 3.40 | 3.55 |
-| **All systems** | | 86 | 0.74 | | 516 | 0.92 | |
+| System Type         | Fuel Type    | 2018 n | 2018 Avg. Efficiency (UEF) | 2018 Median Efficiency (UEF) | 2024 n | 2024 Avg. Efficiency (UEF) | 2024 Median Efficiency (UEF) |
+| ------------------- | ------------ | ------ | -------------------------- | ---------------------------- | ------ | -------------------------- | ---------------------------- |
+| Traditional storage | Natural gas* | 34     | 0.59                       | 0.60                         | 119    | 0.61                       | 0.61                         |
+| Traditional storage | Electric     | 16     | 0.91                       | 0.92                         | 129    | 0.91                       | 0.92                         |
+| Traditional storage | Oil          | 3      | 0.56                       | 0.56                         | 24     | 0.65                       | 0.64                         |
+| Traditional storage | Propane      | 1      | 0.68                       | -                            | 14     | 0.62                       | 0.63                         |
+| Indirect storage    | Oil*         | 11     | 0.76                       | 0.77                         | 93     | 0.78                       | 0.79                         |
+| Indirect storage    | Natural gas* | 7      | 0.79                       | 0.80                         | 20     | 0.84                       | 0.86                         |
+| Indirect storage    | Propane      | 1      | 0.85                       | -                            | 5      | 0.87                       | 0.88                         |
+| Tankless coil**     | Oil*         | 7      | 0.53                       | 0.50                         | 14     | 0.45                       | 0.45                         |
+| Tankless coil**     | Natural gas  | 1      | 0.50                       | -                            | 0      | -                          | -                            |
+| Combi boiler***     | Natural gas  | 2      | 0.94                       | 0.94                         | 10     | 0.95                       | 0.95                         |
+| Combi boiler***     | Oil          | -      | -                          | 0.96                         | 3      | 0.86                       | 0.87                         |
+| Combi boiler***     | Propane      | -      | -                          | -                            | 3      | 0.95                       | 0.95                         |
+| Instantaneous       | Natural gas  | 2      | 0.96                       | 0.60                         | 24     | 0.92                       | 0.93                         |
+| Instantaneous       | Electric     | -      | -                          | 0.92                         | 1      | 0.94                       | -                            |
+| Instantaneous       | Propane      | -      | -                          | 0.56                         | 8      | 0.89                       | 0.88                         |
+| HPWH****            | Electric     | 1      | 3.19                       | -                            | 35     | 3.40                       | 3.55                         |
+| **All systems**     |              | 86     | 0.74                       |                              | 516    | 0.92                       |                              |
 
 *statistically significant difference at the 90% confidence interval
 **Tankless coil efficiency is a calculated default based on boiler efficiency
@@ -949,17 +949,17 @@ where more traditional storage tanks and fewer instantaneous and HPWH were found
 **Table 25: Size of Storage Water Heaters in Gallons**
 (Source: Self-audit and virtual audit data)
 
-| Size of Equipment (gallons) | All Storage Types | Traditional Storage | Indirect Storage | HPWH |
-| --- | --- | --- | --- | --- |
-| n | 424 | 290 | 107 | 35 |
-| <20 | <1% | -- | 1% | -- |
-| 20 to 40 | 54% | 55% | 60% | 4% |
-| 41 to 55 | 38% | 35% | 34% | 81% |
-| 56 to 75 | 4% | 4% | 1% | 11% |
-| >75 | 4% | 6% | 4% | 4% |
-| Average Size | 44.7 | 45.2 | 43.3 | 51.1* |
+| Size of Equipment (gallons) | All Storage Types | Traditional Storage | Indirect Storage | HPWH  |
+| --------------------------- | ----------------- | ------------------- | ---------------- | ----- |
+| n                           | 424               | 290                 | 107              | 35    |
+| <20                         | <1%               | --                  | 1%               | --    |
+| 20 to 40                    | 54%               | 55%                 | 60%              | 4%    |
+| 41 to 55                    | 38%               | 35%                 | 34%              | 81%   |
+| 56 to 75                    | 4%                | 4%                  | 1%               | 11%   |
+| >75                         | 4%                | 6%                  | 4%               | 4%    |
+| Average Size                | 44.7              | 45.2                | 43.3             | 51.1* |
 
-* statistically significant difference at the 90% confidence interval
+- statistically significant difference at the 90% confidence interval
 
 **More than half of water heaters (62%) have uninsulated hot water pipes.** Hot water pipes were completely insulated for 17% of water heaters, and 21% had partially insulated pipes.
 
@@ -982,7 +982,7 @@ This section includes information on Connecticut households with electric heatin
 
 [DIAGRAM DESCRIPTION: Figure 9: Single Family Primary and Supplementary Heat Pump Use]
 
-A stacked-column chart with two columns, 2018 and 2024. Legend: HP-Primary (dark green) and HP- Supplementary (light green). 2018 column: HP-Primary 2%, HP-Supplementary 2%. 2024 column: HP-Primary 8%*, HP-Supplementary 10%*. Note below the chart: "*statistically significant difference at the 90% confidence interval".
+A stacked-column chart with two columns, 2018 and 2024. Legend: HP-Primary (dark green) and HP- Supplementary (light green). 2018 column: HP-Primary 2%, HP-Supplementary 2%. 2024 column: HP-Primary 8%_, HP-Supplementary 10%_. Note below the chart: "*statistically significant difference at the 90% confidence interval".
 
 [→ See original PDF page 38 for visual rendering]
 
@@ -999,12 +999,12 @@ presence of a forced air duct system. In cases where ducts were present, the ass
 **Table 26: Heat Pump Suitability in Ducted Homes**
 (Source: virtual audit data)
 
-| Ducted HP Suitability | Homes |
-| --- | --- |
-| # of ducted homes (not served by a HP) | 87 |
-| Heat with delivered fuels and 200 amps | 25% |
-| Heat with natural gas and 200 amps | 38% |
-| 100 amps or less | 37% |
+| Ducted HP Suitability                  | Homes |
+| -------------------------------------- | ----- |
+| # of ducted homes (not served by a HP) | 87    |
+| Heat with delivered fuels and 200 amps | 25%   |
+| Heat with natural gas and 200 amps     | 38%   |
+| 100 amps or less                       | 37%   |
 
 For homes without duct systems, room level data informed the assessment. For each room in the home, the technician recorded the room type, approximate square footage,[^17] and the heating and/or cooling equipment that served the room. Technicians also asked qualitative questions of the homeowner regarding areas or rooms within the home that were less comfortable than others (i.e., too cold in the winter or too hot in the summer). Based on the details provided for each room, a formula was used to assign a tier ranking from 1 to 5 (similar to a 1-to-5-star type of rating) on how suitable the space would be to install a heat pump. The methodology of this data collection can be found in Section A.2.4.
 
@@ -1016,28 +1016,28 @@ For homes without duct systems, room level data informed the assessment. For eac
 
 **Table 27: Heat Pump Suitability Calculation Factors for Homes without Ductwork**
 
-| Factor | Effect | Description | % of Rooms (n = 319) |
-| --- | --- | --- | --- |
-| Presence of a Heat Pump | Tier 1 | Tier 1 = A heat pump is already installed in the room. | 27% |
-| New HVAC | Negative | The ranking decreases if a room is heated and cooled by equipment less than two years old. | 13% |
-| Electric Heating | Positive | The ranking increases if a room is heated by electric resistance baseboards or space heaters. | 10% |
-| Not Adequately Served | Positive | The ranking increases if the room is deemed to benefit from extra HVAC (due to occupant comfort, the room not being served by the primary equipment, or the presence of supplemental equipment). | 18% |
-| No Cooling | Positive | The ranking increases if no cooling system is present. | 44% |
-| Delivered Fuels | Positive | The ranking increases if the room is heated by oil or propane. | 24% |
+| Factor                  | Effect   | Description                                                                                                                                                                                      | % of Rooms (n = 319) |
+| ----------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------- |
+| Presence of a Heat Pump | Tier 1   | Tier 1 = A heat pump is already installed in the room.                                                                                                                                           | 27%                  |
+| New HVAC                | Negative | The ranking decreases if a room is heated and cooled by equipment less than two years old.                                                                                                       | 13%                  |
+| Electric Heating        | Positive | The ranking increases if a room is heated by electric resistance baseboards or space heaters.                                                                                                    | 10%                  |
+| Not Adequately Served   | Positive | The ranking increases if the room is deemed to benefit from extra HVAC (due to occupant comfort, the room not being served by the primary equipment, or the presence of supplemental equipment). | 18%                  |
+| No Cooling              | Positive | The ranking increases if no cooling system is present.                                                                                                                                           | 44%                  |
+| Delivered Fuels         | Positive | The ranking increases if the room is heated by oil or propane.                                                                                                                                   | 24%                  |
 
 In non-ducted homes, over three quarters (79%) of square footage not already served by a heat pump is a good or excellent candidate for a heat pump (Tier 4 or 5 rating). Among homes where virtual audits were conducted, 27% had heat pumps installed, and those heat pumps provided heat to 23% of the total square footage of homes. Excluding this area already served by a heat pump, Table 28 shows the square footage of all non-ducted virtual audit homes characterized by heat pump suitability tier.
 
 **Table 28: Heat Pump Suitability in Non-Ducted Homes**
 (Source: virtual audit data)
 
-| Non-Ducted HP Suitability | Square Footage |
-| --- | --- |
-| n (non-ducted homes) | 51 |
-| 5 – Excellent candidate for heat pump installation | 29% |
-| 4 – Good candidate for heat pump installation | 50% |
-| 3 – Acceptable candidate for heat pump installation | 19% |
-| 2 – Possible, but not an ideal candidate | 2% |
-| 1 – HP already installed (excluded) | |
+| Non-Ducted HP Suitability                           | Square Footage |
+| --------------------------------------------------- | -------------- |
+| n (non-ducted homes)                                | 51             |
+| 5 – Excellent candidate for heat pump installation  | 29%            |
+| 4 – Good candidate for heat pump installation       | 50%            |
+| 3 – Acceptable candidate for heat pump installation | 19%            |
+| 2 – Possible, but not an ideal candidate            | 2%             |
+| 1 – HP already installed (excluded)                 |                |
 
 Of the non-ducted homes from the virtual audit sample, 43% had a majority of their space (80% or more) assessed as Tier 4 or Tier 5 making them excellent candidates for whole-home heat pump installation. Figure 10 shows the area of homes that are good candidates for a heat-pump. Among the 43% of homes with a majority of Tier 4 and 5 space, more than half (63%) already have 200 amp electric service. Another 42% of non-ducted homes have between 40% and 80% of their square footage deemed to be good candidates for HP installation.
 
@@ -1057,12 +1057,12 @@ A column chart (all columns dark green) with y-axis "Percent of Homes" and x-axi
 **Table 29: Heat Pump Suitability – Any Configuration**
 (Source: virtual audit data)
 
-| HP Suitability | Homes |
-| --- | --- |
-| # of homes | 138 |
-| Excellent candidates for HP installation | 32% |
-| Good candidates for HP installation | 39% |
-| Not ideal for HP installation | 29% |
+| HP Suitability                           | Homes |
+| ---------------------------------------- | ----- |
+| # of homes                               | 138   |
+| Excellent candidates for HP installation | 32%   |
+| Good candidates for HP installation      | 39%   |
+| Not ideal for HP installation            | 29%   |
 
 ### 5.1.3 Electrification Readiness
 
@@ -1075,12 +1075,12 @@ A column chart (all columns dark green) with y-axis "Percent of Homes" and x-axi
 **Table 30: Electric Panel Service by Primary Heating Fuel**
 (Source: virtual audit data)
 
-| Amperage | All Homes | Oil | Propane | Natural Gas | Electricity |
-| --- | --- | --- | --- | --- | --- |
-| # of homes | 137 | 61 | 5 | 46 | 25 |
-| 60 | 7% | - | - | 11% | 5% |
-| 100 | 30% | 31% | 20% | 23% | 42% |
-| 200 | 63% | 69% | 80% | 65% | 52% |
+| Amperage   | All Homes | Oil | Propane | Natural Gas | Electricity |
+| ---------- | --------- | --- | ------- | ----------- | ----------- |
+| # of homes | 137       | 61  | 5       | 46          | 25          |
+| 60         | 7%        | -   | -       | 11%         | 5%          |
+| 100        | 30%       | 31% | 20%     | 23%         | 42%         |
+| 200        | 63%       | 69% | 80%     | 65%         | 52%         |
 
 **Over half of homes (54%) have at least two free breaker slots available, indicating that they could likely accommodate at least one electrification upgrade.** During virtual audits technicians examined electric panels, when possible, to determine if the home had enough free breaker slots to support a heat pump or similar electrification measure. The assessment assumed that any potential electrification measure would require two free slots[^18] since most large electrical equipment (HPWH, induction range, etc.) draws 30 amps or more and therefore requires two slots. For example, a home with gas heating and water heating but with an electric cooktop and dryer would have two potential electrification measures, requiring four free breakers slots to electrify them.
 
@@ -1088,13 +1088,13 @@ A column chart (all columns dark green) with y-axis "Percent of Homes" and x-axi
 (Source: virtual audit data)
 
 | HP Suitability | Homes |
-| --- | --- |
-| # of homes | 133 |
-| Less than 2 | 46% |
-| 2 | 8% |
-| 4 | 12% |
-| 6 | 15% |
-| 8 or more | 19% |
+| -------------- | ----- |
+| # of homes     | 133   |
+| Less than 2    | 46%   |
+| 2              | 8%    |
+| 4              | 12%   |
+| 6              | 15%   |
+| 8 or more      | 19%   |
 
 _Extractor note (not source text): the first column header of Table 31 is printed as "HP Suitability" in the source; the rows are free-breaker-slot counts._
 
@@ -1109,13 +1109,13 @@ installed in the homes that might be replaced with electric equipment (heating, 
 **Table 32: Overall Electrification Status**
 (Source: virtual audit data)
 
-| HP Suitability | All Homes | Homes with Delivered Fuels |
-| --- | --- | --- |
-| # of homes | 133 | 64 |
-| Ready to electrify | 35% | 31% |
-| Sub panel needed | 29% | 36% |
-| Service upgrade likely | 14% | 8% |
-| Service upgrade needed | 23% | 25% |
+| HP Suitability         | All Homes | Homes with Delivered Fuels |
+| ---------------------- | --------- | -------------------------- |
+| # of homes             | 133       | 64                         |
+| Ready to electrify     | 35%       | 31%                        |
+| Sub panel needed       | 29%       | 36%                        |
+| Service upgrade likely | 14%       | 8%                         |
+| Service upgrade needed | 23%       | 25%                        |
 
 ### 5.1.4 Awareness of Heat Pumps
 
@@ -1126,16 +1126,16 @@ installed in the homes that might be replaced with electric equipment (heating, 
 **Table 33: Attitudes About Heat Pumps** [source prints the caption as "DTable 33"]
 (Source: Survey respondents who have a heat pump or had heard of them before, n=624)
 
-| Agreement with statements:[^table33] | Strongly Disagree | Somewhat Disagree | Neither | Somewhat agree | Strongly agree |
-| --- | --- | --- | --- | --- | --- |
-| Heat pumps are better for the environment than other heating or cooling systems. | 2% | 6% | 48% | 25% | 19% |
-| Heat pumps can save money on my energy bills. | 4% | 6% | 47% | 25% | 18% |
-| A heat pump can provide enough heat, even on the coldest days. | 7% | 17% | 42% | 23% | 11% |
-| A heat pump cools as well as or better than other cooling systems. | 2% | 8% | 54% | 19% | 18% |
-| Heat pumps are less expensive to install than other heating and cooling systems. | 12% | 19% | 55% | 9% | 5% |
-| Heat pumps are more reliable than other heating and cooling systems. | 3% | 9% | 64% | 16% | 8% |
-| Heat pumps are quieter than other heating and cooling systems. | 2% | 7% | 58% | 18% | 14% |
-| Heat pumps have lower maintenance costs than other heating and cooling systems. | 4% | 9% | 65% | 14% | 9% |
+| Agreement with statements:[^table33]                                             | Strongly Disagree | Somewhat Disagree | Neither | Somewhat agree | Strongly agree |
+| -------------------------------------------------------------------------------- | ----------------- | ----------------- | ------- | -------------- | -------------- |
+| Heat pumps are better for the environment than other heating or cooling systems. | 2%                | 6%                | 48%     | 25%            | 19%            |
+| Heat pumps can save money on my energy bills.                                    | 4%                | 6%                | 47%     | 25%            | 18%            |
+| A heat pump can provide enough heat, even on the coldest days.                   | 7%                | 17%               | 42%     | 23%            | 11%            |
+| A heat pump cools as well as or better than other cooling systems.               | 2%                | 8%                | 54%     | 19%            | 18%            |
+| Heat pumps are less expensive to install than other heating and cooling systems. | 12%               | 19%               | 55%     | 9%             | 5%             |
+| Heat pumps are more reliable than other heating and cooling systems.             | 3%                | 9%                | 64%     | 16%            | 8%             |
+| Heat pumps are quieter than other heating and cooling systems.                   | 2%                | 7%                | 58%     | 18%            | 14%            |
+| Heat pumps have lower maintenance costs than other heating and cooling systems.  | 4%                | 9%                | 65%     | 14%            | 9%             |
 
 [^table33]: Rows may not sum to 100% due to rounding.
 
@@ -1223,13 +1223,13 @@ While not a significant barrier to installing a HPWH, the presence of a drain in
 **Table 34: HPWH Suitability Criteria by Home Type**
 (Source: Virtual audits)
 
-| HPWH Suitability Criteria | Statewide | SF-Detached | SF-Attached | SF 2-4 unit | MF 5+ units |
-| --- | --- | --- | --- | --- | --- |
-| n (homes without HPWH) | 133 | 113 | 11 | 7 | 2 |
-| Sufficient ceiling height | 98% | 97% | 98% | 100% | 100% |
-| Above 40°F year-round | 91% | 94% | 54% | 100% | 100% |
-| Sufficient space in utility room | 79% | 90% | 39% | 80% | - |
-| Drain present | 47% | 59% | 16% | 27% | - |
+| HPWH Suitability Criteria        | Statewide | SF-Detached | SF-Attached | SF 2-4 unit | MF 5+ units |
+| -------------------------------- | --------- | ----------- | ----------- | ----------- | ----------- |
+| n (homes without HPWH)           | 133       | 113         | 11          | 7           | 2           |
+| Sufficient ceiling height        | 98%       | 97%         | 98%         | 100%        | 100%        |
+| Above 40°F year-round            | 91%       | 94%         | 54%         | 100%        | 100%        |
+| Sufficient space in utility room | 79%       | 90%         | 39%         | 80%         | -           |
+| Drain present                    | 47%       | 59%         | 16%         | 27%         | -           |
 
 **Statewide, 76% of homes that do not currently have a HPWH meet all three key criteria for favorable conditions to install a HPWH.** Table 35 presents the number of suitability criteria that were present at each home. Meeting all three of the criteria would constitute an ideal situation for a direct replacement with a heat pump water heater (and not meeting any of these key criteria would represent a barrier). In addition, 42% of homes met all three key criteria and had a drain present nearby, which helps to easily handle condensate without additional work. A home that meets two or fewer HPWH suitability criteria does not necessarily preclude that home from installing a heat pump water heater, but it does mean there is some type of barrier present that may require additional effort or accommodation during the installation process. For example, relocating the water heater may result in a more favorable location where the same barriers to installation don’t exist, but this may also add cost. This study only assessed the suitability of installing a HPWH in the location of the current water heating equipment and cannot speak to the barriers associated with relocating equipment. This methodology also did not include assessing homes for split system HPWH.
 
@@ -1239,13 +1239,13 @@ While not a significant barrier to installing a HPWH, the presence of a drain in
 
 **Table 35: Number of HPWH Suitability Criteria Met by Home Type**
 
-| Total Criteria | Statewide | SF-Detached | SF-Attached | SF 2-4 unit | MF 5+ units |
-| --- | --- | --- | --- | --- | --- |
-| n (homes without HPWH) | 133 | 113 | 11 | 7 | 2 |
-| Meets all 3 criteria | 76% | 86% | 36% | 80% | -- |
-| Meets at least 2 criteria | 93% | 97% | 53% | 100% | 100% |
-| Meets at least 1 criteria | 99% | 99% | 100% | -- | 100% |
-| Meets 0 criteria | 1% | 1% | -- | -- | -- |
+| Total Criteria            | Statewide | SF-Detached | SF-Attached | SF 2-4 unit | MF 5+ units |
+| ------------------------- | --------- | ----------- | ----------- | ----------- | ----------- |
+| n (homes without HPWH)    | 133       | 113         | 11          | 7           | 2           |
+| Meets all 3 criteria      | 76%       | 86%         | 36%         | 80%         | --          |
+| Meets at least 2 criteria | 93%       | 97%         | 53%         | 100%        | 100%        |
+| Meets at least 1 criteria | 99%       | 99%         | 100%        | --          | 100%        |
+| Meets 0 criteria          | 1%        | 1%          | --          | --          | --          |
 
 ## 5.3 ELECTRIC TRANSPORTATION
 
@@ -1255,13 +1255,13 @@ While not a significant barrier to installing a HPWH, the presence of a drain in
 
 **Table 36: Charging Time for Electric Vehicles**
 
-| Charging Time | Percent |
-| --- | --- |
-| n (respondents with an EV/PHEV) | 100 |
-| 8am to 12pm | 12% |
-| 12pm to 8pm | 17% |
-| Overnight (8pm to 8am) | 78% |
-| I do not charge at home | 7% |
+| Charging Time                   | Percent |
+| ------------------------------- | ------- |
+| n (respondents with an EV/PHEV) | 100     |
+| 8am to 12pm                     | 12%     |
+| 12pm to 8pm                     | 17%     |
+| Overnight (8pm to 8am)          | 78%     |
+| I do not charge at home         | 7%      |
 
 Multiple responses permitted.
 
@@ -1300,7 +1300,7 @@ This section presents key findings on common household appliances, consumer elec
 
 [DIAGRAM DESCRIPTION: Figure 14: Single-Family Appliance Penetration]
 
-A horizontal clustered-bar chart with two bars per appliance: 2018 (dark green) and 2024 (teal). Values (2018 / 2024; an asterisk marks a statistically significant difference): Refrigerator 99% / 96%*; Clothes washer 97% / 93%*; Clothes dryer 96% / 91%*; Dishwasher 73% / 75%; Dehumidifier 46% / 51%*; Freezer 37% / 38%; Air purifier 6% / 27%*. Note below the chart: "*statistically significant difference at the 90% confidence interval".
+A horizontal clustered-bar chart with two bars per appliance: 2018 (dark green) and 2024 (teal). Values (2018 / 2024; an asterisk marks a statistically significant difference): Refrigerator 99% / 96%_; Clothes washer 97% / 93%_; Clothes dryer 96% / 91%_; Dishwasher 73% / 75%; Dehumidifier 46% / 51%_; Freezer 37% / 38%; Air purifier 6% / 27%*. Note below the chart: "*statistically significant difference at the 90% confidence interval".
 
 [→ See original PDF page 51 for visual rendering]
 
@@ -1317,7 +1317,7 @@ saturation is quite high at over 80%. Over half (51%) of refrigerators statewide
 
 [DIAGRAM DESCRIPTION: Figure 15: ENERGY STAR® Saturation]
 
-A horizontal clustered-bar chart with two bars per appliance: 2018 (dark green) and 2024 (teal). Values (2018 / 2024; an asterisk marks a statistically significant difference): Refrigerator 38% / 51%*; Clothes washer 55% / 65%*; Clothes dryer 4% / 21%*; Dishwasher 72% / 84%*; Dehumidifier 81% / 85%; Freezer 24% / 22%; Air purifier 50% / 72%. Note below the chart: "*statistically significant difference at the 90% confidence interval".
+A horizontal clustered-bar chart with two bars per appliance: 2018 (dark green) and 2024 (teal). Values (2018 / 2024; an asterisk marks a statistically significant difference): Refrigerator 38% / 51%_; Clothes washer 55% / 65%_; Clothes dryer 4% / 21%_; Dishwasher 72% / 84%_; Dehumidifier 81% / 85%; Freezer 24% / 22%; Air purifier 50% / 72%. Note below the chart: "*statistically significant difference at the 90% confidence interval".
 
 [→ See original PDF page 52 for visual rendering]
 
@@ -1325,11 +1325,11 @@ A horizontal clustered-bar chart with two bars per appliance: 2018 (dark green) 
 
 **Table 37: Average Kitchen Appliance Consumption (kWh/yr)**
 
-| System type | 2018 n | 2018 Avg. Consumption | 2024 n | 2024 Avg. Consumption |
-| --- | --- | --- | --- | --- |
-| Refrigerator* | 249 | 517 kWh/yr | 768 | 550 kWh/yr |
-| Freezer* | 17 | 464 kWh/yr | 139 | 374 kWh/yr |
-| Dishwasher | 146 | 303 kWh/yr | 435 | 302 kWh/yr |
+| System type   | 2018 n | 2018 Avg. Consumption | 2024 n | 2024 Avg. Consumption |
+| ------------- | ------ | --------------------- | ------ | --------------------- |
+| Refrigerator* | 249    | 517 kWh/yr            | 768    | 550 kWh/yr            |
+| Freezer*      | 17     | 464 kWh/yr            | 139    | 374 kWh/yr            |
+| Dishwasher    | 146    | 303 kWh/yr            | 435    | 302 kWh/yr            |
 
 *statistically significant difference at the 90% confidence interval
 
@@ -1337,12 +1337,12 @@ A horizontal clustered-bar chart with two bars per appliance: 2018 (dark green) 
 
 **Table 38: Average Laundry and Air Appliance Efficiency**
 
-| System type | 2018 n | 2018 Avg. Efficiency | 2024 n | 2024 Avg. Efficiency |
-| --- | --- | --- | --- | --- |
-| Clothes Washer* | 95 | 1.78 IMEF | 226 | 2.2 IMEF |
-| Clothes Dryer | 106 | 3.52 EF | 244 | 3.8 CEF** |
-| Dehumidifier | -- | -- | 118 | 1.8 IEF |
-| Air Purifier | -- | -- | 34 | 3.1 IEF |
+| System type     | 2018 n | 2018 Avg. Efficiency | 2024 n | 2024 Avg. Efficiency |
+| --------------- | ------ | -------------------- | ------ | -------------------- |
+| Clothes Washer* | 95     | 1.78 IMEF            | 226    | 2.2 IMEF             |
+| Clothes Dryer   | 106    | 3.52 EF              | 244    | 3.8 CEF**            |
+| Dehumidifier    | --     | --                   | 118    | 1.8 IEF              |
+| Air Purifier    | --     | --                   | 34     | 3.1 IEF              |
 
 *statistically significant difference at the 90% confidence interval
 **includes heat pump dryers, although only three observed in the study
@@ -1353,19 +1353,19 @@ A horizontal clustered-bar chart with two bars per appliance: 2018 (dark green) 
 (Source: Self-audit and virtual audit data)
 
 | Age of Equipment | Refrigerator | Freezer | Clothes Washer | Clothes Dryer | Dishwasher | Dehumidifier | Air Purifier |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| n | 707 | 113 | 305 | 385 | 435 | 201 | 41 |
-| 2022 and later | 13% | 19% | 15% | 15% | 10% | 15% | 27% |
-| 2019 to 2021 | 18% | 22% | 21% | 19% | 24% | 41% | 40% |
-| 2014 to 2018 | 28% | 12% | 36% | 35% | 32% | 25% | 26% |
-| 2009 to 2013 | 19% | 14% | 14% | 16% | 14% | 14% | 3% |
-| 2004 to 2008 | 12% | 15% | 11% | 8% | 10% | 3% | 3% |
-| 1994 to 2003 | 7% | 9% | 3% | 3% | 8% | 2% | 0% |
-| 1993 or earlier | 3% | 9% | 1% | 2% | 2% | 0% | 0% |
-| **Age in Years** | | | | | | | |
-| Average | 10 | 12 | 9 | 9 | 10 | 7 | 5 |
-| Median | 8 | 10 | 7 | 7 | 8 | 5 | 4 |
-| CT EUL | 12 | 11 | 11 | 11 | 10 | 12 | 9 |
+| ---------------- | ------------ | ------- | -------------- | ------------- | ---------- | ------------ | ------------ |
+| n                | 707          | 113     | 305            | 385           | 435        | 201          | 41           |
+| 2022 and later   | 13%          | 19%     | 15%            | 15%           | 10%        | 15%          | 27%          |
+| 2019 to 2021     | 18%          | 22%     | 21%            | 19%           | 24%        | 41%          | 40%          |
+| 2014 to 2018     | 28%          | 12%     | 36%            | 35%           | 32%        | 25%          | 26%          |
+| 2009 to 2013     | 19%          | 14%     | 14%            | 16%           | 14%        | 14%          | 3%           |
+| 2004 to 2008     | 12%          | 15%     | 11%            | 8%            | 10%        | 3%           | 3%           |
+| 1994 to 2003     | 7%           | 9%      | 3%             | 3%            | 8%         | 2%           | 0%           |
+| 1993 or earlier  | 3%           | 9%      | 1%             | 2%            | 2%         | 0%           | 0%           |
+| **Age in Years** |              |         |                |               |            |              |              |
+| Average          | 10           | 12      | 9              | 9             | 10         | 7            | 5            |
+| Median           | 8            | 10      | 7              | 7             | 8          | 5            | 4            |
+| CT EUL           | 12           | 11      | 11             | 11            | 10         | 12           | 9            |
 
 **Fuel fired clothes dryers are uncommon in Connecticut. Most dryers (93%) are electric (Figure 16).** Only 21% of dryers statewide are ENERGY STAR®-qualified. Heat pump dryers are also uncommon, only three were verified among the sample (<1% of electric dryers).
 
@@ -1398,14 +1398,14 @@ A pie chart of cooking fuel. Legend: Electricity (dark green), Natural gas (teal
 **Table 40: Dehumidifier Use**
 (Source: survey data, n=215)
 
-| Dehumidifier Use (Self-reported) | Statewide |
-| --- | --- |
-| n (respondents with at least one dehumidifier) | 215 |
-| Use only during summer months | 51% |
-| Use all or almost all of the year | 24% |
-| Use about half of the year | 16% |
-| Rarely/as needed | 5% |
-| I’m not sure | 4% |
+| Dehumidifier Use (Self-reported)               | Statewide |
+| ---------------------------------------------- | --------- |
+| n (respondents with at least one dehumidifier) | 215       |
+| Use only during summer months                  | 51%       |
+| Use all or almost all of the year              | 24%       |
+| Use about half of the year                     | 16%       |
+| Rarely/as needed                               | 5%        |
+| I’m not sure                                   | 4%        |
 
 ## 6.2 CONSUMER ELECTRONICS
 
@@ -1414,17 +1414,17 @@ A pie chart of cooking fuel. Legend: Electricity (dark green), Natural gas (teal
 **Table 41: Penetration of Consumer Electronics by Tenure**
 (Source: Survey data, n=1,030)
 
-| Type | Penetration | Count per Home* |
-| --- | --- | --- |
-| Cell phones | 95% | 2.38 |
-| Televisions | 93% | 2.47 |
-| Laptop computers (excluding tablets) | 84% | 1.60 |
-| Desktop computers | 45% | 0.58 |
-| Computer Monitors | 60% | 1.16 |
-| Stand-alone sound systems (e.g., stereos or Bluetooth speakers) | 59% | 1.08 |
-| Game Consoles | 44% | 0.79 |
-| TV-Sound systems | 41% | 0.56 |
-| Printers | 76% | 0.89 |
+| Type                                                            | Penetration | Count per Home* |
+| --------------------------------------------------------------- | ----------- | --------------- |
+| Cell phones                                                     | 95%         | 2.38            |
+| Televisions                                                     | 93%         | 2.47            |
+| Laptop computers (excluding tablets)                            | 84%         | 1.60            |
+| Desktop computers                                               | 45%         | 0.58            |
+| Computer Monitors                                               | 60%         | 1.16            |
+| Stand-alone sound systems (e.g., stereos or Bluetooth speakers) | 59%         | 1.08            |
+| Game Consoles                                                   | 44%         | 0.79            |
+| TV-Sound systems                                                | 41%         | 0.56            |
+| Printers                                                        | 76%         | 0.89            |
 
 *average count per home is across all homes in the survey, not just those that reported having each type of electronic.
 
@@ -1454,20 +1454,20 @@ A horizontal single-series bar chart (all bars dark green), sorted from largest 
 **Table 42: Equipment in Control Switch of Advanced Power Strip**
 (Source: Survey data)
 
-| Appliances in Control Switch of APS | Statewide |
-| --- | --- |
-| n (households) | 138 |
-| Televisions | 69% |
-| Desktop computers | 33% |
-| Computer monitors | 32% |
-| Printers | 31% |
-| Laptop computers (excludes tablets) | 30% |
-| Television sound systems | 27% |
-| Game consoles | 24% |
-| Cellphones | 22% |
-| Stand-alone sound systems (e.g., stereos or Bluetooth speakers) | 11% |
-| Other | 6% |
-| No devices are currently plugged in | 5% |
+| Appliances in Control Switch of APS                             | Statewide |
+| --------------------------------------------------------------- | --------- |
+| n (households)                                                  | 138       |
+| Televisions                                                     | 69%       |
+| Desktop computers                                               | 33%       |
+| Computer monitors                                               | 32%       |
+| Printers                                                        | 31%       |
+| Laptop computers (excludes tablets)                             | 30%       |
+| Television sound systems                                        | 27%       |
+| Game consoles                                                   | 24%       |
+| Cellphones                                                      | 22%       |
+| Stand-alone sound systems (e.g., stereos or Bluetooth speakers) | 11%       |
+| Other                                                           | 6%        |
+| No devices are currently plugged in                             | 5%        |
 
 *Multiple responses allowed. Respondents were only able to select equipment they had previously indicated they had in their homes.
 
@@ -1493,15 +1493,15 @@ _Extractor note (not source text): [source discrepancy: the chart labels the swi
 **Table 43: Fuels Used by Other Energy-Using Appliances by Fuel Type**
 (Source: Survey data)
 
-| Fuel | Whole house generator | Spa (hot tub/Jacuzzi) | Pool heater | Sauna |
-| --- | --- | --- | --- | --- |
-| n | 151 | 66 | 30 | 9 |
-| Gasoline | 28% | -- | -- | -- |
-| Propane | 28% | 4% | 27% | 11% |
-| Oil | 23% | 3% | -- | -- |
-| Natural gas | 11% | 5% | 11% | -- |
-| Electricity | -- | 87% | 57% | 81% |
-| Don’t know | 10% | 1% | 5% | 9% |
+| Fuel        | Whole house generator | Spa (hot tub/Jacuzzi) | Pool heater | Sauna |
+| ----------- | --------------------- | --------------------- | ----------- | ----- |
+| n           | 151                   | 66                    | 30          | 9     |
+| Gasoline    | 28%                   | --                    | --          | --    |
+| Propane     | 28%                   | 4%                    | 27%         | 11%   |
+| Oil         | 23%                   | 3%                    | --          | --    |
+| Natural gas | 11%                   | 5%                    | 11%         | --    |
+| Electricity | --                    | 87%                   | 57%         | 81%   |
+| Don’t know  | 10%                   | 1%                    | 5%          | 9%    |
 
 [PDF p. 59 | printed p. 59]
 
@@ -1513,27 +1513,27 @@ Table 44 summarizes the efficiency of new equipment (installed 2021 or later) in
 
 _Bold values in the table are bold in the source (see the paragraph above)._
 
-| System type | All New Equipment n | All New Equipment Average Efficiency | Program Participant New Equipment n | Program Participant New Equipment Average Efficiency | Non-Participant New Equipment n | Non-Participant New Equipment Average Efficiency |
-| --- | --- | --- | --- | --- | --- | --- |
-| **Heating & Cooling** | | | | | | |
-| Boiler | 24 | **89.5 AFUE** | 12 | 88.0 AFUE | 12 | 90.7 AFUE |
-| Furnace | 11 | 91.9 AFUE | 5 | 95.5 AFUE | 6 | 83.7 AFUE |
-| Heat pump | 40 | **9.3 HSPF2, 20.6 SEER2** | 27 | 9.1 HSPF2, 20.2 SEER2 | 13 | 9.6 HSPF2, 21.4 SEER2 |
-| Room AC | 87 | **12.1 CEER** | 25 | 12.0 CEER | 62 | 12.1 CEER |
-| Central AC | 35 | 13.4 SEER2 | 16 | 13.5 SEER2 | 19 | **13.3 SEER2** |
-| **Water Heating** | | | | | | |
-| Traditional Storage | 66 | 0.71 UEF | 26 | 0.73 UEF | 40 | **0.70 UEF** |
-| _Electric storage_ | 26 | **0.92 UEF** | 13 | 0.92 UEF | 13 | 0.92 UEF |
-| _Fuel-fired storage_ | 40 | **0.62 UEF** | 13 | 0.62 UEF | 27 | 0.62 UEF |
-| HPWH | 16 | 3.62 UEF | 11 | 3.62 UEF | 5 | 3.64 UEF |
-| **Appliances** | | | | | | |
-| Refrigerator | 159 | 577 kWh/yr | 55 | 568 kWh/yr | 104 | **581 kWh/yr** |
-| Standalone Freezer | 24 | 317 kWh/yr | 9 | 284 kWh/yr | 15 | 370 kWh/yr |
-| Dishwasher | 89 | 262 kWh/yr | 31 | 259 kWh/yr | 58 | **264 kWh/yr** |
-| Clothes Dryer | 82 | **3.8 CEF** | 26 | 3.7 CEF | 56 | 3.8 CEF |
-| Clothes Washer | 85 | **2.3 IMEF** | 29 | 2.0 IMEF | 56 | 2.4 IMEF |
-| Air Purifier | 11 | 2.1 IEF | 4 | 2.9 IEF | 7 | 1.9 IEF |
-| Dehumidifier | 58 | **1.8 IEF** | 26 | 1.8 IEF | 32 | 1.8 IEF |
+| System type           | All New Equipment n | All New Equipment Average Efficiency | Program Participant New Equipment n | Program Participant New Equipment Average Efficiency | Non-Participant New Equipment n | Non-Participant New Equipment Average Efficiency |
+| --------------------- | ------------------- | ------------------------------------ | ----------------------------------- | ---------------------------------------------------- | ------------------------------- | ------------------------------------------------ |
+| **Heating & Cooling** |                     |                                      |                                     |                                                      |                                 |                                                  |
+| Boiler                | 24                  | **89.5 AFUE**                        | 12                                  | 88.0 AFUE                                            | 12                              | 90.7 AFUE                                        |
+| Furnace               | 11                  | 91.9 AFUE                            | 5                                   | 95.5 AFUE                                            | 6                               | 83.7 AFUE                                        |
+| Heat pump             | 40                  | **9.3 HSPF2, 20.6 SEER2**            | 27                                  | 9.1 HSPF2, 20.2 SEER2                                | 13                              | 9.6 HSPF2, 21.4 SEER2                            |
+| Room AC               | 87                  | **12.1 CEER**                        | 25                                  | 12.0 CEER                                            | 62                              | 12.1 CEER                                        |
+| Central AC            | 35                  | 13.4 SEER2                           | 16                                  | 13.5 SEER2                                           | 19                              | **13.3 SEER2**                                   |
+| **Water Heating**     |                     |                                      |                                     |                                                      |                                 |                                                  |
+| Traditional Storage   | 66                  | 0.71 UEF                             | 26                                  | 0.73 UEF                                             | 40                              | **0.70 UEF**                                     |
+| _Electric storage_    | 26                  | **0.92 UEF**                         | 13                                  | 0.92 UEF                                             | 13                              | 0.92 UEF                                         |
+| _Fuel-fired storage_  | 40                  | **0.62 UEF**                         | 13                                  | 0.62 UEF                                             | 27                              | 0.62 UEF                                         |
+| HPWH                  | 16                  | 3.62 UEF                             | 11                                  | 3.62 UEF                                             | 5                               | 3.64 UEF                                         |
+| **Appliances**        |                     |                                      |                                     |                                                      |                                 |                                                  |
+| Refrigerator          | 159                 | 577 kWh/yr                           | 55                                  | 568 kWh/yr                                           | 104                             | **581 kWh/yr**                                   |
+| Standalone Freezer    | 24                  | 317 kWh/yr                           | 9                                   | 284 kWh/yr                                           | 15                              | 370 kWh/yr                                       |
+| Dishwasher            | 89                  | 262 kWh/yr                           | 31                                  | 259 kWh/yr                                           | 58                              | **264 kWh/yr**                                   |
+| Clothes Dryer         | 82                  | **3.8 CEF**                          | 26                                  | 3.7 CEF                                              | 56                              | 3.8 CEF                                          |
+| Clothes Washer        | 85                  | **2.3 IMEF**                         | 29                                  | 2.0 IMEF                                             | 56                              | 2.4 IMEF                                         |
+| Air Purifier          | 11                  | 2.1 IEF                              | 4                                   | 2.9 IEF                                              | 7                               | 1.9 IEF                                          |
+| Dehumidifier          | 58                  | **1.8 IEF**                          | 26                                  | 1.8 IEF                                              | 32                              | 1.8 IEF                                          |
 
 _Extractor note (not source text): in the source, "Electric storage" and "Fuel-fired storage" are indented italic sub-rows under "Traditional Storage"._
 
@@ -1547,29 +1547,29 @@ New, non-participant heat pumps have a heating and cooling efficiency that is we
 
 _In the source, non-participant values highlighted green are marked "(green)" and the one highlighted red is marked "(red)" below._
 
-| System type | Federal Minimum Efficiency | ENERGY STAR Specification | Non-Participant New Equipment n | Non-Participant New Equipment Efficiency |
-| --- | --- | --- | --- | --- |
-| **Heating & Cooling** | | | | |
-| Boiler - Oil | 86 AFUE | 87 AFUE | 8 | 86.7 AFUE |
-| Boiler - Gas | 84 AFUE | 90 AFUE | 4 | 94.2 AFUE |
-| Furnace - Oil | 80 AFUE | 85 AFUE | 1 | 85.6 AFUE |
-| Furnace - Gas | 80 AFUE | 95 AFUE | 5 | 83.5 AFUE |
-| Heat pump - heating | 7.5 HSPF2 | 8.5 HSPF2 | 13 | 9.6 HSPF2 (green) |
-| Heat pump - cooling | 14.3 SEER2 | 15.2 SEER2 | 13 | 21.4 SEER2 (green) |
-| Room AC | 11 CEER | 13.1 CEER | 62 | 12.1 CEER |
-| Central AC | 13.4 SEER2 | 15.2 SEER2 | 19 | 13.3 SEER2 (red) |
-| **Water Heating** | | | | |
-| Storage - electric | 0.92 UEF | 3.3 UEF | 13 | 0.92 UEF |
-| Storage – fuel fired | 0.56 UEF | 0.81 UEF | 27 | 0.62 UEF |
-| HPWH | 2.0 UEF | 3.3 UEF | 5 | 3.64 UEF (green) |
-| **Appliances** | | | | |
-| Refrigerator | varies | varies | 104 | 581 kWh/yr |
-| Standalone Freezer | varies | varies | 15 | 370 kWh/yr |
-| Dishwasher | 307 kWh/yr | 240 kWh/yr | 58 | 264 kWh/yr |
-| Clothes Dryer | 3.73 CEF | 3.93 CEF | 56 | 3.8 CEF |
-| Clothes Washer | 1.67 IMEF | 2.32 IMEF | 56 | 2.4 IMEF (green) |
-| Air Purifier | 1.9 IEF | 2.4 IEF | 7 | 1.9 IEF |
-| Dehumidifier | 1.6 IEF | 1.8 IEF | 32 | 1.8 IEF (green) |
+| System type           | Federal Minimum Efficiency | ENERGY STAR Specification | Non-Participant New Equipment n | Non-Participant New Equipment Efficiency |
+| --------------------- | -------------------------- | ------------------------- | ------------------------------- | ---------------------------------------- |
+| **Heating & Cooling** |                            |                           |                                 |                                          |
+| Boiler - Oil          | 86 AFUE                    | 87 AFUE                   | 8                               | 86.7 AFUE                                |
+| Boiler - Gas          | 84 AFUE                    | 90 AFUE                   | 4                               | 94.2 AFUE                                |
+| Furnace - Oil         | 80 AFUE                    | 85 AFUE                   | 1                               | 85.6 AFUE                                |
+| Furnace - Gas         | 80 AFUE                    | 95 AFUE                   | 5                               | 83.5 AFUE                                |
+| Heat pump - heating   | 7.5 HSPF2                  | 8.5 HSPF2                 | 13                              | 9.6 HSPF2 (green)                        |
+| Heat pump - cooling   | 14.3 SEER2                 | 15.2 SEER2                | 13                              | 21.4 SEER2 (green)                       |
+| Room AC               | 11 CEER                    | 13.1 CEER                 | 62                              | 12.1 CEER                                |
+| Central AC            | 13.4 SEER2                 | 15.2 SEER2                | 19                              | 13.3 SEER2 (red)                         |
+| **Water Heating**     |                            |                           |                                 |                                          |
+| Storage - electric    | 0.92 UEF                   | 3.3 UEF                   | 13                              | 0.92 UEF                                 |
+| Storage – fuel fired  | 0.56 UEF                   | 0.81 UEF                  | 27                              | 0.62 UEF                                 |
+| HPWH                  | 2.0 UEF                    | 3.3 UEF                   | 5                               | 3.64 UEF (green)                         |
+| **Appliances**        |                            |                           |                                 |                                          |
+| Refrigerator          | varies                     | varies                    | 104                             | 581 kWh/yr                               |
+| Standalone Freezer    | varies                     | varies                    | 15                              | 370 kWh/yr                               |
+| Dishwasher            | 307 kWh/yr                 | 240 kWh/yr                | 58                              | 264 kWh/yr                               |
+| Clothes Dryer         | 3.73 CEF                   | 3.93 CEF                  | 56                              | 3.8 CEF                                  |
+| Clothes Washer        | 1.67 IMEF                  | 2.32 IMEF                 | 56                              | 2.4 IMEF (green)                         |
+| Air Purifier          | 1.9 IEF                    | 2.4 IEF                   | 7                               | 1.9 IEF                                  |
+| Dehumidifier          | 1.6 IEF                    | 1.8 IEF                   | 32                              | 1.8 IEF (green)                          |
 
 *For many equipment types, the minimum standards are dependent on configuration and capacity. For simplification, reasonable mid-range values were used to estimate minimum efficiency; for example storage type water heaters use a 50 gallon, medium draw minimum efficiency.
 
@@ -1582,17 +1582,17 @@ _In the source, non-participant values highlighted green are marked "(green)" an
 **Table 46: Characteristics of New Heating Systems (2021 or later)**
 (Source: Self-audit and virtual audit data)
 
-| | Overall Sample* | New Equipment (2021 or later) |
-| --- | --- | --- |
-| n | 991 | 81 |
-| **Efficiency** | | |
-| AFUE | 85.5 | 90.6 |
-| HSPF | 10.7 | 11.0 |
-| % Condensing | 56% | 80% |
-| **Type of Equipment** | | |
-| Boiler** | 53% | 33% |
-| Furnace | 33% | 25% |
-| Heat pump** | 18% | 42% |
+|                       | Overall Sample* | New Equipment (2021 or later) |
+| --------------------- | --------------- | ----------------------------- |
+| n                     | 991             | 81                            |
+| **Efficiency**        |                 |                               |
+| AFUE                  | 85.5            | 90.6                          |
+| HSPF                  | 10.7            | 11.0                          |
+| % Condensing          | 56%             | 80%                           |
+| **Type of Equipment** |                 |                               |
+| Boiler**              | 53%             | 33%                           |
+| Furnace               | 33%             | 25%                           |
+| Heat pump**           | 18%             | 42%                           |
 
 *The types of equipment shown for the overall sample are relative penetration of those equipment types for direct comparison with the breakdown of new equipment
 **statistically significant difference at the 90% confidence interval
@@ -1602,12 +1602,12 @@ Table 47 shows characteristics of newly installed fuel fired equipment by fuel a
 **Table 47: New Furnace and Boiler Efficiency (2021 or later)**
 (Source: Self-audit and virtual audit data)
 
-| Equipment or fuel | n | Mean AFUE | Median AFUE | % Condensing |
-| --- | --- | --- | --- | --- |
-| Natural gas | 16 | 92.8 | 95.0 | 82% |
-| Oil | 18 | 86.6 | 87.0 | 67% |
-| Furnaces | 11 | 91.9 | 95.0 | 74% |
-| Boilers | 24 | 89.5 | 87.0 | 90% |
+| Equipment or fuel | n  | Mean AFUE | Median AFUE | % Condensing |
+| ----------------- | -- | --------- | ----------- | ------------ |
+| Natural gas       | 16 | 92.8      | 95.0        | 82%          |
+| Oil               | 18 | 86.6      | 87.0        | 67%          |
+| Furnaces          | 11 | 91.9      | 95.0        | 74%          |
+| Boilers           | 24 | 89.5      | 87.0        | 90%          |
 
 _Extractor note (not source text): [source discrepancy: the text says "Two of these nine furnaces (23%)"; two of nine is 22%.]_
 
@@ -1620,12 +1620,12 @@ _Extractor note (not source text): [source discrepancy: the text says "Two of th
 **Table 48: Vintage of Cooling Equipment**
 (Source: Survey data)
 
-| Installation Date | All Cooling | MSHP | GSHP/ASHP | Room AC | Central AC |
-| --- | --- | --- | --- | --- | --- |
-| n (respondents) | 1,030 | 119 | 67 | 419 | 479 |
-| Installed in 2020 or before | 57% | 35% | 42% | 38% | 69% |
-| Installed in 2021 or later | 32% | 51% | 40% | 38% | 25% |
-| Not sure | 11% | 14% | 18% | 24% | 6% |
+| Installation Date           | All Cooling | MSHP | GSHP/ASHP | Room AC | Central AC |
+| --------------------------- | ----------- | ---- | --------- | ------- | ---------- |
+| n (respondents)             | 1,030       | 119  | 67        | 419     | 479        |
+| Installed in 2020 or before | 57%         | 35%  | 42%       | 38%     | 69%        |
+| Installed in 2021 or later  | 32%         | 51%  | 40%       | 38%     | 25%        |
+| Not sure                    | 11%         | 14%  | 18%       | 24%     | 6%         |
 
 **Many cooling upgrades are adding cooling load.** Four of five households (80%) that installed new mini-split heat pumps since 2021 installed them in areas of the home that were not previously cooled. Overall, 43% of new cooling systems were installed in areas of the home not previously cooled. More than half (57%) of new room air conditioners were also installed in areas not previously cooled, representing some lost opportunity for heat pump installation. Most respondents who installed central air conditioners and central heat pumps (ground source or air source) since 2021 did so to replace a previously installed cooling system. (Table 49).
 
@@ -1634,38 +1634,38 @@ _Extractor note (not source text): [source discrepancy: the text says "Two of th
 **Table 49: Reason for Installing Cooling Equipment that was Installed Since 2021**
 (Source: Survey data)
 
-| Installation Reason | All Cooling | MSHP | GSHP/ASHP | Room AC | Central AC |
-| --- | --- | --- | --- | --- | --- |
-| n (respondents) | 301 | 54 | 27 | 118 | 103 |
-| Installed to provide cooling to an area of the home not previously cooled | 43% | 80% | 21% | 57% | 24% |
-| Replaced a previously installed cooling system | 50% | 19% | 79% | 29% | 74% |
-| Not sure | 7% | 1% | 0% | 14% | 2% |
+| Installation Reason                                                       | All Cooling | MSHP | GSHP/ASHP | Room AC | Central AC |
+| ------------------------------------------------------------------------- | ----------- | ---- | --------- | ------- | ---------- |
+| n (respondents)                                                           | 301         | 54   | 27        | 118     | 103        |
+| Installed to provide cooling to an area of the home not previously cooled | 43%         | 80%  | 21%       | 57%     | 24%        |
+| Replaced a previously installed cooling system                            | 50%         | 19%  | 79%       | 29%     | 74%        |
+| Not sure                                                                  | 7%          | 1%   | 0%        | 14%     | 2%         |
 
 Table 50 shows the average efficiency of newly installed cooling equipment (2021 or later). The average SEER rating of newly installed cooling systems is 10.9% higher than the overall SEER rating of cooling systems.
 
 **Table 50: Characteristics of New Cooling Systems (2021 or later)**
 (Source: Self-audit and virtual audit data)
 
-| | Overall Sample n | Overall Sample Efficiency | New Equipment (2021 or later) n | New Equipment (2021 or later) Efficiency |
-| --- | --- | --- | --- | --- |
-| Room AC (CEER) | 234 | 11.6 | 87 | 12.1 |
-| Central AC (SEER) | 206 | 13.1 | 26 | 14.0 |
-| Heat pump (SEER) | 86 | 19.7 | 14 | 21.1 |
-| Overall SEER | 292 | 14.7 | 40 | 16.3 |
+|                   | Overall Sample n | Overall Sample Efficiency | New Equipment (2021 or later) n | New Equipment (2021 or later) Efficiency |
+| ----------------- | ---------------- | ------------------------- | ------------------------------- | ---------------------------------------- |
+| Room AC (CEER)    | 234              | 11.6                      | 87                              | 12.1                                     |
+| Central AC (SEER) | 206              | 13.1                      | 26                              | 14.0                                     |
+| Heat pump (SEER)  | 86               | 19.7                      | 14                              | 21.1                                     |
+| Overall SEER      | 292              | 14.7                      | 40                              | 16.3                                     |
 
 Newly installed MSHPs are commonly installed to serve living rooms, bedrooms, kitchens, and dining rooms. When asked what room(s) their newly installed MSHP served, respondents most often indicated living rooms (66%) or bedrooms (61%). New MSHPs rarely served basements (7%) or three season porches (4%).
 
 **Table 51: Room Coverage for Newly Installed MSHPs**
 (Source: Survey data)
 
-| Room where new MSHP was installed | n | % |
-| --- | --- | --- |
-| Living room | 69 | 66% |
-| Bedrooms | 60 | 61% |
-| Kitchen or dining room | 30 | 32% |
-| Other room (s) | 21 | 19% |
-| Basement | 9 | 7% |
-| Three season porch or sunroom | 3 | 4% |
+| Room where new MSHP was installed | n  | %   |
+| --------------------------------- | -- | --- |
+| Living room                       | 69 | 66% |
+| Bedrooms                          | 60 | 61% |
+| Kitchen or dining room            | 30 | 32% |
+| Other room (s)                    | 21 | 19% |
+| Basement                          | 9  | 7%  |
+| Three season porch or sunroom     | 3  | 4%  |
 
 Multiple responses permitted
 
@@ -1678,30 +1678,30 @@ Multiple responses permitted
 **Table 52: Characteristics of New Water Heaters (2021 or later)**
 (Source: Self-audit and virtual audit data)
 
-| | Overall | New Equipment (2021 or later) |
-| --- | --- | --- |
-| n | 853 | 102 |
-| **Type** | | |
-| Traditional Storage* | 60% | 69% |
-| Indirect storage | 14% | 11% |
-| Instantaneous* | 13% | 2% |
-| Heat pump* | 5% | 13% |
-| Combi boiler | 3% | 5% |
-| **Efficiency** | | |
-| UEF | 0.97 | 1.13 |
-| > 55 gallons | 8% | 7% |
+|                      | Overall | New Equipment (2021 or later) |
+| -------------------- | ------- | ----------------------------- |
+| n                    | 853     | 102                           |
+| **Type**             |         |                               |
+| Traditional Storage* | 60%     | 69%                           |
+| Indirect storage     | 14%     | 11%                           |
+| Instantaneous*       | 13%     | 2%                            |
+| Heat pump*           | 5%      | 13%                           |
+| Combi boiler         | 3%      | 5%                            |
+| **Efficiency**       |         |                               |
+| UEF                  | 0.97    | 1.13                          |
+| > 55 gallons         | 8%      | 7%                            |
 
-* Statistically significant difference at the 90% confidence interval
+- Statistically significant difference at the 90% confidence interval
 
 **Table 53: New Water Heating Equipment Efficiency (2021 or later)**
 (Source: Self-audit and virtual audit data)
 
-| Equipment | n | Mean UEF | Median UEF | >55 gallons |
-| --- | --- | --- | --- | --- |
-| Traditional storage | 66 | 0.71 | 0.66 | 4% |
-| Electric | 26 | 0.92 | 0.92 | 3% |
-| Fuel-fired | 40 | 0.62 | 0.62 | 5% |
-| HPWH | 16 | 3.62 | 3.75 | 28% |
+| Equipment           | n  | Mean UEF | Median UEF | >55 gallons |
+| ------------------- | -- | -------- | ---------- | ----------- |
+| Traditional storage | 66 | 0.71     | 0.66       | 4%          |
+| Electric            | 26 | 0.92     | 0.92       | 3%          |
+| Fuel-fired          | 40 | 0.62     | 0.62       | 5%          |
+| HPWH                | 16 | 3.62     | 3.75       | 28%         |
 
 ## 7.4 APPLIANCES - NEWLY INSTALLED EQUIPMENT
 
@@ -1714,15 +1714,15 @@ in the overall sample (20.6 ft³); the energy consumption of refrigerators is la
 **Table 54: Characteristics of New Appliances (2021 or later)**
 (Source: Self-audit and virtual audit data)
 
-| Appliance | Overall Sample n | Overall Sample Efficiency | Overall Sample Capacity | Overall Sample % ENERGY STAR | Newly Installed (2021 or later) n | Newly Installed Efficiency | Newly Installed Capacity | Newly Installed % ENERGY STAR |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Refrigerator | 773 | 550 kWh/yr | 20.6 ft³ | 51% | 159 | 577 kWh/yr | 21.8 ft³ | 65% |
-| Standalone freezer | 141 | 374 kWh/yr | 10.5 ft³ | 22% | 24 | 317 kWh/yr | 10.6 ft³ | 33% |
-| Dishwasher | 495 | 302 kWh/yr | N/A | 84% | 91 | 262 kWh/yr | N/A | 90% |
-| Clothes washer | 348 | 2.2 IMEF | 4.1 ft³ | 65% | 85 | 2.3 IMEF | 4.3 ft³ | 56% |
-| Clothes dryer | 465 | 3.8 CEF | N/A | 21% | 86 | 3.8 CEF | N/A | 45% |
-| Dehumidifier | 241 | 1.8 IEF | 45 pts/day | 85% | 59 | 1.8 IEF | 40 pts/day | 91% |
-| Air Purifier | 91 | 3.1 IEF | 182 CADR | 72% | 19 | 3.8 IEF | 216 CADR | 70% |
+| Appliance          | Overall Sample n | Overall Sample Efficiency | Overall Sample Capacity | Overall Sample % ENERGY STAR | Newly Installed (2021 or later) n | Newly Installed Efficiency | Newly Installed Capacity | Newly Installed % ENERGY STAR |
+| ------------------ | ---------------- | ------------------------- | ----------------------- | ---------------------------- | --------------------------------- | -------------------------- | ------------------------ | ----------------------------- |
+| Refrigerator       | 773              | 550 kWh/yr                | 20.6 ft³                | 51%                          | 159                               | 577 kWh/yr                 | 21.8 ft³                 | 65%                           |
+| Standalone freezer | 141              | 374 kWh/yr                | 10.5 ft³                | 22%                          | 24                                | 317 kWh/yr                 | 10.6 ft³                 | 33%                           |
+| Dishwasher         | 495              | 302 kWh/yr                | N/A                     | 84%                          | 91                                | 262 kWh/yr                 | N/A                      | 90%                           |
+| Clothes washer     | 348              | 2.2 IMEF                  | 4.1 ft³                 | 65%                          | 85                                | 2.3 IMEF                   | 4.3 ft³                  | 56%                           |
+| Clothes dryer      | 465              | 3.8 CEF                   | N/A                     | 21%                          | 86                                | 3.8 CEF                    | N/A                      | 45%                           |
+| Dehumidifier       | 241              | 1.8 IEF                   | 45 pts/day              | 85%                          | 59                                | 1.8 IEF                    | 40 pts/day               | 91%                           |
+| Air Purifier       | 91               | 3.1 IEF                   | 182 CADR                | 72%                          | 19                                | 3.8 IEF                    | 216 CADR                 | 70%                           |
 
 [PDF p. 66 | printed p. 66]
 
@@ -1751,27 +1751,27 @@ efficient central air conditioners, although as noted, these participants did no
 
 **Table 55: Summary of Equipment Efficiency by Program Participation**
 
-| System type | Non-Participant n | Non-Participant Average Efficiency | Program Participant n | Program Participant Average Efficiency |
-| --- | --- | --- | --- | --- |
-| **Heating & Cooling** | | | | |
-| Boiler | 212 | 85.2 AFUE | 129 | 86.2 AFUE |
-| Furnace* | 105 | 85.0 AFUE | 61 | 86.9 AFUE |
-| Heat pump | 69 | 10.7 HSPF (9.3 HSPF2); 21.3 SEER (20.4 SEER2) | 55 | 10.7 HSPF (9.3 HSPF2); 19.6 SEER (18.4 SEER2) |
-| Room AC | 165 | 11.5 CEER | 69 | 11.6 CEER |
-| Central AC* | 130 | 13.3 SEER | 76 | 12.8 SEER |
-| **Water Heating** | | | | |
-| Traditional Storage* | 204 | 0.73 UEF | 90 | 0.78 UEF |
-| Indirect storage | 70 | 0.79 UEF | 50 | 0.80 UEF |
-| Instantaneous | 25 | 0.92 UEF | 11 | 0.91 UEF |
-| HPWH* | 12 | 3.06 UEF | 23 | 3.59 UEF |
-| **Appliances** | | | | |
-| Refrigerator | 502 | 545 kWh/yr | 266 | 559 kWh/yr |
-| Standalone Freezer* | 88 | 397 kWh/yr | 51 | 335 kWh/yr |
-| Dishwasher* | 300 | 310 kWh/yr | 173 | 286 kWh/yr |
-| Clothes Dryer | 159 | 3.8 CEF | 85 | 3.8 CEF |
-| Clothes Washer | 145 | 2.2 IMEF | 81 | 2.2 IMEF |
-| Air Purifier | 23 | 3.2 IEF | 11 | 2.7 IEF |
-| Dehumidifier | 76 | 1.8 IEF | 42 | 1.9 IEF |
+| System type           | Non-Participant n | Non-Participant Average Efficiency            | Program Participant n | Program Participant Average Efficiency        |
+| --------------------- | ----------------- | --------------------------------------------- | --------------------- | --------------------------------------------- |
+| **Heating & Cooling** |                   |                                               |                       |                                               |
+| Boiler                | 212               | 85.2 AFUE                                     | 129                   | 86.2 AFUE                                     |
+| Furnace*              | 105               | 85.0 AFUE                                     | 61                    | 86.9 AFUE                                     |
+| Heat pump             | 69                | 10.7 HSPF (9.3 HSPF2); 21.3 SEER (20.4 SEER2) | 55                    | 10.7 HSPF (9.3 HSPF2); 19.6 SEER (18.4 SEER2) |
+| Room AC               | 165               | 11.5 CEER                                     | 69                    | 11.6 CEER                                     |
+| Central AC*           | 130               | 13.3 SEER                                     | 76                    | 12.8 SEER                                     |
+| **Water Heating**     |                   |                                               |                       |                                               |
+| Traditional Storage*  | 204               | 0.73 UEF                                      | 90                    | 0.78 UEF                                      |
+| Indirect storage      | 70                | 0.79 UEF                                      | 50                    | 0.80 UEF                                      |
+| Instantaneous         | 25                | 0.92 UEF                                      | 11                    | 0.91 UEF                                      |
+| HPWH*                 | 12                | 3.06 UEF                                      | 23                    | 3.59 UEF                                      |
+| **Appliances**        |                   |                                               |                       |                                               |
+| Refrigerator          | 502               | 545 kWh/yr                                    | 266                   | 559 kWh/yr                                    |
+| Standalone Freezer*   | 88                | 397 kWh/yr                                    | 51                    | 335 kWh/yr                                    |
+| Dishwasher*           | 300               | 310 kWh/yr                                    | 173                   | 286 kWh/yr                                    |
+| Clothes Dryer         | 159               | 3.8 CEF                                       | 85                    | 3.8 CEF                                       |
+| Clothes Washer        | 145               | 2.2 IMEF                                      | 81                    | 2.2 IMEF                                      |
+| Air Purifier          | 23                | 3.2 IEF                                       | 11                    | 2.7 IEF                                       |
+| Dehumidifier          | 76                | 1.8 IEF                                       | 42                    | 1.9 IEF                                       |
 
 *statistically significant difference at the 90% confidence interval
 
@@ -1786,22 +1786,22 @@ Overall, 31% of respondents in the sample rented their homes (unweighted, 12% of
 **Table 56: Tenure by Home Type**
 (Source: Survey data)
 
-| Tenure | Statewide | SF Detached | SF Attached | SF 2-4 unit | MF 5+ units |
-| --- | --- | --- | --- | --- | --- |
-| n (homes) | 1,030 | 824 | 86 | 79 | 41 |
-| Own | 69% | 94% | 49% | 31% | 11% |
-| Rent | 31% | 6% | 51% | 69% | 89% |
+| Tenure    | Statewide | SF Detached | SF Attached | SF 2-4 unit | MF 5+ units |
+| --------- | --------- | ----------- | ----------- | ----------- | ----------- |
+| n (homes) | 1,030     | 824         | 86          | 79          | 41          |
+| Own       | 69%       | 94%         | 49%         | 31%         | 11%         |
+| Rent      | 31%       | 6%          | 51%         | 69%         | 89%         |
 
 As shown in Table 57, low-income survey respondents were much more likely to be renters (61%) compared to non-LMI respondents (13%).
 
 **Table 57: Tenure by Income**
 (Source: Survey data)
 
-| Tenure | Statewide | Low-income | Moderate-income | Non-LMI | Refused |
-| --- | --- | --- | --- | --- | --- |
-| n (homes) | 1030 | 190 | 58 | 571 | 211 |
-| Own | 69% | 39% | 96% | 87% | 65% |
-| Rent | 31% | 61% | 4% | 13% | 35% |
+| Tenure    | Statewide | Low-income | Moderate-income | Non-LMI | Refused |
+| --------- | --------- | ---------- | --------------- | ------- | ------- |
+| n (homes) | 1030      | 190        | 58              | 571     | 211     |
+| Own       | 69%       | 39%        | 96%             | 87%     | 65%     |
+| Rent      | 31%       | 61%        | 4%              | 13%     | 35%     |
 
 Over two-thirds of the respondents live in single family attached or detached homes (Table 58). A higher proportion of non-LMI respondents live in single-family attached or detached homes (85%) than low-income respondents (44%). Nearly one-quarter of low-income respondents live in multifamily buildings with five or more units (19%), more than the statewide average of 11%.
 
@@ -1812,28 +1812,28 @@ Over two-thirds of the respondents live in single family attached or detached ho
 **Table 58: Home Type by Income**
 (Source: Survey data)
 
-| Income | Statewide | Low-income | Moderate-income | Non-LMI | Refused |
-| --- | --- | --- | --- | --- | --- |
-| n (homes) | 1,030 | 190 | 58 | 571 | 211 |
-| SF Attached | 8% | 10% | 3% | 5% | 12% |
-| SF Detached | 61% | 34% | 75% | 80% | 54% |
-| SF 2-4 Units | 20% | 37% | 14% | 8% | 25% |
-| MF 5+ units | 11% | 19% | 7% | 6% | 8% |
+| Income       | Statewide | Low-income | Moderate-income | Non-LMI | Refused |
+| ------------ | --------- | ---------- | --------------- | ------- | ------- |
+| n (homes)    | 1,030     | 190        | 58              | 571     | 211     |
+| SF Attached  | 8%        | 10%        | 3%              | 5%      | 12%     |
+| SF Detached  | 61%       | 34%        | 75%             | 80%     | 54%     |
+| SF 2-4 Units | 20%       | 37%        | 14%             | 8%      | 25%     |
+| MF 5+ units  | 11%       | 19%        | 7%              | 6%      | 8%      |
 
 The majority of homes were built before 1960, with 35% statewide and around a quarter (27%) built between 1960 and 1979 (Table 59). Single family detached homes have a high percentage of homes built before 1960 compared to other housing types, while single family attached homes have a significant portion built between 1980 and 1999.
 
 **Table 59: Home Decade by Home Type**
 (Source: Survey data)
 
-| Income | Statewide | SF Detached | SF Attached | SF 2-4 unit | MF 5+ units |
-| --- | --- | --- | --- | --- | --- |
-| n (homes) | 1,030 | 824 | 86 | 79 | 41 |
-| Before 1960 | 35% | 38% | 15% | 32% | 34% |
-| 1960 to 1979 | 27% | 30% | 11% | 27% | 17% |
-| 1980 to 1999 | 20% | 20% | 29% | 10% | 25% |
-| 2000 to 2019 | 8% | 10% | 16% | <1% | 6% |
-| 2020 or later | <1% | <1% | <1% | 1% | -- |
-| I’m not sure | 11% | <1% | 29% | 29% | 17% |
+| Income        | Statewide | SF Detached | SF Attached | SF 2-4 unit | MF 5+ units |
+| ------------- | --------- | ----------- | ----------- | ----------- | ----------- |
+| n (homes)     | 1,030     | 824         | 86          | 79          | 41          |
+| Before 1960   | 35%       | 38%         | 15%         | 32%         | 34%         |
+| 1960 to 1979  | 27%       | 30%         | 11%         | 27%         | 17%         |
+| 1980 to 1999  | 20%       | 20%         | 29%         | 10%         | 25%         |
+| 2000 to 2019  | 8%        | 10%         | 16%         | <1%         | 6%          |
+| 2020 or later | <1%       | <1%         | <1%         | 1%          | --          |
+| I’m not sure  | 11%       | <1%         | 29%         | 29%         | 17%         |
 
 _Extractor note (not source text): the first column header of Table 59 is printed as "Income" in the source._
 
@@ -1842,11 +1842,11 @@ Nearly all owner-occupied respondents indicated they were responsible for paying
 **Table 60: Responsibility for Utility Bills**
 (Source: Survey data)
 
-| Responsibility for Utility Bills | Statewide | Own | Rent |
-| --- | --- | --- | --- |
-| n (homes) | 1,030 | 909 | 121 |
-| Respondent pays utility bills or someone in household | 98% | 100% | 94% |
-| Electricity is included in rent or condo fee | 2% | -- | 6% |
+| Responsibility for Utility Bills                      | Statewide | Own  | Rent |
+| ----------------------------------------------------- | --------- | ---- | ---- |
+| n (homes)                                             | 1,030     | 909  | 121  |
+| Respondent pays utility bills or someone in household | 98%       | 100% | 94%  |
+| Electricity is included in rent or condo fee          | 2%        | --   | 6%   |
 
 [^30]: As the sample was drawn from utility customer data, it is not surprising that the survey would capture respondents responsible for their own bills. It is generally difficult to identify individual addresses from within a master-metered building in utility customer datasets.
 
@@ -1862,18 +1862,18 @@ Table 61 shows the self-reported conditioned floor area (CFA)[^31] of homes in t
 (Source: Survey data)
 
 | CFA, Square Feet | Statewide | SF Detached | SF Attached | SF 2-4 unit | MF 5+ units |
-| --- | --- | --- | --- | --- | --- |
-| n (homes) | 922 | 773 | 77 | 49 | 23 |
-| 500 or less | 4% | 1% | 2% | 12% | 18% |
-| 500-1000 | 17% | 7% | 24% | 43% | 55% |
-| 1001-1500 | 30% | 29% | 40% | 30% | 24% |
-| 1501-2000 | 20% | 25% | 20% | 7% | 4% |
-| 2001-2500 | 14% | 19% | 8% | 4% | -- |
-| 2501-3000 | 8% | 10% | 1% | 5% | -- |
-| 3001-3500 | 4% | 5% | 4% | -- | -- |
-| 3501-4000 | 3% | 4% | -- | -- | -- |
-| 4001-4500 | <1% | <1% | -- | -- | -- |
-| 4501-5000 | <1% | 1% | 1% | -- | -- |
+| ---------------- | --------- | ----------- | ----------- | ----------- | ----------- |
+| n (homes)        | 922       | 773         | 77          | 49          | 23          |
+| 500 or less      | 4%        | 1%          | 2%          | 12%         | 18%         |
+| 500-1000         | 17%       | 7%          | 24%         | 43%         | 55%         |
+| 1001-1500        | 30%       | 29%         | 40%         | 30%         | 24%         |
+| 1501-2000        | 20%       | 25%         | 20%         | 7%          | 4%          |
+| 2001-2500        | 14%       | 19%         | 8%          | 4%          | --          |
+| 2501-3000        | 8%        | 10%         | 1%          | 5%          | --          |
+| 3001-3500        | 4%        | 5%          | 4%          | --          | --          |
+| 3501-4000        | 3%        | 4%          | --          | --          | --          |
+| 4001-4500        | <1%       | <1%         | --          | --          | --          |
+| 4501-5000        | <1%       | 1%          | 1%          | --          | --          |
 
 Excludes 10% of respondents who did not know the square footage of their home or did not respond.
 
@@ -1886,14 +1886,14 @@ Table 62 shows the average (weighted) count of various room types in homes in th
 **Table 62: Room Counts by Home Type**
 (Source: Survey data)
 
-| Room Type | Statewide | SF Detached | SF Attached | SF 2-4 unit | MF 5+ units |
-| --- | --- | --- | --- | --- | --- |
-| n (homes) | 922 | 773 | 77 | 49 | 23 |
-| Avg. # of bedrooms | 2.8 | 3.2 | 2.8 | 2.3 | 1.5 |
-| Avg. # of full bathrooms | 1.6 | 1.8 | 1.4 | 1.2 | 1.6 |
-| Avg. # of half bathrooms | 0.5 | 0.6 | 0.5 | 0.2 | 0.1 |
-| Avg. # of other rooms¹ | 2.5 | 3.0 | 2.0 | 2.0 | 1.3 |
-| Avg. total rooms | 7.4 | 8.5 | 6.8 | 5.8 | 4.5 |
+| Room Type                | Statewide | SF Detached | SF Attached | SF 2-4 unit | MF 5+ units |
+| ------------------------ | --------- | ----------- | ----------- | ----------- | ----------- |
+| n (homes)                | 922       | 773         | 77          | 49          | 23          |
+| Avg. # of bedrooms       | 2.8       | 3.2         | 2.8         | 2.3         | 1.5         |
+| Avg. # of full bathrooms | 1.6       | 1.8         | 1.4         | 1.2         | 1.6         |
+| Avg. # of half bathrooms | 0.5       | 0.6         | 0.5         | 0.2         | 0.1         |
+| Avg. # of other rooms¹   | 2.5       | 3.0         | 2.0         | 2.0         | 1.3         |
+| Avg. total rooms         | 7.4       | 8.5         | 6.8         | 5.8         | 4.5         |
 
 Excludes 10% of respondents who did not know the square footage of their home or used zero.
 ¹The survey instructed respondents to count other rooms not listed above, excluding closets and hallways.
@@ -1903,16 +1903,16 @@ Table 63 shows the number of above-ground stories in respondents’ homes (singl
 **Table 63: Stories of Home or Building by Home Type**
 (Source: Survey data)
 
-| Stories | Statewide | SF Detached | SF Attached | SF 2-4 unit | MF 5+ units |
-| --- | --- | --- | --- | --- | --- |
-| n (homes) | 1030 | 824 | 86 | 79 | 41 |
-| 1 floor or ranch-style | 25% | 32% | 12% | 11% | 16% |
-| 1.5 stories (split-level) | 2% | 4% | -- | -- | -- |
-| 2 stories | 56% | 59% | 68% | 54% | 32% |
-| 3 stories | 11% | 4% | 16% | 30% | 15% |
-| 4 stories | 3% | 0.5% | 1% | 3% | 20% |
-| 5 or more stories | 2% | 0.5% | 3% | -- | 16% |
-| Respondent not sure | 2% | -- | -- | 2% | 2% |
+| Stories                   | Statewide | SF Detached | SF Attached | SF 2-4 unit | MF 5+ units |
+| ------------------------- | --------- | ----------- | ----------- | ----------- | ----------- |
+| n (homes)                 | 1030      | 824         | 86          | 79          | 41          |
+| 1 floor or ranch-style    | 25%       | 32%         | 12%         | 11%         | 16%         |
+| 1.5 stories (split-level) | 2%        | 4%          | --          | --          | --          |
+| 2 stories                 | 56%       | 59%         | 68%         | 54%         | 32%         |
+| 3 stories                 | 11%       | 4%          | 16%         | 30%         | 15%         |
+| 4 stories                 | 3%        | 0.5%        | 1%          | 3%          | 20%         |
+| 5 or more stories         | 2%        | 0.5%        | 3%          | --          | 16%         |
+| Respondent not sure       | 2%        | --          | --          | 2%          | 2%          |
 
 Over half of Connecticut homes have finished or partially finished basements (55%) and 44% have unfinished basements (Table 64).[^33]
 
@@ -1925,13 +1925,13 @@ Over half of Connecticut homes have finished or partially finished basements (55
 **Table 64: Basement Type by Home Type**
 (Source: Survey data)
 
-| Basement Type | Statewide | SF Detached | SF Attached |
-| --- | --- | --- | --- |
-| n (homes) | 812 | 751 | 61 |
-| Unfinished basement | 44% | 45% | 37% |
-| Partially finished basement | 38% | 39% | 34% |
-| Finished basement | 17% | 16% | 21% |
-| No basement (concrete slab-on-grade) | 9% | 7% | 23% |
+| Basement Type                        | Statewide | SF Detached | SF Attached |
+| ------------------------------------ | --------- | ----------- | ----------- |
+| n (homes)                            | 812       | 751         | 61          |
+| Unfinished basement                  | 44%       | 45%         | 37%         |
+| Partially finished basement          | 38%       | 39%         | 34%         |
+| Finished basement                    | 17%       | 16%         | 21%         |
+| No basement (concrete slab-on-grade) | 9%        | 7%          | 23%         |
 
 *Excludes 1% of respondents who did not know what type of basement they have.
 
@@ -1940,22 +1940,22 @@ Most homes (73%) heat their finished or partially finished basement, and just ov
 **Table 65: Heated Status of Select Room Types**
 (Source: Survey data)
 
-| Room Type | n | % Heated |
-| --- | --- | --- |
-| Finished or partially finished basement | 443 | 73% |
-| Three-season porch | 138 | 27% |
-| Garage | 711 | 4% |
+| Room Type                               | n   | % Heated |
+| --------------------------------------- | --- | -------- |
+| Finished or partially finished basement | 443 | 73%      |
+| Three-season porch                      | 138 | 27%      |
+| Garage                                  | 711 | 4%       |
 
 Most homes (77%) have at least one person at home between the hours of 9am and 5pm (Table 66). Non-LMI households were just as likely as LMI households to have at least one householder at home.
 
 **Table 66: Occupancy by Time of Day**
 
 | At least one person in household home | Statewide | Low-income | Moderate-income | Non-LMI | Refused |
-| --- | --- | --- | --- | --- | --- |
-| n (homes) | 1030 | 190 | 58 | 571 | 211 |
-| Yes | 77% | 80% | 74% | 76% | 73% |
-| No | 13% | 9% | 21% | 18% | 8% |
-| I’d rather not say | 10% | 11% | 6% | 6% | 18% |
+| ------------------------------------- | --------- | ---------- | --------------- | ------- | ------- |
+| n (homes)                             | 1030      | 190        | 58              | 571     | 211     |
+| Yes                                   | 77%       | 80%        | 74%             | 76%     | 73%     |
+| No                                    | 13%       | 9%         | 21%             | 18%     | 8%      |
+| I’d rather not say                    | 10%       | 11%        | 6%              | 6%      | 18%     |
 
 [PDF p. 73 | printed p. 73]
 
@@ -1965,10 +1965,10 @@ The team fielded a multi-modal web survey with 1,030 residents and virtual audit
 
 **Table 67: Overview of Evaluation Tasks**
 
-| Task | Count | Objectives |
-| --- | --- | --- |
-| Survey | 1,030 | <ul><li>Nameplate info for mechanical equipment and appliances</li><li>Guided inventory of appliances, electronics, PV systems, electric vehicles, and other energy-using equipment</li><li>Appliance use and energy-saving behavior</li><li>Attitudes about heat pumps</li><li>Awareness of and participation in energy-efficiency programs</li><li>Demographics</li><li>Recruit for virtual audits</li></ul> |
-| Virtual | 140 | <ul><li>Collect data on building characteristics including appliances, HVAC, water heating, and water fixtures</li><li>Collect room-level data to assess heat pump suitability</li><li>Verify web survey results for key equipment</li></ul> |
+| Task    | Count | Objectives                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Survey  | 1,030 | <ul><li>Nameplate info for mechanical equipment and appliances</li><li>Guided inventory of appliances, electronics, PV systems, electric vehicles, and other energy-using equipment</li><li>Appliance use and energy-saving behavior</li><li>Attitudes about heat pumps</li><li>Awareness of and participation in energy-efficiency programs</li><li>Demographics</li><li>Recruit for virtual audits</li></ul> |
+| Virtual | 140   | <ul><li>Collect data on building characteristics including appliances, HVAC, water heating, and water fixtures</li><li>Collect room-level data to assess heat pump suitability</li><li>Verify web survey results for key equipment</li></ul>                                                                                                                                                                   |
 
 ## A.1 MULTI-MODAL WEB SURVEY METHODOLOGY
 
@@ -1996,13 +1996,13 @@ The multi-model survey targeted 1,000 responses from occupants of single-family 
 
 **Table 68: Survey Completes Achieved**
 
-| Home Type | Targeted Survey Completes | Responses: Total Completes | Responses: Self-Audit (with photos) | Responses: Survey-only (no photos) |
-| --- | --- | --- | --- | --- |
-| **Total** | **1,000** | **824** | **817** | **213** |
-| Single-family detached | 841 | 86 | 663 | 161 |
-| Single-family attached | 60 | 79 | 61 | 25 |
-| Multifamily 2-4 unit | 57 | 41 | 58 | 21 |
-| Multifamily 5+ units | 43 | **1,030** | 35 | 6 |
+| Home Type              | Targeted Survey Completes | Responses: Total Completes | Responses: Self-Audit (with photos) | Responses: Survey-only (no photos) |
+| ---------------------- | ------------------------- | -------------------------- | ----------------------------------- | ---------------------------------- |
+| **Total**              | **1,000**                 | **824**                    | **817**                             | **213**                            |
+| Single-family detached | 841                       | 86                         | 663                                 | 161                                |
+| Single-family attached | 60                        | 79                         | 61                                  | 25                                 |
+| Multifamily 2-4 unit   | 57                        | 41                         | 58                                  | 21                                 |
+| Multifamily 5+ units   | 43                        | **1,030**                  | 35                                  | 6                                  |
 
 _Extractor note (not source text): [source discrepancy: Table 68 is transcribed as printed. Its "Total Completes" column appears shifted by one row; compare Table 4 on PDF p. 16, which shows total completes of 1,030 (Total), 824 (SF detached), 86 (SF attached), 79 (SF 2-4 unit), and 41 (MF 5+ units).]_
 
@@ -2018,12 +2018,12 @@ Table 69 shows the number of survey recipients for each wave of email and postca
 
 **Table 69: Email and Postcard Recipients**
 
-| Mailing Wave | Number of Recipients |
-| --- | --- |
-| Email Soft Launch 1 | 3,000 |
-| Postcard Wave 1 | 25,000 |
-| Postcard Wave 2 | 25,000 |
-| Total | 53,000 |
+| Mailing Wave        | Number of Recipients |
+| ------------------- | -------------------- |
+| Email Soft Launch 1 | 3,000                |
+| Postcard Wave 1     | 25,000               |
+| Postcard Wave 2     | 25,000               |
+| Total               | 53,000               |
 
 ### A.1.2 Data Collection Instrument
 
@@ -2061,22 +2061,22 @@ Table 70 shows the sample design and achieved completes for the 140 virtual audi
 
 **Table 70: Virtual Audit Sample Design**
 
-| | Sample Design | Achieved |
-| --- | --- | --- |
-| Eversource | 70 | 117 |
-| United Illuminating | 70 | 23 |
-| Total | 140 | 140 |
+|                     | Sample Design | Achieved |
+| ------------------- | ------------- | -------- |
+| Eversource          | 70            | 117      |
+| United Illuminating | 70            | 23       |
+| Total               | 140           | 140      |
 
 ### A.2.3 Data Collection Points and Procedures
 
 Virtual audits were conducted via remote visual inspection software. Participants received a link to access the secure video conference from their smart phone or tablet. During the audit, technicians guided the participant through the home and recorded data about the following types of measures, complementing and expanding on the survey results:
 
-| | |
-| --- | --- |
-| General home information (age, type, etc.) | Appliances |
-| Heating and cooling equipment | Renewables |
-| Domestic hot water equipment | Electric vehicles and chargers |
-| Room-level heat pump feasibility | Water fixtures |
+|                                            |                                |
+| ------------------------------------------ | ------------------------------ |
+| General home information (age, type, etc.) | Appliances                     |
+| Heating and cooling equipment              | Renewables                     |
+| Domestic hot water equipment               | Electric vehicles and chargers |
+| Room-level heat pump feasibility           | Water fixtures                 |
 
 _(Footnote 36, begun on PDF p. 75, continues here.)_ with household incomes of $100,000 or more. As tax filing status was not collected, the income threshold for married households filing jointly ($100,000) was applied to all respondents.
 
@@ -2094,14 +2094,14 @@ Technicians also asked qualitative questions of the homeowner regarding areas or
 
 **Table 71: Non-Ducted Homes Heat Pump Suitability Calculation Factors**
 
-| Factor | Effect | Description | % of Rooms (n = 319) |
-| --- | --- | --- | --- |
-| Presence of a Heat Pump | Tier 1 | Tier 1 = A heat pump is already installed in the room. | 27% |
-| New HVAC | Negative | The ranking decreases if a room is heated and cooled by equipment less than two years old. | 13% |
-| Electric Heating | Positive | The ranking increases if a room is heated by electric resistance baseboards or space heaters. | 10% |
-| Not Adequately Served | Positive | The ranking increases if the room is deemed to benefit from extra HVAC (due to occupant comfort, the room not being served by the primary equipment, or the presence of supplemental equipment. | 18% |
-| No Cooling | Positive | The ranking increases if no cooling system is present. | 44% |
-| Delivered Fuels | Positive | The ranking increases if the room is heated by oil or propane. | 24% |
+| Factor                  | Effect   | Description                                                                                                                                                                                     | % of Rooms (n = 319) |
+| ----------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| Presence of a Heat Pump | Tier 1   | Tier 1 = A heat pump is already installed in the room.                                                                                                                                          | 27%                  |
+| New HVAC                | Negative | The ranking decreases if a room is heated and cooled by equipment less than two years old.                                                                                                      | 13%                  |
+| Electric Heating        | Positive | The ranking increases if a room is heated by electric resistance baseboards or space heaters.                                                                                                   | 10%                  |
+| Not Adequately Served   | Positive | The ranking increases if the room is deemed to benefit from extra HVAC (due to occupant comfort, the room not being served by the primary equipment, or the presence of supplemental equipment. | 18%                  |
+| No Cooling              | Positive | The ranking increases if no cooling system is present.                                                                                                                                          | 44%                  |
+| Delivered Fuels         | Positive | The ranking increases if the room is heated by oil or propane.                                                                                                                                  | 24%                  |
 
 Table 72 shows an example virtual audit home with room level details and the resulting heat pump suitability tier ranking for each room. In this home, the living room was served by a heat pump and was therefore assigned Tier 1. The large kitchen area was ranked Tier 4, as was one of the bedrooms due to the occupant reporting the space as uncomfortable and requiring extra heating and cooling. Otherwise, the remainder of rooms were ranked either Tier 2 or 3, which does not preclude them from having heat pumps installed but rather indicates that they did not present a compelling reason as to why a heat pump would be particularly suitable.
 
@@ -2109,19 +2109,19 @@ Table 72 shows an example virtual audit home with room level details and the res
 
 **Table 72: Example Non-Ducted Home Heat Pump Suitability Tier Ranking**
 
-| Room Type | Area (sq. ft.) | Heating Type | Cooling Type | HVAC <2 Years Old? | Delivered Fuels | Extra HVAC Required? | Tier Ranking |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Kitchen | 400 | Boiler | None | No | No | No | 4 |
-| Foyer | 225 | Boiler | None | No | No | No | 2 |
-| Living Room | 384 | MSHP | MSHP | No | No | No | 1 |
-| Office | 150 | Boiler | Room AC | No | No | No | 2 |
-| Bedroom | 300 | Wall furnace | Room AC | No | No | Yes | 4 |
-| Bedroom | 200 | Boiler | None | No | No | No | 3 |
-| Bathroom | 150 | Boiler | None | No | No | No | 2 |
-| Bathroom | 100 | Boiler | None | No | No | No | 2 |
-| Bedroom | 200 | Boiler | None | No | No | No | 3 |
-| Bedroom | 150 | Boiler | None | No | No | No | 3 |
-| Laundry Room | 100 | Boiler | None | No | No | No | 2 |
+| Room Type    | Area (sq. ft.) | Heating Type | Cooling Type | HVAC <2 Years Old? | Delivered Fuels | Extra HVAC Required? | Tier Ranking |
+| ------------ | -------------- | ------------ | ------------ | ------------------ | --------------- | -------------------- | ------------ |
+| Kitchen      | 400            | Boiler       | None         | No                 | No              | No                   | 4            |
+| Foyer        | 225            | Boiler       | None         | No                 | No              | No                   | 2            |
+| Living Room  | 384            | MSHP         | MSHP         | No                 | No              | No                   | 1            |
+| Office       | 150            | Boiler       | Room AC      | No                 | No              | No                   | 2            |
+| Bedroom      | 300            | Wall furnace | Room AC      | No                 | No              | Yes                  | 4            |
+| Bedroom      | 200            | Boiler       | None         | No                 | No              | No                   | 3            |
+| Bathroom     | 150            | Boiler       | None         | No                 | No              | No                   | 2            |
+| Bathroom     | 100            | Boiler       | None         | No                 | No              | No                   | 2            |
+| Bedroom      | 200            | Boiler       | None         | No                 | No              | No                   | 3            |
+| Bedroom      | 150            | Boiler       | None         | No                 | No              | No                   | 3            |
+| Laundry Room | 100            | Boiler       | None         | No                 | No              | No                   | 2            |
 
 ### A.2.5 Heat Pump Water Heater Suitability
 
@@ -2149,59 +2149,59 @@ Table 73 shows universal confidence intervals that can be used for all data in t
 **Table 73: Approximate Confidence Interval Bands for Survey Data**
 
 | Response Proportion | 90% +/- Error Band for Confidence Interval |
-| --- | --- |
-| 0-5% | 0.85% |
-| 6-10% | 1.40% |
-| 11-15% | 1.74% |
-| 16-20% | 1.99% |
-| 21-25% | 2.19% |
-| 26-30% | 2.34% |
-| 31-35% | 2.45% |
-| 36-40% | 2.53% |
-| 41-45% | 2.58% |
-| 46-50% | 2.61% |
-| 51-55% | 2.61% |
-| 56-60% | 2.58% |
-| 61-65% | 2.53% |
-| 66-70% | 2.45% |
-| 71-75% | 2.34% |
-| 76-80% | 2.19% |
-| 81-85% | 1.99% |
-| 86-90% | 1.74% |
-| 91-95% | 1.40% |
+| ------------------- | ------------------------------------------ |
+| 0-5%                | 0.85%                                      |
+| 6-10%               | 1.40%                                      |
+| 11-15%              | 1.74%                                      |
+| 16-20%              | 1.99%                                      |
+| 21-25%              | 2.19%                                      |
+| 26-30%              | 2.34%                                      |
+| 31-35%              | 2.45%                                      |
+| 36-40%              | 2.53%                                      |
+| 41-45%              | 2.58%                                      |
+| 46-50%              | 2.61%                                      |
+| 51-55%              | 2.61%                                      |
+| 56-60%              | 2.58%                                      |
+| 61-65%              | 2.53%                                      |
+| 66-70%              | 2.45%                                      |
+| 71-75%              | 2.34%                                      |
+| 76-80%              | 2.19%                                      |
+| 81-85%              | 1.99%                                      |
+| 86-90%              | 1.74%                                      |
+| 91-95%              | 1.40%                                      |
 
 [PDF p. 81 | printed p. 81]
 
 _Table 73 continues (header row repeated at the top of this page):_
 
 | Response Proportion | 90% +/- Error Band for Confidence Interval |
-| --- | --- |
-| 96-100% | 0.85% |
+| ------------------- | ------------------------------------------ |
+| 96-100%             | 0.85%                                      |
 
 **Table 74: Approximate Confidence Interval Bands for Virtual Audit Data**
 
 | Response Proportion | 90% +/- Error Band for Confidence Interval |
-| --- | --- |
-| 0-5% | 2.58% |
-| 6-10% | 4.02% |
-| 11-15% | 4.94% |
-| 16-20% | 5.61% |
-| 21-25% | 6.13% |
-| 26-30% | 6.52% |
-| 31-35% | 6.82% |
-| 36-40% | 7.04% |
-| 41-45% | 7.18% |
-| 46-50% | 7.25% |
-| 51-55% | 7.25% |
-| 56-60% | 7.18% |
-| 61-65% | 7.04% |
-| 66-70% | 6.82% |
-| 71-75% | 6.52% |
-| 76-80% | 6.13% |
-| 81-85% | 5.61% |
-| 86-90% | 4.94% |
-| 91-95% | 4.02% |
-| 96-100% | 2.58% |
+| ------------------- | ------------------------------------------ |
+| 0-5%                | 2.58%                                      |
+| 6-10%               | 4.02%                                      |
+| 11-15%              | 4.94%                                      |
+| 16-20%              | 5.61%                                      |
+| 21-25%              | 6.13%                                      |
+| 26-30%              | 6.52%                                      |
+| 31-35%              | 6.82%                                      |
+| 36-40%              | 7.04%                                      |
+| 41-45%              | 7.18%                                      |
+| 46-50%              | 7.25%                                      |
+| 51-55%              | 7.25%                                      |
+| 56-60%              | 7.18%                                      |
+| 61-65%              | 7.04%                                      |
+| 66-70%              | 6.82%                                      |
+| 71-75%              | 6.52%                                      |
+| 76-80%              | 6.13%                                      |
+| 81-85%              | 5.61%                                      |
+| 86-90%              | 4.94%                                      |
+| 91-95%              | 4.02%                                      |
+| 96-100%             | 2.58%                                      |
 
 ## A.5 ADJUSTMENT FACTORS
 
@@ -2219,7 +2219,8 @@ Definitions:
 
 [PDF p. 82 | printed p. 82]
 
-  have this equipment in their homes but the virtual audit data or verified photos indicate something else.
+have this equipment in their homes but the virtual audit data or verified photos indicate something else.
+
 - A false negative for an equipment type occurred when a respondent incorrectly reported the absence of that equipment in their home – i.e., they reported on the survey that they have some other type of equipment in their homes but the virtual audit data or verified photos indicate that they actually do have this equipment.
 - A true positive for a given type of equipment type occurred when a respondent correctly reported the presence of that equipment in their home – i.e., they reported on the survey that they have this equipment in their homes and the virtual audit data or verified photos confirm it.
 - Verified responses are the sum of false positive responses, false negative responses, and true positive responses.
@@ -2240,19 +2241,19 @@ To ensure precision-related robustness, these adjustment factors were applied on
 
 **Table 75: Adjustment Factors by Measure**
 
-| End Use | Measure | Adjustment Factor (penetration) |
-| --- | --- | --- |
-| Cooling Equipment | Ducted HP & Ductless MSHP (cooling) | 1.12 |
-| Cooling Equipment | Central AC | 0.99 |
-| Cooling Equipment | Room AC | 1.04 |
-| Heating Equipment | Ducted HP & Ductless MSHP (heating) | 1.04 |
-| Heating Equipment | Furnace | 0.73 |
-| Heating Equipment | Boiler | 1.12 |
-| Heating Equipment | Electric Baseboard | 0.99 |
-| Heating Fuel (Boilers and Furnaces) | Electricity | -- |
-| Heating Fuel (Boilers and Furnaces) | Natural gas | 1.02 |
-| Heating Fuel (Boilers and Furnaces) | Fuel oil | 1.05 |
-| Heating Fuel (Boilers and Furnaces) | Propane | 0.95 |
+| End Use                             | Measure                             | Adjustment Factor (penetration) |
+| ----------------------------------- | ----------------------------------- | ------------------------------- |
+| Cooling Equipment                   | Ducted HP & Ductless MSHP (cooling) | 1.12                            |
+| Cooling Equipment                   | Central AC                          | 0.99                            |
+| Cooling Equipment                   | Room AC                             | 1.04                            |
+| Heating Equipment                   | Ducted HP & Ductless MSHP (heating) | 1.04                            |
+| Heating Equipment                   | Furnace                             | 0.73                            |
+| Heating Equipment                   | Boiler                              | 1.12                            |
+| Heating Equipment                   | Electric Baseboard                  | 0.99                            |
+| Heating Fuel (Boilers and Furnaces) | Electricity                         | --                              |
+| Heating Fuel (Boilers and Furnaces) | Natural gas                         | 1.02                            |
+| Heating Fuel (Boilers and Furnaces) | Fuel oil                            | 1.05                            |
+| Heating Fuel (Boilers and Furnaces) | Propane                             | 0.95                            |
 
 ## A.6 DEFINITIONS
 
@@ -2278,24 +2279,24 @@ Table 76 defines the types of mechanical equipment (heating, cooling, and water 
 
 **Table 76: Mechanical Equipment Definitions**
 
-| Measure | Definition |
-| --- | --- |
-| **Heating and Cooling Equipment** | |
-| MSHP | Mini-split or multi-split heat pump. Most often ductless, but there are also ducted options of this equipment. |
-| ASHP | Air source heat pump, centrally ducted. These often look more similar to central AC systems than to MSHPs. |
-| GSHP | Ground source heat pump. Involves digging a trench or drilling a well to install pipes that exchange heat below ground. |
-| Room AC | Non-permanent cooling, a unit often installed in windows that is typically taken out when the cooling season is over. |
-| Central AC | Central air conditioner. Permanently installed, centrally ducted cooling. |
-| Furnace | Forced air distribution, centrally ducted. Most often burn fossil fuels but can also be electric. |
-| Boiler | Hydronic distribution through baseboards or radiators. Most often use fossil fuels. |
-| Electric baseboard | Electric resistance baseboard heaters. Typically controlled at the room level with individual thermostats. |
-| **Water Heaters** | |
-| Traditional storage | Standalone hot water tank that heats and stores domestic hot water. Can be fossil fuel or electric fired. |
-| Indirect storage | Storage tank that does not heat water independently but is rather fed hot water from a boiler and simply stores the domestic hot water. |
-| Heat pump water heater (HPWH) | A storage type water heater that uses a heat pump to transfer heat from the surrounding air to the water. |
-| Instantaneous | An on-demand water heater that does not store hot water but rather heats as needed. Units are often wall-mounted and typically fossil fuel fired, although electric is also possible. |
-| Tankless coil | A form of instantaneous water heating using a hot water coil contained within an existing boiler. Typically inefficient, <0.50 EF. |
-| Combi boiler | A setup in which the boiler is designed to be responsible for both hydronic heating and domestic hot water. In many cases these resemble wall hung instantaneous water heaters, with separate zones or pumps for heating and water heating. |
+| Measure                           | Definition                                                                                                                                                                                                                                  |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Heating and Cooling Equipment** |                                                                                                                                                                                                                                             |
+| MSHP                              | Mini-split or multi-split heat pump. Most often ductless, but there are also ducted options of this equipment.                                                                                                                              |
+| ASHP                              | Air source heat pump, centrally ducted. These often look more similar to central AC systems than to MSHPs.                                                                                                                                  |
+| GSHP                              | Ground source heat pump. Involves digging a trench or drilling a well to install pipes that exchange heat below ground.                                                                                                                     |
+| Room AC                           | Non-permanent cooling, a unit often installed in windows that is typically taken out when the cooling season is over.                                                                                                                       |
+| Central AC                        | Central air conditioner. Permanently installed, centrally ducted cooling.                                                                                                                                                                   |
+| Furnace                           | Forced air distribution, centrally ducted. Most often burn fossil fuels but can also be electric.                                                                                                                                           |
+| Boiler                            | Hydronic distribution through baseboards or radiators. Most often use fossil fuels.                                                                                                                                                         |
+| Electric baseboard                | Electric resistance baseboard heaters. Typically controlled at the room level with individual thermostats.                                                                                                                                  |
+| **Water Heaters**                 |                                                                                                                                                                                                                                             |
+| Traditional storage               | Standalone hot water tank that heats and stores domestic hot water. Can be fossil fuel or electric fired.                                                                                                                                   |
+| Indirect storage                  | Storage tank that does not heat water independently but is rather fed hot water from a boiler and simply stores the domestic hot water.                                                                                                     |
+| Heat pump water heater (HPWH)     | A storage type water heater that uses a heat pump to transfer heat from the surrounding air to the water.                                                                                                                                   |
+| Instantaneous                     | An on-demand water heater that does not store hot water but rather heats as needed. Units are often wall-mounted and typically fossil fuel fired, although electric is also possible.                                                       |
+| Tankless coil                     | A form of instantaneous water heating using a hot water coil contained within an existing boiler. Typically inefficient, <0.50 EF.                                                                                                          |
+| Combi boiler                      | A setup in which the boiler is designed to be responsible for both hydronic heating and domestic hot water. In many cases these resemble wall hung instantaneous water heaters, with separate zones or pumps for heating and water heating. |
 
 [PDF p. 86 | printed p. 86]
 
@@ -2313,21 +2314,21 @@ Table 77 shows the households per census block group by service territory and Ta
 
 **Table 77: Households by Tenure and Units in Structure (Census)**
 
-| Units and Tenure | Eversource Non-EJ | Eversource EJ | UI Non-EJ | UI EJ |
-| --- | --- | --- | --- | --- |
-| Total | 586,270 | 477,106 | 129,595 | 163,384 |
-| Owner-occupied | 472,630 | 249,234 | 104,442 | 73,357 |
-| 1-unit detached | 417,005 | 192,624 | 89,630 | 49,049 |
-| 1-unit attached | 25,900 | 14,916 | 6,611 | 6,413 |
-| 2-4 units | 11,977 | 23,897 | 3,262 | 11,837 |
-| 5+ units | 14,829 | 14,674 | 4,467 | 5,807 |
-| Mobile home | 2,919 | 3,123 | 472 | 251 |
-| Renter-occupied | 113,640 | 227,872 | 25,153 | 90,027 |
-| 1-unit detached | 28,597 | 23,722 | 5,621 | 8,809 |
-| 1-unit attached | 8,347 | 13,533 | 1,913 | 4,962 |
-| 2-4 units | 29,424 | 85,249 | 7,115 | 37,384 |
-| 5+ units | 46,775 | 104,568 | 10,435 | 38,799 |
-| Mobile home | 497 | 800 | 69 | 73 |
+| Units and Tenure | Eversource Non-EJ | Eversource EJ | UI Non-EJ | UI EJ   |
+| ---------------- | ----------------- | ------------- | --------- | ------- |
+| Total            | 586,270           | 477,106       | 129,595   | 163,384 |
+| Owner-occupied   | 472,630           | 249,234       | 104,442   | 73,357  |
+| 1-unit detached  | 417,005           | 192,624       | 89,630    | 49,049  |
+| 1-unit attached  | 25,900            | 14,916        | 6,611     | 6,413   |
+| 2-4 units        | 11,977            | 23,897        | 3,262     | 11,837  |
+| 5+ units         | 14,829            | 14,674        | 4,467     | 5,807   |
+| Mobile home      | 2,919             | 3,123         | 472       | 251     |
+| Renter-occupied  | 113,640           | 227,872       | 25,153    | 90,027  |
+| 1-unit detached  | 28,597            | 23,722        | 5,621     | 8,809   |
+| 1-unit attached  | 8,347             | 13,533        | 1,913     | 4,962   |
+| 2-4 units        | 29,424            | 85,249        | 7,115     | 37,384  |
+| 5+ units         | 46,775            | 104,568       | 10,435    | 38,799  |
+| Mobile home      | 497               | 800           | 69        | 73      |
 
 Source: Census table B25032
 
@@ -2336,32 +2337,32 @@ Source: Census table B25032
 **Table 78: Survey Completes by Tenure and Units in Structure**
 
 | Units and Tenure | Eversource Non-EJ | Eversource EJ | UI Non-EJ | UI EJ |
-| --- | --- | --- | --- | --- |
-| Total | 494 | 352 | 74 | 110 |
-| Owner-occupied | 483 | 315 | 64 | 49 |
-| 1-unit detached | 443 | 274 | 59 | 33 |
-| 1-unit attached | 30 | 20 | 2 | 7 |
-| 2-4 units | 6 | 18 | 2 | 6 |
-| 5+ units | 2 | 3 | 0 | 2 |
-| Mobile home | 2 | 0 | 1 | 1 |
-| Renter-occupied | 11 | 37 | 10 | 61 |
-| 1-unit detached | 5 | 2 | 3 | 3 |
-| 1-unit attached | 1 | 9 | 1 | 16 |
-| 2-4 units | 4 | 16 | 1 | 25 |
-| 5+ units | 1 | 10 | 5 | 17 |
-| Mobile home | 0 | 0 | 0 | 0 |
+| ---------------- | ----------------- | ------------- | --------- | ----- |
+| Total            | 494               | 352           | 74        | 110   |
+| Owner-occupied   | 483               | 315           | 64        | 49    |
+| 1-unit detached  | 443               | 274           | 59        | 33    |
+| 1-unit attached  | 30                | 20            | 2         | 7     |
+| 2-4 units        | 6                 | 18            | 2         | 6     |
+| 5+ units         | 2                 | 3             | 0         | 2     |
+| Mobile home      | 2                 | 0             | 1         | 1     |
+| Renter-occupied  | 11                | 37            | 10        | 61    |
+| 1-unit detached  | 5                 | 2             | 3         | 3     |
+| 1-unit attached  | 1                 | 9             | 1         | 16    |
+| 2-4 units        | 4                 | 16            | 1         | 25    |
+| 5+ units         | 1                 | 10            | 5         | 17    |
+| Mobile home      | 0                 | 0             | 0         | 0     |
 
 Table 79 shows weights by service territory, combining categories zero or too few completes to calculate its own weight.
 
 **Table 79: Initial Survey Population Weights**
 
-| Units and Tenure | Eversource Non-EJ | Eversource EJ | UI Non-EJ | UI EJ |
-| --- | --- | --- | --- | --- |
-| Owner-occupied, 1-unit detached and mobile | 0.717 | 0.541 | 1.140 | 1.208 |
-| Owner-occupied, 1-unit attached | 0.656 | 0.566 | 2.510 | 0.696 |
-| Owner-occupied, 2+ units | 2.545 | 1.395 | 2.935 | 1.675 |
-| Renter-occupied, 1-unit | 4.739 | 2.627 | 1.443 | 0.553 |
-| Renter-occupied, 2+ units | 6.121 (one merged cell spanning Eversource Non-EJ and EJ) | (merged) | 2.221 | 1.377 |
+| Units and Tenure                           | Eversource Non-EJ                                         | Eversource EJ | UI Non-EJ | UI EJ |
+| ------------------------------------------ | --------------------------------------------------------- | ------------- | --------- | ----- |
+| Owner-occupied, 1-unit detached and mobile | 0.717                                                     | 0.541         | 1.140     | 1.208 |
+| Owner-occupied, 1-unit attached            | 0.656                                                     | 0.566         | 2.510     | 0.696 |
+| Owner-occupied, 2+ units                   | 2.545                                                     | 1.395         | 2.935     | 1.675 |
+| Renter-occupied, 1-unit                    | 4.739                                                     | 2.627         | 1.443     | 0.553 |
+| Renter-occupied, 2+ units                  | 6.121 (one merged cell spanning Eversource Non-EJ and EJ) | (merged)      | 2.221     | 1.377 |
 
 _Extractor note (not source text): in the last row of Table 79, the printed value 6.121 occupies a single merged cell spanning the Eversource Non-EJ and Eversource EJ columns._
 
@@ -2371,16 +2372,16 @@ The team applied the initial weights shown in Table 79 to compare survey demogra
 
 **Table 80: Comparison of Education Level of Survey Respondents to Census**
 
-| Units and Tenure | Eversource Census non-EJ | Eversource Survey non-EJ | Eversource Census EJ | Eversource Survey EJ | UI Census non-EJ | UI Survey non-EJ | UI Census EJ | UI Survey EJ |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Owner-occupied less than HS | 2.27% | 0.34% | 3.43% | 0.79% | 2.41% | 0.00% | 4.03% | 0.00% |
-| Owner-occupied HS grad/GED | 13.95% | 5.99% | 13.60% | 9.14% | 15.32% | 10.43% | 12.51% | 6.78% |
-| Owner-occupied some college | 18.71% | 14.88% | 14.87% | 10.06% | 17.79% | 4.63% | 10.80% | 13.52% |
-| Owner-occupied bachelors or higher | 45.66% | 63.43% | 20.33% | 29.39% | 45.05% | 65.53% | 17.56% | 24.61% |
-| Renter-occupied less than HS | 1.31% | 1.12% | 8.25% | 3.19% | 1.11% | 0.00% | 9.78% | 0.00% |
-| Renter-occupied HS grad/GED | 4.36% | 3.68% | 14.93% | 15.97% | 4.12% | 4.51% | 16.44% | 18.44% |
-| Renter-occupied some college | 5.08% | 6.89% | 13.40% | 19.61% | 4.50% | 2.93% | 12.93% | 15.55% |
-| Renter-occupied bachelors or higher | 8.65% | 3.68% | 11.18% | 11.86% | 9.70% | 11.96% | 15.95% | 21.10% |
+| Units and Tenure                    | Eversource Census non-EJ | Eversource Survey non-EJ | Eversource Census EJ | Eversource Survey EJ | UI Census non-EJ | UI Survey non-EJ | UI Census EJ | UI Survey EJ |
+| ----------------------------------- | ------------------------ | ------------------------ | -------------------- | -------------------- | ---------------- | ---------------- | ------------ | ------------ |
+| Owner-occupied less than HS         | 2.27%                    | 0.34%                    | 3.43%                | 0.79%                | 2.41%            | 0.00%            | 4.03%        | 0.00%        |
+| Owner-occupied HS grad/GED          | 13.95%                   | 5.99%                    | 13.60%               | 9.14%                | 15.32%           | 10.43%           | 12.51%       | 6.78%        |
+| Owner-occupied some college         | 18.71%                   | 14.88%                   | 14.87%               | 10.06%               | 17.79%           | 4.63%            | 10.80%       | 13.52%       |
+| Owner-occupied bachelors or higher  | 45.66%                   | 63.43%                   | 20.33%               | 29.39%               | 45.05%           | 65.53%           | 17.56%       | 24.61%       |
+| Renter-occupied less than HS        | 1.31%                    | 1.12%                    | 8.25%                | 3.19%                | 1.11%            | 0.00%            | 9.78%        | 0.00%        |
+| Renter-occupied HS grad/GED         | 4.36%                    | 3.68%                    | 14.93%               | 15.97%               | 4.12%            | 4.51%            | 16.44%       | 18.44%       |
+| Renter-occupied some college        | 5.08%                    | 6.89%                    | 13.40%               | 19.61%               | 4.50%            | 2.93%            | 12.93%       | 15.55%       |
+| Renter-occupied bachelors or higher | 8.65%                    | 3.68%                    | 11.18%               | 11.86%               | 9.70%            | 11.96%           | 15.95%       | 21.10%       |
 
 Source: Census table B25013
 
@@ -2388,12 +2389,12 @@ Accordingly, the team determined that an education adjustment would be prudent a
 
 **Table 81: Weight Adjustment Factors for Education**
 
-| Units and Tenure | Eversource Non-EJ | Eversource EJ | UI Non-EJ | UI EJ |
-| --- | --- | --- | --- | --- |
-| Owner-occupied, high school or less | 2.562 | 1.715 | 1.700 | 2.440 |
-| Owner-occupied, college or more | 0.822 | 0.892 | 0.896 | 0.744 |
-| Renter-occupied, high school or less | 1.181 | 1.210 | 1.160 | 1.422 |
-| Renter-occupied, college or more | 1.229 | 0.781 | 0.954 | 0.788 |
+| Units and Tenure                     | Eversource Non-EJ | Eversource EJ | UI Non-EJ | UI EJ |
+| ------------------------------------ | ----------------- | ------------- | --------- | ----- |
+| Owner-occupied, high school or less  | 2.562             | 1.715         | 1.700     | 2.440 |
+| Owner-occupied, college or more      | 0.822             | 0.892         | 0.896     | 0.744 |
+| Renter-occupied, high school or less | 1.181             | 1.210         | 1.160     | 1.422 |
+| Renter-occupied, college or more     | 1.229             | 0.781         | 0.954     | 0.788 |
 
 The initial survey weights shown in Table 79 were adjusted by the education adjusted factors in Table 81 as follows:
 
@@ -2409,13 +2410,13 @@ The team applied the weights and compared the weighted demographics to the censu
 
 **Table 82: Comparison of Survey Weights to Census – Tenure and Home Type**
 
-| Units and Tenure | Statewide Census | Statewide Survey (n=1,030) | Eversource Census non-EJ | Eversource Survey non-EJ (n=494) | Eversource Census EJ | Eversource Survey EJ (n=352) | UI Census non-EJ | UI Survey non-EJ (n=74) | UI Census EJ | UI Survey EJ (n=110) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Owner-occupied, 1-unit detached and mobile | 56% | 57% | 72% | 76% | 41% | 42% | 70% | 71% | 30% | 31% |
-| Owner-occupied, 1-unit attached | 4% | 4% | 4% | 4% | 3% | 3% | 5% | 5% | 4% | 4% |
-| Owner-occupied, 1+ units | 7% | 8% | 5% | 5% | 8% | 10% | 6% | 5% | 11% | 10% |
-| Renter-occupied, 1-unit | 7% | 8% | 6% | 7% | 8% | 8% | 6% | 6% | 8% | 9% |
-| Renter-occupied, 2+ units | 27% | 24% | 13% | 8% | 40% | 36% | 14% | 14% | 47% | 46% |
+| Units and Tenure                           | Statewide Census | Statewide Survey (n=1,030) | Eversource Census non-EJ | Eversource Survey non-EJ (n=494) | Eversource Census EJ | Eversource Survey EJ (n=352) | UI Census non-EJ | UI Survey non-EJ (n=74) | UI Census EJ | UI Survey EJ (n=110) |
+| ------------------------------------------ | ---------------- | -------------------------- | ------------------------ | -------------------------------- | -------------------- | ---------------------------- | ---------------- | ----------------------- | ------------ | -------------------- |
+| Owner-occupied, 1-unit detached and mobile | 56%              | 57%                        | 72%                      | 76%                              | 41%                  | 42%                          | 70%              | 71%                     | 30%          | 31%                  |
+| Owner-occupied, 1-unit attached            | 4%               | 4%                         | 4%                       | 4%                               | 3%                   | 3%                           | 5%               | 5%                      | 4%           | 4%                   |
+| Owner-occupied, 1+ units                   | 7%               | 8%                         | 5%                       | 5%                               | 8%                   | 10%                          | 6%               | 5%                      | 11%          | 10%                  |
+| Renter-occupied, 1-unit                    | 7%               | 8%                         | 6%                       | 7%                               | 8%                   | 8%                           | 6%               | 6%                      | 8%           | 9%                   |
+| Renter-occupied, 2+ units                  | 27%              | 24%                        | 13%                      | 8%                               | 40%                  | 36%                          | 14%              | 14%                     | 47%          | 46%                  |
 
 Source: Census table B25032
 
@@ -2423,27 +2424,27 @@ Source: Census table B25032
 
 **Table 83: Comparison of Survey Weights to Census – Education**
 
-| Units and Tenure | Statewide Census | Statewide Survey (n=1,030) | Eversource Census non-EJ | Eversource Survey non-EJ (n=494) | Eversource Census EJ | Eversource Survey EJ (n=352) | UI Census non-EJ | UI Survey non-EJ (n=74) | UI Census EJ | UI Survey EJ (n=110) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Less than HS grad | 8% | 3% | 4% | 2% | 12% | 4% | 4% | 0% | 14% | 0% |
-| HS diploma | 23% | 26% | 18% | 19% | 29% | 32% | 19% | 23% | 29% | 43% |
-| Some college or associate's degree | 25% | 22% | 24% | 19% | 28% | 26% | 22% | 7% | 24% | 22% |
-| Bachelor's degree or higher | 44% | 49% | 54% | 59% | 32% | 38% | 55% | 70% | 34% | 35% |
+| Units and Tenure                   | Statewide Census | Statewide Survey (n=1,030) | Eversource Census non-EJ | Eversource Survey non-EJ (n=494) | Eversource Census EJ | Eversource Survey EJ (n=352) | UI Census non-EJ | UI Survey non-EJ (n=74) | UI Census EJ | UI Survey EJ (n=110) |
+| ---------------------------------- | ---------------- | -------------------------- | ------------------------ | -------------------------------- | -------------------- | ---------------------------- | ---------------- | ----------------------- | ------------ | -------------------- |
+| Less than HS grad                  | 8%               | 3%                         | 4%                       | 2%                               | 12%                  | 4%                           | 4%               | 0%                      | 14%          | 0%                   |
+| HS diploma                         | 23%              | 26%                        | 18%                      | 19%                              | 29%                  | 32%                          | 19%              | 23%                     | 29%          | 43%                  |
+| Some college or associate's degree | 25%              | 22%                        | 24%                      | 19%                              | 28%                  | 26%                          | 22%              | 7%                      | 24%          | 22%                  |
+| Bachelor's degree or higher        | 44%              | 49%                        | 54%                      | 59%                              | 32%                  | 38%                          | 55%              | 70%                     | 34%          | 35%                  |
 
 Source: Census table B25013
 
 **Table 84: Comparison of Survey Weights to Census – Race**
 
-| Units and Tenure | Statewide Census | Statewide Survey (n=1,030) | Eversource Census non-EJ | Eversource Survey non-EJ (n=494) | Eversource Census EJ | Eversource Survey EJ (n=352) | UI Census non-EJ | UI Survey non-EJ (n=74) | UI Census EJ | UI Survey EJ (n=110) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| White | 64% | 60% | 77% | 80% | 50% | 44% | 78% | 70% | 44% | 31% |
-| Black | 10% | 3% | 5% | 1% | 15% | 16% | 5% | 4% | 22% | 16% |
-| Asian | 5% | 9% | 5% | 3% | 4% | 2% | 5% | 6% | 5% | 2% |
-| Native Hawaiian, Pacific Islander, or American Indian | 0.1% | 1% | 0.1% | 0.3% | 0.1% | 1% | 0.1% | 0% | 0.1% | 0% |
-| Hispanic or Latino/Latina | 17% | 13% | 9% | 4% | 27% | 21% | 8% | 9% | 25% | 23% |
-| Other race | 1% | 1% | 0.5% | 0.3% | 1% | 0.3% | 1% | 0% | 1% | 3% |
-| Two or more races | 3% | 5% | 4% | 3% | 4% | 6% | 3% | 3% | 3% | 12% |
-| No response | -- | 10% | -- | 9% | -- | 10% | -- | 8% | -- | 12% |
+| Units and Tenure                                      | Statewide Census | Statewide Survey (n=1,030) | Eversource Census non-EJ | Eversource Survey non-EJ (n=494) | Eversource Census EJ | Eversource Survey EJ (n=352) | UI Census non-EJ | UI Survey non-EJ (n=74) | UI Census EJ | UI Survey EJ (n=110) |
+| ----------------------------------------------------- | ---------------- | -------------------------- | ------------------------ | -------------------------------- | -------------------- | ---------------------------- | ---------------- | ----------------------- | ------------ | -------------------- |
+| White                                                 | 64%              | 60%                        | 77%                      | 80%                              | 50%                  | 44%                          | 78%              | 70%                     | 44%          | 31%                  |
+| Black                                                 | 10%              | 3%                         | 5%                       | 1%                               | 15%                  | 16%                          | 5%               | 4%                      | 22%          | 16%                  |
+| Asian                                                 | 5%               | 9%                         | 5%                       | 3%                               | 4%                   | 2%                           | 5%               | 6%                      | 5%           | 2%                   |
+| Native Hawaiian, Pacific Islander, or American Indian | 0.1%             | 1%                         | 0.1%                     | 0.3%                             | 0.1%                 | 1%                           | 0.1%             | 0%                      | 0.1%         | 0%                   |
+| Hispanic or Latino/Latina                             | 17%              | 13%                        | 9%                       | 4%                               | 27%                  | 21%                          | 8%               | 9%                      | 25%          | 23%                  |
+| Other race                                            | 1%               | 1%                         | 0.5%                     | 0.3%                             | 1%                   | 0.3%                         | 1%               | 0%                      | 1%           | 3%                   |
+| Two or more races                                     | 3%               | 5%                         | 4%                       | 3%                               | 4%                   | 6%                           | 3%               | 3%                      | 3%           | 12%                  |
+| No response                                           | --               | 10%                        | --                       | 9%                               | --                   | 10%                          | --               | 8%                      | --           | 12%                  |
 
 Source: Census table B03002
 
@@ -2451,40 +2452,40 @@ Source: Census table B03002
 
 **Table 85: Comparison of Survey Weights to Census – Home Age**
 
-| Units and Tenure | Statewide Census | Statewide Survey (n=1,030) | Eversource Census non-EJ | Eversource Survey non-EJ (n=494) | Eversource Census EJ | Eversource Survey EJ (n=352) | UI Census non-EJ | UI Survey non-EJ (n=74) | UI Census EJ | UI Survey EJ (n=110) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Built 2020 or later | 0% | 1% | 0% | 1% | 0% | 0% | 0% | 0% | 0% | 1% |
-| Built 2000-2019 | 11% | 8% | 13% | 12% | 10% | 6% | 9% | 8% | 7% | 4% |
-| Built 1980-1999 | 21% | 20% | 25% | 27% | 19% | 15% | 19% | 16% | 14% | 13% |
-| Built 1960-1979 | 27% | 27% | 29% | 30% | 26% | 22% | 29% | 28% | 23% | 30% |
-| Before 1960 | 41% | 45% | 32% | 30% | 46% | 58% | 43% | 48% | 55% | 52% |
+| Units and Tenure    | Statewide Census | Statewide Survey (n=1,030) | Eversource Census non-EJ | Eversource Survey non-EJ (n=494) | Eversource Census EJ | Eversource Survey EJ (n=352) | UI Census non-EJ | UI Survey non-EJ (n=74) | UI Census EJ | UI Survey EJ (n=110) |
+| ------------------- | ---------------- | -------------------------- | ------------------------ | -------------------------------- | -------------------- | ---------------------------- | ---------------- | ----------------------- | ------------ | -------------------- |
+| Built 2020 or later | 0%               | 1%                         | 0%                       | 1%                               | 0%                   | 0%                           | 0%               | 0%                      | 0%           | 1%                   |
+| Built 2000-2019     | 11%              | 8%                         | 13%                      | 12%                              | 10%                  | 6%                           | 9%               | 8%                      | 7%           | 4%                   |
+| Built 1980-1999     | 21%              | 20%                        | 25%                      | 27%                              | 19%                  | 15%                          | 19%              | 16%                     | 14%          | 13%                  |
+| Built 1960-1979     | 27%              | 27%                        | 29%                      | 30%                              | 26%                  | 22%                          | 29%              | 28%                     | 23%          | 30%                  |
+| Before 1960         | 41%              | 45%                        | 32%                      | 30%                              | 46%                  | 58%                          | 43%              | 48%                     | 55%          | 52%                  |
 
 Source: Census table B25127
 
 **Table 86: Comparison of Survey Weights to Census - Income**
 
-| Units and Tenure | Statewide Census | Statewide Survey (n=1,030) | Eversource Census non-EJ | Eversource Survey non-EJ (n=494) | Eversource Census EJ | Eversource Survey EJ (n=352) | UI Census non-EJ | UI Survey non-EJ (n=74) | UI Census EJ | UI Survey EJ (n=110) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| under $10,000 | 4% | 5% | 2% | 1% | 6% | 10% | 3% | 1% | 8% | 9% |
-| $10,000 to $19,999 | 6% | 5% | 3% | 1% | 9% | 8% | 4% | 5% | 11% | 9% |
-| $20,000 to $29,999 | 6% | 5% | 4% | 5% | 8% | 3% | 4% | 3% | 9% | 10% |
-| $30,000 to $39,999 | 6% | 6% | 4% | 5% | 7% | 7% | 4% | 0% | 9% | 7% |
-| $40,000 to $49,999 | 6% | 5% | 5% | 6% | 7% | 5% | 5% | 2% | 7% | 8% |
-| $50,000 to $59,999 | 6% | 5% | 5% | 4% | 7% | 7% | 5% | 2% | 7% | 7% |
-| $60,000 to $74,999 | 8% | 6% | 7% | 6% | 9% | 5% | 7% | 5% | 10% | 9% |
-| $75,000 to $99,999 | 12% | 7% | 12% | 7% | 12% | 5% | 11% | 7% | 12% | 9% |
+| Units and Tenure   | Statewide Census | Statewide Survey (n=1,030) | Eversource Census non-EJ | Eversource Survey non-EJ (n=494) | Eversource Census EJ | Eversource Survey EJ (n=352) | UI Census non-EJ | UI Survey non-EJ (n=74) | UI Census EJ | UI Survey EJ (n=110) |
+| ------------------ | ---------------- | -------------------------- | ------------------------ | -------------------------------- | -------------------- | ---------------------------- | ---------------- | ----------------------- | ------------ | -------------------- |
+| under $10,000      | 4%               | 5%                         | 2%                       | 1%                               | 6%                   | 10%                          | 3%               | 1%                      | 8%           | 9%                   |
+| $10,000 to $19,999 | 6%               | 5%                         | 3%                       | 1%                               | 9%                   | 8%                           | 4%               | 5%                      | 11%          | 9%                   |
+| $20,000 to $29,999 | 6%               | 5%                         | 4%                       | 5%                               | 8%                   | 3%                           | 4%               | 3%                      | 9%           | 10%                  |
+| $30,000 to $39,999 | 6%               | 6%                         | 4%                       | 5%                               | 7%                   | 7%                           | 4%               | 0%                      | 9%           | 7%                   |
+| $40,000 to $49,999 | 6%               | 5%                         | 5%                       | 6%                               | 7%                   | 5%                           | 5%               | 2%                      | 7%           | 8%                   |
+| $50,000 to $59,999 | 6%               | 5%                         | 5%                       | 4%                               | 7%                   | 7%                           | 5%               | 2%                      | 7%           | 7%                   |
+| $60,000 to $74,999 | 8%               | 6%                         | 7%                       | 6%                               | 9%                   | 5%                           | 7%               | 5%                      | 10%          | 9%                   |
+| $75,000 to $99,999 | 12%              | 7%                         | 12%                      | 7%                               | 12%                  | 5%                           | 11%              | 7%                      | 12%          | 9%                   |
 
 _Extractor note (not source text): Table 86 continues on the next page; the column headers are repeated there as printed._
 
 [PDF p. 93 | printed p. 93]
 
-| Units and Tenure | Statewide Census | Statewide Survey (n=1,030) | Eversource Census non-EJ | Eversource Survey non-EJ (n=494) | Eversource Census EJ | Eversource Survey EJ (n=352) | UI Census non-EJ | UI Survey non-EJ (n=74) | UI Census EJ | UI Survey EJ (n=110) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| $100,000 to $124,000 | 10% | 8% | 11% | 8% | 10% | 7% | 11% | 17% | 8% | 6% |
-| $125,000 to $149,999 | 8% | 4% | 9% | 6% | 7% | 3% | 9% | 1% | 6% | 0% |
-| $150,000 to $199,999 | 11% | 5% | 13% | 7% | 8% | 3% | 14% | 6% | 7% | 5% |
-| $200,000 or more | 17% | 9% | 25% | 16% | 9% | 4% | 24% | 11% | 8% | 1% |
-| I'd rather not say | -- | 31% | -- | 29% | -- | 34% | -- | 40% | -- | 19% |
+| Units and Tenure     | Statewide Census | Statewide Survey (n=1,030) | Eversource Census non-EJ | Eversource Survey non-EJ (n=494) | Eversource Census EJ | Eversource Survey EJ (n=352) | UI Census non-EJ | UI Survey non-EJ (n=74) | UI Census EJ | UI Survey EJ (n=110) |
+| -------------------- | ---------------- | -------------------------- | ------------------------ | -------------------------------- | -------------------- | ---------------------------- | ---------------- | ----------------------- | ------------ | -------------------- |
+| $100,000 to $124,000 | 10%              | 8%                         | 11%                      | 8%                               | 10%                  | 7%                           | 11%              | 17%                     | 8%           | 6%                   |
+| $125,000 to $149,999 | 8%               | 4%                         | 9%                       | 6%                               | 7%                   | 3%                           | 9%               | 1%                      | 6%           | 0%                   |
+| $150,000 to $199,999 | 11%              | 5%                         | 13%                      | 7%                               | 8%                   | 3%                           | 14%              | 6%                      | 7%           | 5%                   |
+| $200,000 or more     | 17%              | 9%                         | 25%                      | 16%                              | 9%                   | 4%                           | 24%              | 11%                     | 8%           | 1%                   |
+| I'd rather not say   | --               | 31%                        | --                       | 29%                              | --                   | 34%                          | --               | 40%                     | --           | 19%                  |
 
 Source: Census table B19001
 
@@ -2498,13 +2499,13 @@ The team applied a similar weighting methodology to the subset of survey respons
 
 **Table 87: Self-Audit Completes by Strata**
 
-| Stratum | Total Survey Completes | Self-Audit Completes | Self-Audit (%) |
-| --- | --- | --- | --- |
-| Eversource non-EJ | 494 | 404 | 82% |
-| Eversource EJ | 352 | 273 | 78% |
-| UI non-EJ | 72 | 60 | 83% |
-| UI EJ | 110 | 77 | 70% |
-| **Overall** | **1,030** | **814** | **79%** |
+| Stratum           | Total Survey Completes | Self-Audit Completes | Self-Audit (%) |
+| ----------------- | ---------------------- | -------------------- | -------------- |
+| Eversource non-EJ | 494                    | 404                  | 82%            |
+| Eversource EJ     | 352                    | 273                  | 78%            |
+| UI non-EJ         | 72                     | 60                   | 83%            |
+| UI EJ             | 110                    | 77                   | 70%            |
+| **Overall**       | **1,030**              | **814**              | **79%**        |
 
 _Extractor note (not source text): [source discrepancy: Table 87 lists 72 total survey completes for UI non-EJ, while Table 78 lists 74; the four strata in Table 87 sum to 1,028, not the 1,030 shown for Overall. The self-audit completes in Table 88 total 405, 274, 60 and 78 for the four strata, versus 404, 273, 60 and 77 in Table 87.]_
 
@@ -2513,20 +2514,20 @@ Table 77 above (not repeated here) shows the households per census block group b
 **Table 88: Survey Completes with Photos (Self-Audit) by Tenure and Units in Structure**
 
 | Units and Tenure | Eversource Non-EJ | Eversource EJ | UI Non-EJ | UI EJ |
-| --- | --- | --- | --- | --- |
-| Total | 405 | 274 | 60 | 78 |
-| Owner-occupied | 396 | 252 | 52 | 34 |
-| 1-unit detached | 364 | 220 | 49 | 21 |
-| 1-unit attached | 23 | 15 | 1 | 6 |
-| 2-4 units | 6 | 14 | 2 | 5 |
-| 5+ units | 1 | 3 | 0 | 2 |
-| Mobile home | 2 | 0 | 0 | 0 |
-| Renter-occupied | 9 | 22 | 8 | 44 |
-| 1-unit detached | 4 | 0 | 2 | 1 |
-| 1-unit attached | 0 | 5 | 1 | 10 |
-| 2-4 units | 3 | 9 | 1 | 18 |
-| 5+ units | 2 | 8 | 4 | 15 |
-| Mobile home | 0 | 0 | 0 | 0 |
+| ---------------- | ----------------- | ------------- | --------- | ----- |
+| Total            | 405               | 274           | 60        | 78    |
+| Owner-occupied   | 396               | 252           | 52        | 34    |
+| 1-unit detached  | 364               | 220           | 49        | 21    |
+| 1-unit attached  | 23                | 15            | 1         | 6     |
+| 2-4 units        | 6                 | 14            | 2         | 5     |
+| 5+ units         | 1                 | 3             | 0         | 2     |
+| Mobile home      | 2                 | 0             | 0         | 0     |
+| Renter-occupied  | 9                 | 22            | 8         | 44    |
+| 1-unit detached  | 4                 | 0             | 2         | 1     |
+| 1-unit attached  | 0                 | 5             | 1         | 10    |
+| 2-4 units        | 3                 | 9             | 1         | 18    |
+| 5+ units         | 2                 | 8             | 4         | 15    |
+| Mobile home      | 0                 | 0             | 0         | 0     |
 
 Table 89 shows weights by service territory, combining categories zero or too few completes to calculate its own weight.
 
@@ -2534,13 +2535,13 @@ Table 89 shows weights by service territory, combining categories zero or too fe
 
 **Table 89: Initial Self-Audit Population Weights**
 
-| Units and Tenure | Eversource Non-EJ | Eversource EJ | UI Non-EJ | UI EJ |
-| --- | --- | --- | --- | --- |
-| Owner-occupied, 1-unit detached and mobile | 0.691 | 0.536 | 1.165 (one merged cell spanning this row and the next) | 1.414 |
-| Owner-occupied, 1-unit attached | 0.678 | 0.599 | (merged with the cell above) | 0.644 |
-| Owner-occupied, 2+ units | 2.307 | 1.367 | 2.328 | 1.518 |
-| Renter-occupied, 1-unit | 5.053 (one merged cell spanning Eversource Non-EJ and EJ) | (merged) | 1.527 | 0.758 |
-| Renter-occupied, 2+ units | 7.283 (one merged cell spanning Eversource Non-EJ and EJ) | (merged) | 2.114 | 1.391 |
+| Units and Tenure                           | Eversource Non-EJ                                         | Eversource EJ | UI Non-EJ                                              | UI EJ |
+| ------------------------------------------ | --------------------------------------------------------- | ------------- | ------------------------------------------------------ | ----- |
+| Owner-occupied, 1-unit detached and mobile | 0.691                                                     | 0.536         | 1.165 (one merged cell spanning this row and the next) | 1.414 |
+| Owner-occupied, 1-unit attached            | 0.678                                                     | 0.599         | (merged with the cell above)                           | 0.644 |
+| Owner-occupied, 2+ units                   | 2.307                                                     | 1.367         | 2.328                                                  | 1.518 |
+| Renter-occupied, 1-unit                    | 5.053 (one merged cell spanning Eversource Non-EJ and EJ) | (merged)      | 1.527                                                  | 0.758 |
+| Renter-occupied, 2+ units                  | 7.283 (one merged cell spanning Eversource Non-EJ and EJ) | (merged)      | 2.114                                                  | 1.391 |
 
 _Extractor note (not source text): the printed value 1.165 sits in one merged cell spanning the UI Non-EJ column for the two owner-occupied 1-unit rows; 5.053 and 7.283 each sit in one merged cell spanning the Eversource Non-EJ and EJ columns._
 
@@ -2548,16 +2549,16 @@ The team applied the initial weights shown in Table 89 to compare self-audit dem
 
 **Table 90: Comparison of Education Level of Self-Audit Respondents to Census**
 
-| Units and Tenure | Eversource Census non-EJ | Eversource Self-Audit non-EJ | Eversource Census EJ | Eversource Self-Audit EJ | UI Census non-EJ | UI Self-Audit non-EJ | UI Census EJ | UI Self-Audit EJ |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Owner-occupied less than HS | 2.27% | 0.00% | 3.43% | 0.82% | 2.41% | 0.00% | 4.03% | 0.00% |
-| Owner-occupied HS grad/GED | 13.95% | 5.73% | 13.60% | 9.53% | 15.32% | 10.45% | 12.51% | 6.40% |
-| Owner-occupied some college | 18.71% | 14.09% | 14.87% | 9.35% | 17.79% | 4.48% | 10.80% | 14.56% |
-| Owner-occupied bachelors or higher | 45.66% | 63.58% | 20.33% | 30.48% | 45.05% | 65.66% | 17.56% | 23.93% |
-| Renter-occupied less than HS | 1.31% | 1.48% | 8.25% | 2.43% | 1.11% | 0.00% | 9.78% | 0.00% |
-| Renter-occupied HS grad/GED | 4.36% | 5.10% | 14.93% | 17.24% | 4.12% | 5.42% | 16.44% | 16.57% |
-| Renter-occupied some college | 5.08% | 6.40% | 13.40% | 18.73% | 4.50% | 1.96% | 12.93% | 15.67% |
-| Renter-occupied bachelors or higher | 8.65% | 3.61% | 11.18% | 11.42% | 9.70% | 12.04% | 15.95% | 22.87% |
+| Units and Tenure                    | Eversource Census non-EJ | Eversource Self-Audit non-EJ | Eversource Census EJ | Eversource Self-Audit EJ | UI Census non-EJ | UI Self-Audit non-EJ | UI Census EJ | UI Self-Audit EJ |
+| ----------------------------------- | ------------------------ | ---------------------------- | -------------------- | ------------------------ | ---------------- | -------------------- | ------------ | ---------------- |
+| Owner-occupied less than HS         | 2.27%                    | 0.00%                        | 3.43%                | 0.82%                    | 2.41%            | 0.00%                | 4.03%        | 0.00%            |
+| Owner-occupied HS grad/GED          | 13.95%                   | 5.73%                        | 13.60%               | 9.53%                    | 15.32%           | 10.45%               | 12.51%       | 6.40%            |
+| Owner-occupied some college         | 18.71%                   | 14.09%                       | 14.87%               | 9.35%                    | 17.79%           | 4.48%                | 10.80%       | 14.56%           |
+| Owner-occupied bachelors or higher  | 45.66%                   | 63.58%                       | 20.33%               | 30.48%                   | 45.05%           | 65.66%               | 17.56%       | 23.93%           |
+| Renter-occupied less than HS        | 1.31%                    | 1.48%                        | 8.25%                | 2.43%                    | 1.11%            | 0.00%                | 9.78%        | 0.00%            |
+| Renter-occupied HS grad/GED         | 4.36%                    | 5.10%                        | 14.93%               | 17.24%                   | 4.12%            | 5.42%                | 16.44%       | 16.57%           |
+| Renter-occupied some college        | 5.08%                    | 6.40%                        | 13.40%               | 18.73%                   | 4.50%            | 1.96%                | 12.93%       | 15.67%           |
+| Renter-occupied bachelors or higher | 8.65%                    | 3.61%                        | 11.18%               | 11.42%                   | 9.70%            | 12.04%               | 15.95%       | 22.87%           |
 
 Source: Census table B25013
 
@@ -2567,12 +2568,12 @@ Accordingly, the team determined that an education adjustment would be prudent a
 
 **Table 91: Self-Audit Weight Adjustment Factors for Education**
 
-| Units and Tenure | Eversource Non-EJ | Eversource EJ | UI Non-EJ | UI EJ |
-| --- | --- | --- | --- | --- |
-| Owner-occupied, high school or less | 4.425 | 1.696 | 2.623 | 2.708 |
-| Owner-occupied, college or more | 0.657 | 0.737 | 0.730 | 0.634 |
-| Renter-occupied, high school or less | 1.347 | 1.215 | 1.492 | 1.658 |
-| Renter-occupied, college or more | 1.474 | 0.968 | 0.951 | 0.799 |
+| Units and Tenure                     | Eversource Non-EJ | Eversource EJ | UI Non-EJ | UI EJ |
+| ------------------------------------ | ----------------- | ------------- | --------- | ----- |
+| Owner-occupied, high school or less  | 4.425             | 1.696         | 2.623     | 2.708 |
+| Owner-occupied, college or more      | 0.657             | 0.737         | 0.730     | 0.634 |
+| Renter-occupied, high school or less | 1.347             | 1.215         | 1.492     | 1.658 |
+| Renter-occupied, college or more     | 1.474             | 0.968         | 0.951     | 0.799 |
 
 The initial self-audit weights shown in Table 79 were adjusted by the education adjusted factors in Table 81 as follows:
 
@@ -2588,13 +2589,13 @@ The team calculated on-site weights to use for calculations involving only virtu
 
 **Table 92: Virtual Audit Completes by Strata**
 
-| Stratum | Total Survey Completes | Virtual Audit Completes | Virtual Audit (%) |
-| --- | --- | --- | --- |
-| Eversource non-EJ | 495 | 78 | 16% |
-| Eversource EJ | 354 | 39 | 11% |
-| UI non-EJ | 74 | 12 | 17% |
-| UI EJ | 107 | 11 | 10% |
-| Overall | 1,030 | 140 | 14% |
+| Stratum           | Total Survey Completes | Virtual Audit Completes | Virtual Audit (%) |
+| ----------------- | ---------------------- | ----------------------- | ----------------- |
+| Eversource non-EJ | 495                    | 78                      | 16%               |
+| Eversource EJ     | 354                    | 39                      | 11%               |
+| UI non-EJ         | 74                     | 12                      | 17%               |
+| UI EJ             | 107                    | 11                      | 10%               |
+| Overall           | 1,030                  | 140                     | 14%               |
 
 _Extractor note (not source text): [source discrepancy: Table 92 lists 495, 354 and 107 total survey completes for Eversource non-EJ, Eversource EJ and UI EJ, while Table 78 lists 494, 352 and 110.]_
 
@@ -2604,26 +2605,26 @@ Table 93 shows virtual audit completes by tenure and units in structure in each 
 
 **Table 93: Virtual Audit Completes by Tenure and Units in Structure**
 
-| Units and Tenure | Eversource Non-EJ | Eversource EJ | UI Non-EJ | UI EJ |
-| --- | --- | --- | --- | --- |
-| Total | 78 | 39 | 12 | 11 |
-| Owner-occupied | 77 | 37 | 9 | 5 |
-| 1-unit detached, mobile | 70 | 33 | 7 | 3 |
-| 1-unit attached | 5 | 4 | 1 | 0 |
-| 2+ units | 2 | 0 | 1 | 2 |
-| Renter-occupied | 1 | 2 | 3 | 6 |
-| All | 1 | 2 | 3 | 6 |
+| Units and Tenure        | Eversource Non-EJ | Eversource EJ | UI Non-EJ | UI EJ |
+| ----------------------- | ----------------- | ------------- | --------- | ----- |
+| Total                   | 78                | 39            | 12        | 11    |
+| Owner-occupied          | 77                | 37            | 9         | 5     |
+| 1-unit detached, mobile | 70                | 33            | 7         | 3     |
+| 1-unit attached         | 5                 | 4             | 1         | 0     |
+| 2+ units                | 2                 | 0             | 1         | 2     |
+| Renter-occupied         | 1                 | 2             | 3         | 6     |
+| All                     | 1                 | 2             | 3         | 6     |
 
 Table 94 shows weights by service territory, combining categories zero or too few completes to calculate its own weight.
 
 **Table 94: Initial Virtual Audit Population Weights**
 
-| Units and Tenure | Eversource Non-EJ | Eversource EJ | UI Non-EJ | UI EJ |
-| --- | --- | --- | --- | --- |
-| Owner-occupied, 1-unit detached and mobile | 0.619 | 0.612 | 1.248 (merged across this row and the next) | 1.917 (merged across this row and the next) |
-| Owner-occupied, 1-unit attached | 0.535 | 0.385 | (merged with the cell above) | (merged with the cell above) |
-| Owner-occupied, 2+ units | 3.374 (one merged cell spanning Eversource Non-EJ and EJ) | (merged) | 0.873 (one merged cell spanning UI Non-EJ and EJ) | (merged) |
-| Renter-occupied, All | 11.750 (one merged cell spanning Eversource Non-EJ and EJ) | (merged) | 0.865 | 1.549 |
+| Units and Tenure                           | Eversource Non-EJ                                          | Eversource EJ | UI Non-EJ                                         | UI EJ                                       |
+| ------------------------------------------ | ---------------------------------------------------------- | ------------- | ------------------------------------------------- | ------------------------------------------- |
+| Owner-occupied, 1-unit detached and mobile | 0.619                                                      | 0.612         | 1.248 (merged across this row and the next)       | 1.917 (merged across this row and the next) |
+| Owner-occupied, 1-unit attached            | 0.535                                                      | 0.385         | (merged with the cell above)                      | (merged with the cell above)                |
+| Owner-occupied, 2+ units                   | 3.374 (one merged cell spanning Eversource Non-EJ and EJ)  | (merged)      | 0.873 (one merged cell spanning UI Non-EJ and EJ) | (merged)                                    |
+| Renter-occupied, All                       | 11.750 (one merged cell spanning Eversource Non-EJ and EJ) | (merged)      | 0.865                                             | 1.549                                       |
 
 _Extractor note (not source text): in Table 94 the UI weights 1.248 and 1.917 each sit in one merged, shaded cell spanning the two owner-occupied 1-unit rows; 3.374, 0.873 and 11.750 each sit in one merged cell spanning the two columns of their service territory._
 
@@ -2631,14 +2632,14 @@ The team applied the initial weights shown in Table 94 to compare virtual audit 
 
 **Table 95: Comparison of Education Level of Virtual Audit Respondents to Census**
 
-| Units and Tenure | Eversource Census | Eversource Virtual Audit | UI Census | UI Virtual Audit |
-| --- | --- | --- | --- | --- |
-| Owner-occupied less than HS, HS grad/GED | 21.05% | 5.66% | 20.85% | 12.68% |
-| Owner-occupied some college | 21.55% | 12.61% | 16.97% | 2.89% |
-| Owner-occupied bachelors or higher | 17.51% | 49.60% | 16.80% | 45.12% |
-| Renter-occupied less than HS, HS grad, GED | 17.16% | 21.42% | 20.69% | 7.98% |
-| Renter-occupied some college | 11.18% | 0.00% | 11.24% | 15.37% |
-| Renter-occupied bachelors or higher | 11.55% | 10.71% | 13.43% | 15.96% |
+| Units and Tenure                           | Eversource Census | Eversource Virtual Audit | UI Census | UI Virtual Audit |
+| ------------------------------------------ | ----------------- | ------------------------ | --------- | ---------------- |
+| Owner-occupied less than HS, HS grad/GED   | 21.05%            | 5.66%                    | 20.85%    | 12.68%           |
+| Owner-occupied some college                | 21.55%            | 12.61%                   | 16.97%    | 2.89%            |
+| Owner-occupied bachelors or higher         | 17.51%            | 49.60%                   | 16.80%    | 45.12%           |
+| Renter-occupied less than HS, HS grad, GED | 17.16%            | 21.42%                   | 20.69%    | 7.98%            |
+| Renter-occupied some college               | 11.18%            | 0.00%                    | 11.24%    | 15.37%           |
+| Renter-occupied bachelors or higher        | 11.55%            | 10.71%                   | 13.43%    | 15.96%           |
 
 Source: Census table B25013
 
@@ -2648,12 +2649,12 @@ Accordingly, the team determined that an education adjustment would be prudent a
 
 **Table 96: Virtual Audit Weight Adjustment Factors for Education**
 
-| Units and Tenure | Eversource | UI |
-| --- | --- | --- |
-| Owner-occupied, high school or less | 3.719 | 1.645 |
-| Owner-occupied, college or more | 0.628 | 0.704 |
-| Renter-occupied, high school or less | 0.801 | 2.593 |
-| Renter-occupied, college or more | 2.122 | 0.788 |
+| Units and Tenure                     | Eversource | UI    |
+| ------------------------------------ | ---------- | ----- |
+| Owner-occupied, high school or less  | 3.719      | 1.645 |
+| Owner-occupied, college or more      | 0.628      | 0.704 |
+| Renter-occupied, high school or less | 0.801      | 2.593 |
+| Renter-occupied, college or more     | 2.122      | 0.788 |
 
 The initial on-site weights shown in Table 94 were adjusted by the education adjusted factors in Table 96 as follows:
 
@@ -2664,11 +2665,11 @@ The team applied the adjusted education weights to the virtual audit data and co
 **Table 97: Comparison of Home Age of Virtual Audit Respondents to Census**
 
 | Units and Tenure | Eversource Census | Eversource Virtual Audit | UI Census | UI Virtual Audit |
-| --- | --- | --- | --- | --- |
-| Built 2000-2023 | 12.04% | 19.13% | 7.90% | 8.25% |
-| Built 1980-1999 | 21.93% | 13.70% | 16.24% | 16.24% |
-| Built 1960-1979 | 27.75% | 22.13% | 25.65% | 23.57% |
-| Before 1960 | 38.28% | 45.04% | 50.21% | 51.94% |
+| ---------------- | ----------------- | ------------------------ | --------- | ---------------- |
+| Built 2000-2023  | 12.04%            | 19.13%                   | 7.90%     | 8.25%            |
+| Built 1980-1999  | 21.93%            | 13.70%                   | 16.24%    | 16.24%           |
+| Built 1960-1979  | 27.75%            | 22.13%                   | 25.65%    | 23.57%           |
+| Before 1960      | 38.28%            | 45.04%                   | 50.21%    | 51.94%           |
 
 Source: Census table B25127
 
@@ -2676,12 +2677,12 @@ Accordingly, the team determined that a home age adjustment would be prudent and
 
 **Table 98: Virtual Audit Weight Adjustment Factors for Home Age**
 
-| Units and Tenure | Eversource | UI |
-| --- | --- | --- |
-| Built 2000-2023 | 0.629 | 0.958 |
-| Built 1980-1999 | 1.600 | 1.000 |
-| Built 1960-1979 | 1.254 | 1.088 |
-| Before 1960 | 0.850 | 0.967 |
+| Units and Tenure | Eversource | UI    |
+| ---------------- | ---------- | ----- |
+| Built 2000-2023  | 0.629      | 0.958 |
+| Built 1980-1999  | 1.600      | 1.000 |
+| Built 1960-1979  | 1.254      | 1.088 |
+| Before 1960      | 0.850      | 0.967 |
 
 The initial education-adjusted weights shown in Table 97 were adjusted by the home age adjustment factors Table 98 as follows:
 
@@ -2696,16 +2697,16 @@ The team applied the adjusted home age and education weights to the virtual audi
 **Table 99: Comparison of Primary Fuel Type of Virtual Audit Respondents to Census**
 
 | Units and Tenure | Statewide Census | Statewide Virtual Audit |
-| --- | --- | --- |
-| Own Electric | 7% | 12% |
-| Own Fuel Oil | 30% | 26% |
-| Own Natural Gas | 22% | 25% |
-| Own Propane | 5% | 3% |
-| Own Wood | 1% | 6% |
-| Rent Electric | 12% | 5% |
-| Rent Fuel Oil | 5% | 1% |
-| Rent Natural Gas | 15% | 17% |
-| Rent Propane | 2% | 4% |
+| ---------------- | ---------------- | ----------------------- |
+| Own Electric     | 7%               | 12%                     |
+| Own Fuel Oil     | 30%              | 26%                     |
+| Own Natural Gas  | 22%              | 25%                     |
+| Own Propane      | 5%               | 3%                      |
+| Own Wood         | 1%               | 6%                      |
+| Rent Electric    | 12%              | 5%                      |
+| Rent Fuel Oil    | 5%               | 1%                      |
+| Rent Natural Gas | 15%              | 17%                     |
+| Rent Propane     | 2%               | 4%                      |
 
 Source: Census table B25117
 
@@ -2714,16 +2715,16 @@ Accordingly, the team determined that a primary fuel type adjustment would be pr
 **Table 100: Virtual Audit Weight Adjustment Factors for Primary Fuel Type**
 
 | Units and Tenure | Statewide |
-| --- | --- |
-| Own Electric | 0.567 |
-| Own Fuel Oil | 1.150 |
-| Own Natural Gas | 0.864 |
-| Own Propane | 1.600 |
-| Own Wood | 0.217 |
-| Rent Electric | 2.480 |
-| Rent Fuel Oil | 4.500 |
-| Rent Natural Gas | 0.888 |
-| Rent Propane | 0.400 |
+| ---------------- | --------- |
+| Own Electric     | 0.567     |
+| Own Fuel Oil     | 1.150     |
+| Own Natural Gas  | 0.864     |
+| Own Propane      | 1.600     |
+| Own Wood         | 0.217     |
+| Rent Electric    | 2.480     |
+| Rent Fuel Oil    | 4.500     |
+| Rent Natural Gas | 0.888     |
+| Rent Propane     | 0.400     |
 
 The initial home age and education-adjusted weights shown in Table 97 were adjusted by the primary fuel adjustment factors Table 98 as follows:
 
@@ -2747,23 +2748,23 @@ This section includes the survey instrument for reference.
 
 _Extractor note (not source text): in the printed survey instrument, programmer instructions are set in red and read-in variables in green; text color is not reproduced here, and every bracketed instruction or variable is transcribed in brackets as printed. Empty stray bullet glyphs that sit on lines of their own in the source are omitted. Option numbering (including the skipped numbers and the "97." and "98." codes) is transcribed as printed._
 
-| Section | Questions |
-| --- | --- |
-| Screening | S1, S2, S3 |
-| Building characteristics, occupancy, and tenure | B1, B2, B3, B4, B5, B6, B7a, B7b, B8, B9, B10a, B10b |
-| Heating | H1, H2, H3a, H3b, H3c, H3d, H3e, H4, H5, H6, H7 |
-| Cooling | C1, C2, C3, C4, C5 |
-| Thermostat | T1, T2, T3, T4, T5, T6 |
-| Water Heating | W1, W2, W3, W4 |
-| Appliances | A1, A2a, A2b-1, A2b-2, A2c-1, A2c-2, A2d-1, A2d-2, A3, A4, A5, A6, A7 |
-| Consumer electronics | CE1, CE2, CE3, CE4, CE5 |
-| Miscellaneous measures | M1, M2, M3, M3a, M4, M5, M6, M7, M8, M9a, M9b, M9c, M9d, M10 |
-| Participation and Awareness | P1, P2, P3, P4, P5 |
-| Heat Pump Knowledge | HP1 |
-| Attitudes | AT1 |
-| Demographics | D1, D2, D3, D3a, D3b, D4, D5, D6 |
-| Recruitment | R1, R2, R3, R4 |
-| Incentive Delivery | GC1, GC2 |
+| Section                                         | Questions                                                             |
+| ----------------------------------------------- | --------------------------------------------------------------------- |
+| Screening                                       | S1, S2, S3                                                            |
+| Building characteristics, occupancy, and tenure | B1, B2, B3, B4, B5, B6, B7a, B7b, B8, B9, B10a, B10b                  |
+| Heating                                         | H1, H2, H3a, H3b, H3c, H3d, H3e, H4, H5, H6, H7                       |
+| Cooling                                         | C1, C2, C3, C4, C5                                                    |
+| Thermostat                                      | T1, T2, T3, T4, T5, T6                                                |
+| Water Heating                                   | W1, W2, W3, W4                                                        |
+| Appliances                                      | A1, A2a, A2b-1, A2b-2, A2c-1, A2c-2, A2d-1, A2d-2, A3, A4, A5, A6, A7 |
+| Consumer electronics                            | CE1, CE2, CE3, CE4, CE5                                               |
+| Miscellaneous measures                          | M1, M2, M3, M3a, M4, M5, M6, M7, M8, M9a, M9b, M9c, M9d, M10          |
+| Participation and Awareness                     | P1, P2, P3, P4, P5                                                    |
+| Heat Pump Knowledge                             | HP1                                                                   |
+| Attitudes                                       | AT1                                                                   |
+| Demographics                                    | D1, D2, D3, D3a, D3b, D4, D5, D6                                      |
+| Recruitment                                     | R1, R2, R3, R4                                                        |
+| Incentive Delivery                              | GC1, GC2                                                              |
 
 ### Introduction
 
@@ -2828,7 +2829,7 @@ S2. Which of the following best describes your home or building at [ADDRESS]? Se
 3. Mobile home
 4. Apartment in a building with 2 to 4 units
 5. Apartment in a building with 5 or more units
-97. Other; please specify: [REQUIRE TEXT ENTRY]
+6. Other; please specify: [REQUIRE TEXT ENTRY]
 
 [COMPUTE MF = 0; MF =1 IF S2 = 4 or 5]
 
@@ -2837,8 +2838,8 @@ S3a. Is the home at [ADDRESS] your primary residence?
 1. Yes
 2. No, it is a secondary residence or vacation home
 3. No, it is a rental property that I do not occupy on a permanent basis
-97. Other [REQUIRE TEXT ENTRY]
-98. I'm not sure
+4. Other [REQUIRE TEXT ENTRY]
+5. I'm not sure
 
 S3b. [IF S3 = 3] Do you currently have a tenant occupying [ADDRESS]?
 
@@ -2861,7 +2862,7 @@ B1. How many years have you lived at [ADDRESS]?
 
 [PDF p. 103]
 
-00. Less than one year
+0. Less than one year
 
 [OPEN END NUMERIC; WHOLE NUMBERS; RANGE 1-100]
 
@@ -2869,7 +2870,7 @@ B2. Do you own or rent the home at [ADDRESS]?
 
 1. Own
 2. Rent
-97. Other; please specify: [REQUIRE TEXT ENTRY]
+3. Other; please specify: [REQUIRE TEXT ENTRY]
 
 [COMPUTE NEW VARIABLE: OWNER = 0; IF B2 = 1, OWNER = 1]
 
@@ -2883,13 +2884,13 @@ B4. In what year was your home built? Do your best to estimate.
 4. 2000 to 2009
 5. 2010 or 2019
 6. 2020 or later
-98. I'm not sure
+7. I'm not sure
 
 B5a [DISPLAY IF S2=1 OR 2] Does your home have a basement?
 
 1. Yes
 2. No
-98. I'm not sure
+3. I'm not sure
 
 B5b. [DISPLAY IF B5=1] Which of the following best describes your basement?
 
@@ -2897,7 +2898,7 @@ B5b. [DISPLAY IF B5=1] Which of the following best describes your basement?
 2. Only part of the basement is finished
 3. Unfinished
 4. Other; please specify: [REQUIRE TEXT ENTRY]
-98. I'm not sure
+5. I'm not sure
 
 B6. How many fully **_above-ground_** floors does your [IF MF = 0, "home"; IF MF = 1 "building"] have? Do not include basements (finished or unfinished) or unheated attics.
 
@@ -2907,7 +2908,7 @@ B6. How many fully **_above-ground_** floors does your [IF MF = 0, "home"; IF MF
 4. 4
 5. 5 or more floors
 6. [DISPLAY IF S2 = 1] Split-level home
-98. I'm not sure
+7. I'm not sure
 
 [PDF p. 104]
 
@@ -2915,8 +2916,8 @@ B7. [DISPLAY IF S2=1] Do you have any other living quarters on your property tha
 
 1. Yes
 2. No
-• 97. Other; please specify: [REQUIRE TEXT ENTRY]
-98. I'm not sure
+   • 97. Other; please specify: [REQUIRE TEXT ENTRY]
+3. I'm not sure
 
 B8. [DISPLAY IF S2=1] When answering the following questions, please think about the main house as well as all the rooms and occupants in the living space(s) on the same electric meter as the main house.
 
@@ -2935,7 +2936,7 @@ B10. [DISPLAY IF S2=1 OR 2] Do you have any of the following spaces in your home
 2. Detached garage
 3. Three-season porch or sunroom
 4. Unfinished attic
-98. None of the above
+5. None of the above
 
 B11 [DISPLAY IF MF = 0] Approximately, how large is the area of your home? Only think of spaces that are heated or cooled; unfinished spaces in basements should be excluded. If you don't know, use your best estimate.
 
@@ -2953,7 +2954,7 @@ B14. On a typical weekday, is at least one person home between 9am and 5pm?
 
 1. Yes
 2. No
-99. I'd rather not say
+3. I'd rather not say
 
 [PDF p. 105]
 
@@ -2986,7 +2987,7 @@ H1a. Which type(s) of system(s) do you use to heat your home? Please select all 
 11. Solar heater
 12. Other; please specify: [REQUIRE TEXT ENTRY]
 13. I do not have a heating system
-98. I'm not sure
+14. I'm not sure
 
 H1b. [IF H1a ≠ 14 or 98] Which of the following systems do you consider to be your _**primary**_ heating system? By primary, we mean the system you rely on for most of your home's heating needs. [PIPE IN ALL OPTIONS AND INCLUDE AN OPTION "Something else: [REQUIRE TEXT ENTRY]" AND "I'm not sure."]
 
@@ -2999,8 +3000,8 @@ H2a. [DISPLAY IF FURNACE SELECTED IN H1] What fuel does your furnace use?
 2. Natural gas from utility
 3. Propane
 4. Fuel oil
-97. Other; please specify: [REQUIRE TEXT ENTRY]
-98. I'm not sure
+5. Other; please specify: [REQUIRE TEXT ENTRY]
+6. I'm not sure
 
 H2b. [DISPLAY IF BOILER SELECTED IN H1] What fuel does your boiler use?
 
@@ -3008,8 +3009,8 @@ H2b. [DISPLAY IF BOILER SELECTED IN H1] What fuel does your boiler use?
 2. Natural gas from utility
 3. Propane
 4. Fuel oil
-97. Other; please specify: [REQUIRE TEXT ENTRY]
-98. I'm not sure
+5. Other; please specify: [REQUIRE TEXT ENTRY]
+6. I'm not sure
 
 H2d. [DISPLAY IF RADIANT FLOORING SELECTED IN H1] What fuel does your radiant flooring or wall panel use?
 
@@ -3017,8 +3018,8 @@ H2d. [DISPLAY IF RADIANT FLOORING SELECTED IN H1] What fuel does your radiant fl
 2. Natural gas from utility
 3. Propane
 4. Fuel oil
-97. Other; please specify: [REQUIRE TEXT ENTRY]
-98. I'm not sure
+5. Other; please specify: [REQUIRE TEXT ENTRY]
+6. I'm not sure
 
 H2e. [DISPLAY IF FIREPLACE SELECTED IN H1] What fuel does your fireplace use? (If you have more than one type, please select multiple fuel types).
 
@@ -3027,8 +3028,8 @@ H2e. [DISPLAY IF FIREPLACE SELECTED IN H1] What fuel does your fireplace use? (I
 3. Propane
 4. Fuel oil
 5. Wood
-97. Other; please specify: [REQUIRE TEXT ENTRY]
-98. I'm not sure
+6. Other; please specify: [REQUIRE TEXT ENTRY]
+7. I'm not sure
 
 H2f. [DISPLAY IF ROOM OR SPACE HEAT IS SELECTED IN H1] What fuel does your room or space heater use?
 
@@ -3037,8 +3038,8 @@ H2f. [DISPLAY IF ROOM OR SPACE HEAT IS SELECTED IN H1] What fuel does your room 
 3. Propane
 4. Fuel oil
 5. Wood
-97. Other; please specify: [REQUIRE TEXT ENTRY]
-98. I'm not sure
+6. Other; please specify: [REQUIRE TEXT ENTRY]
+7. I'm not sure
 
 [PDF p. 107]
 
@@ -3047,8 +3048,8 @@ H4. [ASK IF RESPONDENT SELECTED BOILER OR FURNACE IN H1 OR PHOTO UPLOAD] How is 
 1. Ducts
 2. Wall, floor, or baseboard radiators
 3. Radiant floor heating
-97. Other; please specify: [REQUIRE TEXT ENTRY]
-98. I'm not sure
+4. Other; please specify: [REQUIRE TEXT ENTRY]
+5. I'm not sure
 
 H5. [IF AIR SOURCE HEAT PUMP SELECTED IN H1] Does your air source heat pump have a back-up system that automatically comes on when the outdoor temperature is too low?
 
@@ -3056,14 +3057,14 @@ H5. [IF AIR SOURCE HEAT PUMP SELECTED IN H1] Does your air source heat pump have
 2. No; I manually switch to a different heat source
 3. I do not have a back-up heat source
 4. Other; please specify: [REQUIRE TEXT ENTRY]
-98. I'm not sure
+5. I'm not sure
 
 H6a. [DISPLAY IF B5b=1 or 2] Is your basement heated?
 
 1. Yes, the entire basement is heated
 2. Only part of the basement is heated
 3. No
-98. I'm not sure
+4. I'm not sure
 
 H6b. [IF H6a = 1 & H1 ≠ 98] What heating system serves your basement?
 
@@ -3073,7 +3074,7 @@ H7a. [DISPLAY IF B10 = 3] Is your three-season porch or sunroom heated?
 
 1. Yes
 2. No
-98. I'm not sure
+3. I'm not sure
 
 H7b. [IF H7a = 1 & H1 ≠ 98] What heating system serves your three-season porch or sunroom?
 
@@ -3083,7 +3084,7 @@ H8a. [DISPLAY IF B10 = 1 OR 2] Is your garage heated?
 
 1. Yes
 2. No
-98. I'm not sure
+3. I'm not sure
 
 H8b. [IF H8a = 1 & H1 ≠ 98] What heating system serves your garage?
 
@@ -3103,8 +3104,8 @@ H10. [HEAT_FUEL≠ ELECTRICITY] Who is responsible for paying for the [PIPE IN "
 
 1. I am (or someone else in my household)
 2. It is included in my rent or condo fee
-97. Someone else: [REQUIRE TEXT ENTRY]
-98. I'm not sure
+3. Someone else: [REQUIRE TEXT ENTRY]
+4. I'm not sure
 
 #### Cooling System
 
@@ -3120,7 +3121,7 @@ C1. What cooling system(s) do you use in your home? Please select all that apply
 8. Portable fan(s)
 9. Other; please specify: [REQUIRE TEXT ENTRY]
 10. I do not have any cooling system
-98. I'm not sure
+11. I'm not sure
 
 C2. [IF MORE THAN ONE OPTION SELECTED IN C1] Which of these cooling systems is your primary cooling system; that is, you rely on it for cooling most often? [PIPE IN ANY OPTION SELECTED IN C1]
 
@@ -3128,13 +3129,13 @@ C3a. Did you install any of these cooling system(s) in the past three years? Ple
 
 1. Installed in 2021 or later
 2. Installed in 2020 or before
-98. I'm not sure
+3. I'm not sure
 
 C3b [DISPLAY FOR EACH WHERE C3 = 1] Did the [PIPE IN COOLING SYSTEM] installed in 2021 or later replace a cooling system that was previously installed or was it installed to cool an area of your home that was **not** previously cooled?
 
 1. Replaced a previously installed cooling system
 2. Installed to provide cooling to an area of the home **not** previously cooled
-98. I'm not sure
+3. I'm not sure
 
 [PDF p. 109]
 
@@ -3153,7 +3154,7 @@ C5. [DISPLAY FOR EACH SELECTED IN C1 IF NUMBER OF ROOMS > 1] How much of your ho
 1. All of the rooms in my home
 2. More than half of the rooms
 3. Less than half of the rooms
-98. I'm not sure
+4. I'm not sure
 
 C6. [IF C5 ≠ 1] What room(s) in your home are not currently cooled by the cooling system(s) you selected above? Please select all room(s) not cooled by any of these system(s): [DISPLAY SYSTEMS SELECTED IN C1 1-5 (CAC, HPs, and/or RAC)]
 
@@ -3202,7 +3203,7 @@ T2. [ASK IF (T1b OR T1c ≥ 1) OR PHOTO UPLOAD INCLUDES AT LEAST ONE PROGRAMMABL
 
 1. Yes
 2. No
-98. I'm not sure
+3. I'm not sure
 
 T3. [ASK IF T1b OR T1c > 0] How often do you change or review the settings on your programmable thermostat?
 
@@ -3210,7 +3211,7 @@ T3. [ASK IF T1b OR T1c > 0] How often do you change or review the settings on yo
 2. Sometimes
 3. Rarely
 4. Never
-98. I'm not sure
+5. I'm not sure
 
 T4. Which of the following best describes how your household controls the indoor temperature during the winter?
 
@@ -3239,8 +3240,8 @@ W1. [IF RESPONDENT HAS NOT UPLOADED PHOTO(S) OF WATER HEATER(S)] Which of the fo
 3. Instantaneous or tankless water heater
 4. Heat pump or electric hybrid water heater
 5. Solar water heater
-97. Other; please specify: [REQUIRE TEXT ENTRY]
-98. I'm not sure
+6. Other; please specify: [REQUIRE TEXT ENTRY]
+7. I'm not sure
 
 W2. [SKIP IF W1 = 4 OR 5] What fuel does your water heater use?
 
@@ -3249,13 +3250,13 @@ W2. [SKIP IF W1 = 4 OR 5] What fuel does your water heater use?
 3. Propane or LP
 4. Fuel oil or kerosene
 5. Another fuel type: [REQUIRE TEXT ENTRY]
-98. I'm not sure
+6. I'm not sure
 
 W3. [IF PHOTO WAS NOT UPLOADED AND IF WATER HEATER IS NATURAL GAS (W2 = 2) AND WATER HEATER IS NOT INDIRECT (W1=2)] Is your water heater a condensing water heater? Condensing water heaters tend to have large plastic exhaust pipes, rather than metal.
 
 1. Yes
 2. No
-98. I'm not sure
+3. I'm not sure
 
 W4. [IF PHOTO WAS NOT UPLOADED AND W1 =2] You indicated that your space heating system also provides hot water. Which of the following best describes your system?
 
@@ -3295,14 +3296,14 @@ A3 [IF A2c > 0] Which of the following best describes how your household uses th
 2. Use about half of the year
 3. Use all or almost all of the year
 4. Other, please specify: [REQUIRE TEXT ENTRY]
-98. I'm not sure
+5. I'm not sure
 
 A4. [IF PHOTO OF CLOTHES WASHER NOT UPLOADED] Is your clothes washer(s) front-loading or top-loading?
 
 1. Front-loading
 2. Top-loading
 3. [IF A3a > 1] I have both top-loading and front-loading washers
-98. I'm not sure
+4. I'm not sure
 
 A5. What fuel does the stove in your kitchen use? If your cooktop and oven use different fuels, please select all that apply.
 
@@ -3314,7 +3315,7 @@ A5. What fuel does the stove in your kitchen use? If your cooktop and oven use d
 3. Propane
 4. Other; please specify: [REQUIRE TEXT ENTRY]
 5. I don't have a stove
-98. I'm not sure
+6. I'm not sure
 
 A6. [IF A5=1] Is your electric cooktop an induction stove? An induction stove requires magnetic pots and pans and the stove top only gets slightly warm without cookware.
 
@@ -3327,8 +3328,8 @@ A7. [IF A2>0 & PHOTO OF CLOTHES DRYER NOT UPLOADED] What fuel does your clothes 
 1. Electricity
 2. Natural gas from utility
 3. Propane
-97. Another fuel type: [REQUIRE TEXT ENTRY]
-98. I'm not sure
+4. Another fuel type: [REQUIRE TEXT ENTRY]
+5. I'm not sure
 
 #### Consumer Electronics
 
@@ -3350,7 +3351,7 @@ CE3. Do you have any smart controls or automation devices in your home? This cou
 
 1. Yes
 2. No
-98. I'm not sure
+3. I'm not sure
 
 [PDF p. 114]
 
@@ -3368,8 +3369,8 @@ CE4. [ASK IF CE3 = 1] Which of the following equipment are controlled by your au
 10. Garage door
 11. Dehumidifiers or air purifiers
 12. Pool pumps
-97. Other [SPECIFY; INCLUDE OPEN END BOX]
-98. I'm not sure
+13. Other [SPECIFY; INCLUDE OPEN END BOX]
+14. I'm not sure
 
 CE5. How many advanced power, or smart power strips, do you have plugged in and in use in your home? These usually look like regular power strips and surge protectors, but have special energy-saving features that can **automatically cut power to accessories when not in use**. [SHOW IMAGE PROVIDED] Advance power strips have color-coded outlets that shut off if the electronic plugged into the control outlet is shut off.
 
@@ -3408,7 +3409,7 @@ M2. [ASK IF M1 = 1 OR 2] When charging your electric-only or plug-in hybrid vehi
 1. Level 1 (standard volt outlet or 110 outlet)
 2. Level 2 (charger installed or 220 outlet)
 3. I do not charge my vehicle at home
-98. I'm not sure
+4. I'm not sure
 
 M3. [IF M2=1 2 or 3] What time(s) of day do you charge your electric-only or plug-in hybrid vehicle at home? Please select all that apply. [ALLOW MULTIPLE RESPONSES]
 
@@ -3416,13 +3417,13 @@ M3. [IF M2=1 2 or 3] What time(s) of day do you charge your electric-only or plu
 2. During the day (between 12pm and 8pm)
 3. Overnight (between 8pm and 8am)
 4. I do not charge my vehicle at home
-98. I'm not sure
+5. I'm not sure
 
 M4. Do you have any photovoltaic ("PV") solar panels connected to your home? They are often installed on your roof.
 
 1. Yes
 2. No
-98. I'm not sure
+3. I'm not sure
 
 M5. [ASK IF M4 = 1] In terms of kilowatts (kW), what is the total installed capacity of your PV solar panels?
 
@@ -3440,7 +3441,7 @@ M7. [ASK IF M4 = 1] Do you have an energy-storage battery or whole home battery 
 
 1. Yes
 2. No
-98. I'm not sure
+3. I'm not sure
 
 [PDF p. 116]
 
@@ -3457,7 +3458,7 @@ M8. Which of the following equipment do you have in or at your home? [MULTIPLE R
 9. Home gym (e.g., treadmill, indoor cycling trainer)
 10. Sauna
 11. Electric lawn equipment (e.g., mower, leaf blower)
-97. None of the above
+12. None of the above
 
 M9a. [IF M10=SPA] What type of fuel is used to heat the spa (i.e., hot tub/Jacuzzi)?
 
@@ -3467,8 +3468,8 @@ M9a. [IF M10=SPA] What type of fuel is used to heat the spa (i.e., hot tub/Jacuz
 4. Fuel oil
 5. Wood
 6. Wood pellets
-97. Other, please specify: [REQUIRE TEXT ENTRY]
-98. I'm not sure
+7. Other, please specify: [REQUIRE TEXT ENTRY]
+8. I'm not sure
 
 M9b. [IF M10=POOL HEATER] What type of fuel does your pool heater use?
 
@@ -3478,8 +3479,8 @@ M9b. [IF M10=POOL HEATER] What type of fuel does your pool heater use?
 4. Fuel oil
 5. Wood
 6. Wood pellets
-97. Other, please specify: [REQUIRE TEXT ENTRY]
-98. I'm not sure
+7. Other, please specify: [REQUIRE TEXT ENTRY]
+8. I'm not sure
 
 M9c. [IF M10=SAUNA] What type of fuel does your sauna use?
 
@@ -3489,8 +3490,8 @@ M9c. [IF M10=SAUNA] What type of fuel does your sauna use?
 4. Fuel oil
 5. Wood
 6. Wood pellets
-97. Other, please specify: [REQUIRE TEXT ENTRY]
-98. I'm not sure
+7. Other, please specify: [REQUIRE TEXT ENTRY]
+8. I'm not sure
 
 [PDF p. 117]
 
@@ -3502,8 +3503,8 @@ M9d. [IF M10=WHOLE-HOUSE GENERATOR] What type of fuel does your whole-house gene
 4. Fuel oil
 5. Wood
 6. Wood pellets
-97. Other, please specify: [REQUIRE TEXT ENTRY]
-98. I'm not sure
+7. Other, please specify: [REQUIRE TEXT ENTRY]
+8. I'm not sure
 
 M10. Aside from lighting, including seasonal decorations, and the equipment that we have already asked about, is there any other equipment in your home that uses a great deal of energy?
 
@@ -3517,13 +3518,13 @@ P1. Are you aware that your utility offers programs and rebates to help you save
 
 1. Yes
 2. No
-98. I'm not sure
+3. I'm not sure
 
 P2. [IF P1 = 2 OR 98] Have you heard of Energize Connecticut?
 
 1. Yes
 2. No
-98. I'm not sure
+3. I'm not sure
 
 P3. [IF P1 = 1 OR P2 = 1] In the past two years, have you taken part in an Energize Connecticut or utility-sponsored program to save on home upgrades and/or energy-saving equipment? If so, which have you done? Select all that apply. [RANDOMIZE 1 TO 7; ALLOW MULTIPLE RESPONSES]
 
@@ -3542,7 +3543,7 @@ P3. [IF P1 = 1 OR P2 = 1] In the past two years, have you taken part in an Energ
 10. [IF M7=1] Pay-for-performance based on energy drawn from your battery
 11. Other, please specify: [REQUIRE TEXT ENTRY]
 12. None of the above
-98. I'm not sure
+13. I'm not sure
 
 P4. In the past two years, have you [DISPLAY IF B2 = 2 "or your landlord"] made any of the following changes to weatherize your home? Select all that apply. [RANDOMIZE 1 TO 3; ALLOW MULTIPLE RESPONSES]
 
@@ -3550,14 +3551,14 @@ P4. In the past two years, have you [DISPLAY IF B2 = 2 "or your landlord"] made 
 2. Installed weatherstripping on windows or doors
 3. Upgraded windows or doors
 4. Other [SPECIFY; INCLUDE OPEN END BOX]
-97. None of the above
-98. I'm not sure
+5. None of the above
+6. I'm not sure
 
 P5. [DISPLAY IF HEAT PUMPS NOT SELECTED IN HEATING/COOLING SECTIONS] Before today, had you heard of heat pumps for your home?
 
 1. Yes
 2. No
-98. I'm not sure
+3. I'm not sure
 
 #### Heat Pump Knowledge & Attitudes
 
@@ -3571,21 +3572,21 @@ HP1. [IF P4 = 1 OR HEAT PUMP INSTALLED IN HOME] Please assess your agreement wit
 
 [RANDOMLY ASSIGN APRROXIMATELY HALF OF RESPONDENTS TO A/B MODULES; RANDOMIZE STATEMENTS]
 
-| A | B |
-| --- | --- |
+| A                                                                                | B                                                                                   |
+| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | Heat pumps are better for the environment than other heating or cooling systems. | Heat pumps are no better for the environment than other heating or cooling systems. |
-| Heat pumps can save money on my energy bills. | Heat pumps will increase my energy bills. |
-| A heat pump can provide enough heat, even on the coldest days. | A heat pump cannot provide enough heat on the coldest days. |
+| Heat pumps can save money on my energy bills.                                    | Heat pumps will increase my energy bills.                                           |
+| A heat pump can provide enough heat, even on the coldest days.                   | A heat pump cannot provide enough heat on the coldest days.                         |
 
 [PDF p. 119]
 
-| A | B |
-| --- | --- |
-| A heat pump cools as well as or better than other cooling systems. | A heat pump does not cool as well as other cooling systems. |
+| A                                                                                | B                                                                                |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| A heat pump cools as well as or better than other cooling systems.               | A heat pump does not cool as well as other cooling systems.                      |
 | Heat pumps are more expensive to install than other heating and cooling systems. | Heat pumps are less expensive to install than other heating and cooling systems. |
-| Heat pumps are less reliable than other heating and cooling systems. | Heat pumps are more reliable than other heating and cooling systems. |
-| Heat pumps are noisier than other heating and cooling systems. | Heat pumps are quieter than other heating and cooling systems. |
-| Heat pumps have higher maintenance costs than other heating and cooling systems. | Heat pumps have lower maintenance costs than other heating and cooling systems. |
+| Heat pumps are less reliable than other heating and cooling systems.             | Heat pumps are more reliable than other heating and cooling systems.             |
+| Heat pumps are noisier than other heating and cooling systems.                   | Heat pumps are quieter than other heating and cooling systems.                   |
+| Heat pumps have higher maintenance costs than other heating and cooling systems. | Heat pumps have lower maintenance costs than other heating and cooling systems.  |
 
 _Extractor note (not source text): the A/B statement table continues from the previous page without repeating its "A" and "B" header row; the header is repeated here for readability._
 
@@ -3595,7 +3596,7 @@ AT1. Thinking about all the things you could do in your household to conserve en
 2. Most things
 3. A few things
 4. Nothing
-98. I'm not sure
+5. I'm not sure
 
 ### Demographics
 
@@ -3614,23 +3615,23 @@ D2. What is the highest level of education that you have completed?
 2. High school graduate/GED
 3. Some college or associated degree
 4. Bachelor's degree or higher
-98. I'd rather not say
+5. I'd rather not say
 
 | IF # of occupants (Sum of D1) | D3 READ-IN LIHEAP | D3 READ-IN Moderate income |
-| --- | --- | --- |
-| 1 | $41,553 | $55,404 |
-| 2 | $54,338 | $72,451 |
-| 3 | $67,124 | $89,499 |
-| 4 | $79,910 | $106,547 |
+| ----------------------------- | ----------------- | -------------------------- |
+| 1                             | $41,553           | $55,404                    |
+| 2                             | $54,338           | $72,451                    |
+| 3                             | $67,124           | $89,499                    |
+| 4                             | $79,910           | $106,547                   |
 
 [PDF p. 120]
 
 | IF # of occupants (Sum of D1) | D3 READ-IN LIHEAP | D3 READ-IN Moderate income |
-| --- | --- | --- |
-| 5 | $92,695 | $123,593 |
-| 6 | $105,481 | $140,641 |
-| 7 | $107,878 | $143,837 |
-| 8 or more | $110,275 | $147,033 |
+| ----------------------------- | ----------------- | -------------------------- |
+| 5                             | $92,695           | $123,593                   |
+| 6                             | $105,481          | $140,641                   |
+| 7                             | $107,878          | $143,837                   |
+| 8 or more                     | $110,275          | $147,033                   |
 
 _Extractor note (not source text): the D3 read-in table is split across pages 119 and 120; the header row is repeated here for readability. The source prints the first column's row labels as 1 through 7 and "8 or more" (in the text layer they appear as {1}, {2}, and so on)._
 
@@ -3638,13 +3639,13 @@ D3a. Before taxes, was your total annual household income in 2023 less than [MOD
 
 1. Less than or equal to [MODERATE INCOME LIMIT]
 2. More than [MODERATE INCOME LIMIT]
-99. I'd rather not say
+3. I'd rather not say
 
 D3b. [IF D3a = 1] Before taxes, what was your total household income in 2023?
 
 1. Less than or equal to [LIHEAP LIMIT]
 2. More than [LIHEAP LIMIT]
-99. I'd rather not say
+3. I'd rather not say
 
 D3c. Before taxes, what was your total household income in 2023?
 
@@ -3660,7 +3661,7 @@ D3c. Before taxes, what was your total household income in 2023?
 10. $125,000 to $149,999
 11. $150,000 to $199,999
 12. $200,000 or more
-99. I'd rather not say
+13. I'd rather not say
 
 D4. How would you describe yourself? Please select all that apply. [ALLOW MULTIPLE RESPONSE]
 
@@ -3671,8 +3672,8 @@ D4. How would you describe yourself? Please select all that apply. [ALLOW MULTIP
 5. Middle Eastern or North African
 6. Native American or Other Pacific Islander
 7. White
-97. Not listed; please specify: [REQUIRE TEXT ENTRY]
-99. I'd rather not say
+8. Not listed; please specify: [REQUIRE TEXT ENTRY]
+9. I'd rather not say
 
 D5. What language do you primarily speak at home?
 
@@ -3690,8 +3691,8 @@ D5. What language do you primarily speak at home?
 9. Hindi
 10. Arabic
 11. Russian
-97. Other; please specify: [REQUIRE TEXT ENTRY]
-99. I'd rather not say
+12. Other; please specify: [REQUIRE TEXT ENTRY]
+13. I'd rather not say
 
 ### Self-Audit Deferred Upload Opportunity
 
@@ -3733,8 +3734,9 @@ d. Secondary phone (optional)
 R4. [ASK IF R3 IS SHOWN/ SINGLE RESPONSE ]
 
 e. What is your preferred form of contact?
-    1. Phone
-    2. Email
+
+1. Phone
+2. Email
 
 R5. [ASK IF R4 = 1] When we call to schedule, your caller ID will most likely say "NMR Group" and will have a 617 area code. What are the best times of day for us to call? [ALLOW MULTIPLE RESPONSE]
 
@@ -3750,12 +3752,12 @@ GC1. To what email address should we send your gift card as a thank you for comp
 [OPEN-END; FORCE EMAIL RESPONSE]
 
 2. I do not have an email address
-97. I do not want the gift card
+3. I do not want the gift card
 
 GC2. [ASK IF GC1 = 3] If you prefer, we can mail your gift card. Please enter your preferred mailing address and allow up to six to eight weeks for delivery.
 
 1. [REQUIRE ADDRESS RESPONSE]
-97. I do not want the gift card
+2. I do not want the gift card
 
 Closing
 

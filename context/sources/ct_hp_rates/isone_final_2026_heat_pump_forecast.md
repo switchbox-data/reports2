@@ -46,15 +46,15 @@ ISO New England logo (stylized New England map made of orange dots, "ISO new eng
 
 # Acronyms
 
-| Acronym | Meaning | Acronym | Meaning |
-| ------- | ------- | ------- | ------- |
-| BTMPV | Behind-the-meter Photovoltaics | CELT | Capacity, Energy, Loads, and Transmission |
-| COP | Coefficient of Performance | EV | Electric Vehicle |
-| GHG | Greenhouse Gas | GSHP | Ground Source Heat Pump |
-| GWh | Gigawatt Hour | HP | Heat Pump |
-| MW | Megawatt | NREL | National Renewable Energy Laboratory |
-| PTHP | Packaged Terminal Heat Pump | RUT | Rooftop Unit |
-| SF | Square Feet | VRF | Variable Refrigerant Flow |
+| Acronym | Meaning                        | Acronym | Meaning                                   |
+| ------- | ------------------------------ | ------- | ----------------------------------------- |
+| BTMPV   | Behind-the-meter Photovoltaics | CELT    | Capacity, Energy, Loads, and Transmission |
+| COP     | Coefficient of Performance     | EV      | Electric Vehicle                          |
+| GHG     | Greenhouse Gas                 | GSHP    | Ground Source Heat Pump                   |
+| GWh     | Gigawatt Hour                  | HP      | Heat Pump                                 |
+| MW      | Megawatt                       | NREL    | National Renewable Energy Laboratory      |
+| PTHP    | Packaged Terminal Heat Pump    | RUT     | Rooftop Unit                              |
+| SF      | Square Feet                    | VRF     | Variable Refrigerant Flow                 |
 
 _Extractor note (not source text): "RUT" is printed as shown; other slides use "RTU" for rooftop unit._
 
@@ -121,18 +121,18 @@ A flow diagram with two horizontal swim lanes feeding two output boxes at right.
 
 **Annual Incremental Increase in HP Stock (1,000 Housing Units)**
 
-| Year | CT | MA | ME | NH | RI | VT | NE |
-| ---- | -- | -- | -- | -- | -- | -- | -- |
-| 2026 | 7 | 33 | 16 | 4 | 3 | 10 | 73 |
-| 2027 | 8 | 38 | 17 | 4 | 3 | 11 | 81 |
-| 2028 | 9 | 44 | 18 | 5 | 4 | 11 | 89 |
-| 2029 | 10 | 49 | 19 | 5 | 4 | 11 | 98 |
-| 2030 | 12 | 56 | 20 | 6 | 5 | 11 | 109 |
-| 2031 | 14 | 63 | 23 | 7 | 6 | 11 | 123 |
-| 2032 | 17 | 66 | 25 | 7 | 7 | 10 | 132 |
-| 2033 | 21 | 68 | 26 | 9 | 8 | 10 | 141 |
-| 2034 | 25 | 69 | 26 | 10 | 10 | 10 | 145 |
-| 2035 | 28 | 75 | 28 | 12 | 11 | 11 | 164 |
+| Year                                | CT      | MA      | ME      | NH     | RI     | VT      | NE        |
+| ----------------------------------- | ------- | ------- | ------- | ------ | ------ | ------- | --------- |
+| 2026                                | 7       | 33      | 16      | 4      | 3      | 10      | 73        |
+| 2027                                | 8       | 38      | 17      | 4      | 3      | 11      | 81        |
+| 2028                                | 9       | 44      | 18      | 5      | 4      | 11      | 89        |
+| 2029                                | 10      | 49      | 19      | 5      | 4      | 11      | 98        |
+| 2030                                | 12      | 56      | 20      | 6      | 5      | 11      | 109       |
+| 2031                                | 14      | 63      | 23      | 7      | 6      | 11      | 123       |
+| 2032                                | 17      | 66      | 25      | 7      | 7      | 10      | 132       |
+| 2033                                | 21      | 68      | 26      | 9      | 8      | 10      | 141       |
+| 2034                                | 25      | 69      | 26      | 10     | 10     | 10      | 145       |
+| 2035                                | 28      | 75      | 28      | 12     | 11     | 11      | 164       |
 | **Cumulative Adoption (2026-2035)** | **150** | **561** | **217** | **67** | **60** | **106** | **1,161** |
 
 _Extractor note (not source text): The column sums of the printed annual rows differ slightly from the printed "Cumulative Adoption" row for some columns (Connecticut annual values sum to 151 vs. printed 150; NH 69 vs. 67; RI 61 vs. 60; ME 218 vs. 217; NE 1,155 vs. 1,161; MA 561 and VT 106 match). The printed 2034 NE value (145) is also lower than the sum of that row's state values (150). Values are kept exactly as printed; the differences are consistent with rounding in the source but the 2034 NE row is larger than rounding would explain._
@@ -149,18 +149,18 @@ Left side of the slide: a 2-column × 3-row grid of small line charts titled "Cu
 
 **Annual Incremental Increase in HP Stock (1,000 Housing Units)**
 
-| Year | CT | MA | ME | NH | RI | VT | NE |
-| ---- | -- | -- | -- | -- | -- | -- | -- |
-| 2026 | 4 | 9 | 3 | 2 | 1 | 1 | 19 |
-| 2027 | 5 | 11 | 3 | 2 | 1 | 1 | 24 |
-| 2028 | 6 | 14 | 4 | 2 | 2 | 2 | 29 |
-| 2029 | 7 | 18 | 6 | 2 | 2 | 2 | 37 |
-| 2030 | 9 | 23 | 7 | 3 | 2 | 3 | 47 |
-| 2031 | 11 | 29 | 9 | 3 | 3 | 4 | 58 |
-| 2032 | 14 | 35 | 12 | 3 | 4 | 5 | 71 |
-| 2033 | 16 | 42 | 13 | 4 | 4 | 6 | 85 |
-| 2034 | 18 | 51 | 16 | 4 | 5 | 7 | 102 |
-| 2035 | 22 | 60 | 19 | 5 | 6 | 8 | 119 |
+| Year                                | CT      | MA      | ME     | NH     | RI     | VT     | NE      |
+| ----------------------------------- | ------- | ------- | ------ | ------ | ------ | ------ | ------- |
+| 2026                                | 4       | 9       | 3      | 2      | 1      | 1      | 19      |
+| 2027                                | 5       | 11      | 3      | 2      | 1      | 1      | 24      |
+| 2028                                | 6       | 14      | 4      | 2      | 2      | 2      | 29      |
+| 2029                                | 7       | 18      | 6      | 2      | 2      | 2      | 37      |
+| 2030                                | 9       | 23      | 7      | 3      | 2      | 3      | 47      |
+| 2031                                | 11      | 29      | 9      | 3      | 3      | 4      | 58      |
+| 2032                                | 14      | 35      | 12     | 3      | 4      | 5      | 71      |
+| 2033                                | 16      | 42      | 13     | 4      | 4      | 6      | 85      |
+| 2034                                | 18      | 51      | 16     | 4      | 5      | 7      | 102     |
+| 2035                                | 22      | 60      | 19     | 5      | 6      | 8      | 119     |
 | **Cumulative Adoption (2026-2035)** | **112** | **291** | **90** | **29** | **30** | **39** | **592** |
 
 [DIAGRAM DESCRIPTION: Cumulative HP Stock (1000 Housing Units) — residential water heating]
@@ -175,18 +175,18 @@ Left side of the slide: the same layout as slide 8, titled "Cumulative HP Stock 
 
 **Annual Incremental Increase in Floor Space (Million Sq Ft.)**
 
-| Year | CT | MA | ME | NH | RI | VT | NE |
-| ---- | -- | -- | -- | -- | -- | -- | -- |
-| 2026 | 10 | 26 | 6 | 3 | 3 | 1 | 47 |
-| 2027 | 10 | 29 | 6 | 3 | 3 | 1 | 52 |
-| 2028 | 11 | 32 | 7 | 3 | 3 | 2 | 58 |
-| 2029 | 12 | 36 | 8 | 4 | 3 | 2 | 65 |
-| 2030 | 15 | 40 | 8 | 4 | 4 | 2 | 75 |
-| 2031 | 18 | 48 | 10 | 5 | 5 | 3 | 89 |
-| 2032 | 21 | 54 | 12 | 5 | 6 | 3 | 101 |
-| 2033 | 25 | 60 | 13 | 6 | 7 | 4 | 115 |
-| 2034 | 28 | 61 | 13 | 6 | 7 | 5 | 120 |
-| 2035 | 30 | 63 | 13 | 7 | 7 | 5 | 125 |
+| Year                                | CT      | MA      | ME     | NH     | RI     | VT     | NE      |
+| ----------------------------------- | ------- | ------- | ------ | ------ | ------ | ------ | ------- |
+| 2026                                | 10      | 26      | 6      | 3      | 3      | 1      | 47      |
+| 2027                                | 10      | 29      | 6      | 3      | 3      | 1      | 52      |
+| 2028                                | 11      | 32      | 7      | 3      | 3      | 2      | 58      |
+| 2029                                | 12      | 36      | 8      | 4      | 3      | 2      | 65      |
+| 2030                                | 15      | 40      | 8      | 4      | 4      | 2      | 75      |
+| 2031                                | 18      | 48      | 10     | 5      | 5      | 3      | 89      |
+| 2032                                | 21      | 54      | 12     | 5      | 6      | 3      | 101     |
+| 2033                                | 25      | 60      | 13     | 6      | 7      | 4      | 115     |
+| 2034                                | 28      | 61      | 13     | 6      | 7      | 5      | 120     |
+| 2035                                | 30      | 63      | 13     | 7      | 7      | 5      | 125     |
 | **Cumulative Adoption (2026-2035)** | **181** | **449** | **96** | **46** | **48** | **28** | **847** |
 
 [DIAGRAM DESCRIPTION: Cumulative Electrified Floor Space (Million Sq Ft.) — commercial space heating]
@@ -201,18 +201,18 @@ Left side of the slide: six small line panels (CT, MA, ME, NH, RI, VT; x: 2025-2
 
 **Annual Incremental Increase in Floor Space (Million Sq Ft.)**
 
-| Year | CT | MA | ME | NH | RI | VT | NE |
-| ---- | -- | -- | -- | -- | -- | -- | -- |
-| 2026 | 1 | 3 | 1 | <1 | 1 | <1 | 6 |
-| 2027 | 1 | 4 | 1 | <1 | 1 | <1 | 7 |
-| 2028 | 2 | 5 | 1 | 1 | 1 | <1 | 9 |
-| 2029 | 2 | 7 | 1 | 1 | 1 | <1 | 11 |
-| 2030 | 2 | 8 | 1 | 1 | 1 | <1 | 14 |
-| 2031 | 3 | 11 | 2 | 1 | 1 | 1 | 18 |
-| 2032 | 3 | 14 | 3 | 1 | 2 | 1 | 23 |
-| 2033 | 4 | 17 | 3 | 1 | 2 | 1 | 28 |
-| 2034 | 5 | 20 | 4 | 1 | 2 | 1 | 33 |
-| 2035 | 6 | 23 | 4 | 2 | 3 | 1 | 38 |
+| Year                                | CT     | MA      | ME     | NH    | RI     | VT    | NE      |
+| ----------------------------------- | ------ | ------- | ------ | ----- | ------ | ----- | ------- |
+| 2026                                | 1      | 3       | 1      | <1    | 1      | <1    | 6       |
+| 2027                                | 1      | 4       | 1      | <1    | 1      | <1    | 7       |
+| 2028                                | 2      | 5       | 1      | 1     | 1      | <1    | 9       |
+| 2029                                | 2      | 7       | 1      | 1     | 1      | <1    | 11      |
+| 2030                                | 2      | 8       | 1      | 1     | 1      | <1    | 14      |
+| 2031                                | 3      | 11      | 2      | 1     | 1      | 1     | 18      |
+| 2032                                | 3      | 14      | 3      | 1     | 2      | 1     | 23      |
+| 2033                                | 4      | 17      | 3      | 1     | 2      | 1     | 28      |
+| 2034                                | 5      | 20      | 4      | 1     | 2      | 1     | 33      |
+| 2035                                | 6      | 23      | 4      | 2     | 3      | 1     | 38      |
 | **Cumulative Adoption (2026-2035)** | **30** | **111** | **20** | **9** | **13** | **5** | **188** |
 
 [DIAGRAM DESCRIPTION: Cumulative Electrified Floor Space (Million Sq Ft.) — commercial water heating]
@@ -281,25 +281,25 @@ Three numbered light-blue boxes in a row, each with its inputs or assumptions li
 
 _Reference HPs_
 
-| Sector | Pathway | Min. Temp. | Heating Supplied (%) |
-| ------ | ------- | ---------- | -------------------- |
-| Commercial | Trane ACX (Air-to-Water) | 0 | 100 |
-| Commercial | Rheem Renaissance Packaged HP (RTU) | 0 | 81 |
-| Commercial | Lennox Central HP (Ducted Full) | 5 | 100 |
-| Commercial | Lennox Central HP (Ducted Partial) | 5 | 61-74 |
-| Commercial | Mitsubishi M-Series (Ductless Full) | -13 | 100 |
-| Commercial | Daikin DZ6VS (Ductless Partial) | 5 | 63-76 |
-| Commercial | Energy Star rated models (GSHP) | -20 | 100 |
-| Commercial | Rheem Renaissance Packaged HP (RTU – Full) | 0 | 100 |
-| Commercial | Rheem Renaissance Packaged HP (RTU – Partial) | 0 | 81 |
-| Commercial | Mitsubishi M-Series (VRF) | -13 | 100 |
-| Residential | Taco Comfort System M (Air-to-Water) | -5 | 100 |
-| Residential | Lennox Central Heat Pump (Ducted Full) | 5 | 100 |
-| Residential | Lennox Central Heat Pump (Ducted Partial) | 5 | 63-74 |
-| Residential | Mitsubishi M-Series (Ductless Full) | -13 | 100 |
-| Residential | Aikin [sic] DZ6VS (Ductless Partial) | -13 | 65-76 |
-| Residential | Energy Star rated models (GSHP) | -20 | 100 |
-| Residential | ICE-AIR HP (PTHP) | 5 | 81 |
+| Sector      | Pathway                                       | Min. Temp. | Heating Supplied (%) |
+| ----------- | --------------------------------------------- | ---------- | -------------------- |
+| Commercial  | Trane ACX (Air-to-Water)                      | 0          | 100                  |
+| Commercial  | Rheem Renaissance Packaged HP (RTU)           | 0          | 81                   |
+| Commercial  | Lennox Central HP (Ducted Full)               | 5          | 100                  |
+| Commercial  | Lennox Central HP (Ducted Partial)            | 5          | 61-74                |
+| Commercial  | Mitsubishi M-Series (Ductless Full)           | -13        | 100                  |
+| Commercial  | Daikin DZ6VS (Ductless Partial)               | 5          | 63-76                |
+| Commercial  | Energy Star rated models (GSHP)               | -20        | 100                  |
+| Commercial  | Rheem Renaissance Packaged HP (RTU – Full)    | 0          | 100                  |
+| Commercial  | Rheem Renaissance Packaged HP (RTU – Partial) | 0          | 81                   |
+| Commercial  | Mitsubishi M-Series (VRF)                     | -13        | 100                  |
+| Residential | Taco Comfort System M (Air-to-Water)          | -5         | 100                  |
+| Residential | Lennox Central Heat Pump (Ducted Full)        | 5          | 100                  |
+| Residential | Lennox Central Heat Pump (Ducted Partial)     | 5          | 63-74                |
+| Residential | Mitsubishi M-Series (Ductless Full)           | -13        | 100                  |
+| Residential | Aikin [sic] DZ6VS (Ductless Partial)          | -13        | 65-76                |
+| Residential | Energy Star rated models (GSHP)               | -20        | 100                  |
+| Residential | ICE-AIR HP (PTHP)                             | 5          | 81                   |
 
 _Extractor note (not source text): The "Min. Temp." column has no unit printed; the COP charts on this slide use °F for temperature._
 
@@ -434,16 +434,16 @@ _Summer 50/50 Peak Demand by Load Zone_
 
 | Year | CT | ME | NEMA | NH | RI | SEMA | VT | WCMA | ISONE |
 | ---- | -- | -- | ---- | -- | -- | ---- | -- | ---- | ----- |
-| 2026 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 |
-| 2027 | 1 | 1 | 1 | 0 | 1 | 1 | 0 | 1 | 7 |
-| 2028 | 2 | 2 | 2 | 1 | 1 | 2 | 1 | 2 | 13 |
-| 2029 | 4 | 3 | 4 | 1 | 1 | 3 | 1 | 3 | 20 |
-| 2030 | 5 | 4 | 5 | 2 | 2 | 5 | 1 | 5 | 29 |
-| 2031 | 7 | 6 | 8 | 2 | 3 | 6 | 2 | 7 | 41 |
-| 2032 | 9 | 8 | 10 | 3 | 4 | 9 | 3 | 9 | 55 |
-| 2033 | 12 | 11 | 13 | 4 | 5 | 11 | 4 | 12 | 72 |
-| 2034 | 15 | 14 | 17 | 5 | 6 | 15 | 5 | 15 | 92 |
-| 2035 | 19 | 17 | 22 | 6 | 8 | 19 | 6 | 20 | 116 |
+| 2026 | 0  | 0  | 0    | 0  | 0  | 0    | 0  | 0    | 2     |
+| 2027 | 1  | 1  | 1    | 0  | 1  | 1    | 0  | 1    | 7     |
+| 2028 | 2  | 2  | 2    | 1  | 1  | 2    | 1  | 2    | 13    |
+| 2029 | 4  | 3  | 4    | 1  | 1  | 3    | 1  | 3    | 20    |
+| 2030 | 5  | 4  | 5    | 2  | 2  | 5    | 1  | 5    | 29    |
+| 2031 | 7  | 6  | 8    | 2  | 3  | 6    | 2  | 7    | 41    |
+| 2032 | 9  | 8  | 10   | 3  | 4  | 9    | 3  | 9    | 55    |
+| 2033 | 12 | 11 | 13   | 4  | 5  | 11   | 4  | 12   | 72    |
+| 2034 | 15 | 14 | 17   | 5  | 6  | 15   | 5  | 15   | 92    |
+| 2035 | 19 | 17 | 22   | 6  | 8  | 19   | 6  | 20   | 116   |
 
 _Extractor note (not source text): the column order is CT, ME, NEMA, NH, RI, SEMA, VT, WCMA, ISONE, as printed (alphabetical load zones, not the CT, MA, ME... state order of slides 8-11)._
 
@@ -461,18 +461,18 @@ _Winter 50/50 Peak Demand by Load Zone_
 
 **Winter Peak Demand (MW)**
 
-| Year | CT | ME | NEMA | NH | RI | SEMA | VT | WCMA | ISONE |
-| ---- | -- | -- | ---- | -- | -- | ---- | -- | ---- | ----- |
-| 2026 | 35 | 49 | 40 | 15 | 11 | 31 | 18 | 41 | 241 |
-| 2027 | 68 | 99 | 80 | 30 | 23 | 62 | 38 | 81 | 480 |
-| 2028 | 110 | 159 | 131 | 50 | 37 | 101 | 63 | 132 | 783 |
-| 2029 | 161 | 233 | 191 | 75 | 54 | 149 | 96 | 194 | 1,152 |
-| 2030 | 224 | 322 | 264 | 106 | 75 | 206 | 134 | 268 | 1,600 |
-| 2031 | 308 | 425 | 355 | 141 | 103 | 276 | 180 | 360 | 2,149 |
-| 2032 | 411 | 555 | 465 | 184 | 139 | 362 | 237 | 471 | 2,823 |
-| 2033 | 540 | 701 | 600 | 235 | 185 | 465 | 303 | 603 | 3,631 |
-| 2034 | 699 | 864 | 747 | 298 | 235 | 576 | 382 | 748 | 4,550 |
-| 2035 | 874 | 1,037 | 902 | 373 | 290 | 695 | 463 | 899 | 5,533 |
+| Year | CT  | ME    | NEMA | NH  | RI  | SEMA | VT  | WCMA | ISONE |
+| ---- | --- | ----- | ---- | --- | --- | ---- | --- | ---- | ----- |
+| 2026 | 35  | 49    | 40   | 15  | 11  | 31   | 18  | 41   | 241   |
+| 2027 | 68  | 99    | 80   | 30  | 23  | 62   | 38  | 81   | 480   |
+| 2028 | 110 | 159   | 131  | 50  | 37  | 101  | 63  | 132  | 783   |
+| 2029 | 161 | 233   | 191  | 75  | 54  | 149  | 96  | 194  | 1,152 |
+| 2030 | 224 | 322   | 264  | 106 | 75  | 206  | 134 | 268  | 1,600 |
+| 2031 | 308 | 425   | 355  | 141 | 103 | 276  | 180 | 360  | 2,149 |
+| 2032 | 411 | 555   | 465  | 184 | 139 | 362  | 237 | 471  | 2,823 |
+| 2033 | 540 | 701   | 600  | 235 | 185 | 465  | 303 | 603  | 3,631 |
+| 2034 | 699 | 864   | 747  | 298 | 235 | 576  | 382 | 748  | 4,550 |
+| 2035 | 874 | 1,037 | 902  | 373 | 290 | 695  | 463 | 899  | 5,533 |
 
 [DIAGRAM DESCRIPTION: Winter 50/50 HP peak demand by load zone, 2026-2046]
 

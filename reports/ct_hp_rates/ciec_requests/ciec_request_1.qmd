@@ -31,6 +31,7 @@ from ciec_1 import (
     bill_table,
     bounds_table,
     combine_revenue,
+    cumulative_enrollment,
     dollar,
     existing_customers_table,
     group_revenue,
@@ -40,6 +41,7 @@ from ciec_1 import (
     num,
     pct,
     presented_bills,
+    rate_year_residential_customers,
     subclass_weights,
     sum_monthly_rates,
     with_winter_rates,
@@ -83,6 +85,10 @@ EXISTING_CEILING = 109_127
 NEW_FLOOR = [3_460, 3_460, 3_460, 3_460, 3_460]
 NEW_CEILING = [6_272, 7_056, 7_840, 9_408, 10_976]
 YEARS = [2027, 2028, 2029, 2030, 2031]
+# Average bills rendered for Rates 1, 5, and 7, Rate Year ending June 30, 2028.
+rate_year_customers = rate_year_residential_customers()
+floor_enrolled = cumulative_enrollment(EXISTING_FLOOR, NEW_FLOOR, YEARS)
+ceiling_enrolled = cumulative_enrollment(EXISTING_CEILING, NEW_CEILING, YEARS)
 
 _rates_yaml = yaml.safe_load(
     fetch_rdp_file(
@@ -326,7 +332,7 @@ Assumptions:
 
 > Please provide Mr. Velez's estimate of the number of existing heat pump customers who would be automatically enrolled in Rate HP, and identify the source of that estimate [@ciec_Docket260510First_2026].
 
-**Response.** Between **7,928** and **109,127** customers, or 0.65% to 9% of the 1,212,521 residential customers Eversource filed for the Rate Year [@clp_Docket260510Exhibit_2026g].
+**Response.** Between **7,928** and **109,127** customers, or 0.65% to 9% of the `{python} num(rate_year_customers)` residential customers Eversource filed for the Rate Year [@clp_Docket260510Exhibit_2026g].
 
 The direct testimony recommends that the Company auto-enroll every known residential customer who has already installed a heat pump. The customers it treats as readily identifiable are those who previously received a heat pump incentive through EnergizeCT or another state or utility program [@velez_Docket260510Direct_2026, p. 93, lines 7–12]. Customers who installed a heat pump outside those programs would be identified by attestation [@velez_Docket260510Direct_2026, p. 96, lines 9–11].
 
@@ -348,10 +354,76 @@ The direct testimony recommends that the Company auto-enroll every known residen
 | 2031 | 3,460 | 0.29% | 10,976 | 0.91% |
 | Five-year total | 17,300 | 1.43% | 41,552 | 3.43% |
 
+The lines add each year's new customers to the customers already enrolled in CIEC-1(b). The 2026 point is that starting stock. By 2031 it is **`{python} num(floor_enrolled[-1][1])`** on the floor and **`{python} num(ceiling_enrolled[-1][1])`** on the ceiling. The right axis divides the count by the `{python} num(rate_year_customers)` residential customers filed for the Rate Year, the average bills rendered for Rates 1, 5, and 7.
+
+```{python}
+#| echo: false
+#| label: fig-enrollment
+#| fig-cap: "Cumulative customers on Rate HP. The 2026 point is the stock already enrolled. Each later year adds that year's installations. The right axis is the count as a share of Rate Year residential customers."
+#| fig-cap-location: margin
+
+import polars as pl
+from plotnine import (
+    aes,
+    element_blank,
+    geom_line,
+    geom_point,
+    ggplot,
+    labs,
+    scale_color_manual,
+    scale_x_continuous,
+    scale_y_continuous,
+    theme,
+)
+from lib.plotnine import SB_COLORS, theme_switchbox
+from lib.quarto import display_figure
+
+enrollment = pl.DataFrame(
+    {
+        "year": [year for year, _ in floor_enrolled] + [year for year, _ in ceiling_enrolled],
+        "customers": [customers for _, customers in floor_enrolled] + [customers for _, customers in ceiling_enrolled],
+        "bound": ["Floor"] * len(floor_enrolled) + ["Ceiling"] * len(ceiling_enrolled),
+    }
+)
+fig = (
+    ggplot(enrollment, aes("year", "customers", color="bound"))
+    + geom_line(size=1)
+    + geom_point(size=2.5)
+    + scale_color_manual(
+        values={"Floor": SB_COLORS["sky"], "Ceiling": SB_COLORS["midnight"]},
+        limits=["Floor", "Ceiling"],
+    )
+    + scale_x_continuous(breaks=enrollment["year"].unique().sort().to_list())
+    + scale_y_continuous(limits=(0, None), expand=(0, 0, 0.08, 0), labels=lambda breaks: [f"{b:,.0f}" for b in breaks])
+    + labs(title="Customers on Rate HP", x="", y="Customers")
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4.5), legend_position="top", legend_title=element_blank())
+).draw()
+
+_left = fig.axes[0]
+_tick = _left.get_yticklabels()[0]
+_right = _left.twinx()
+_right.set_ylim(_left.get_ylim())
+_right.set_yticks(_left.get_yticks())
+_right.set_yticklabels([f"{tick / rate_year_customers * 100:.1f}%" for tick in _left.get_yticks()])
+_right.set_ylabel("Share of residential customers")
+_right.yaxis.label.set_fontname(_left.yaxis.label.get_fontname())
+_right.yaxis.label.set_fontsize(_left.yaxis.label.get_fontsize())
+_right.yaxis.label.set_color(_left.yaxis.label.get_color())
+for _label in _right.get_yticklabels():
+    _label.set_fontname(_tick.get_fontname())
+    _label.set_fontsize(_tick.get_fontsize())
+    _label.set_color(_tick.get_color())
+_right.tick_params(axis="y", colors=_tick.get_color())
+_right.spines["right"].set_color(_left.spines["bottom"].get_edgecolor())
+
+display_figure(fig)
+```
+
 Assumptions:
 
 - **Timing.** The first five years are 2027 through 2031. The Rate Year begins July 1, 2027 [@clp_Docket260510Exhibit_2026f]. The Company's 2026 installations are counted with existing customers in CIEC-1(b).
 - **Enrollment.** Every customer who installs a heat pump enrolls, and none opt out.
 - **Floor.** The Company's own forecast of 3,460 residential heat pump installations through its Conservation and Load Management program in 2027, held flat. It excludes installations outside the program [@clp_Docket260510Response_2026f; @clp_Docket260510Response_2026g].
 - **Ceiling.** ISO New England's forecast of Connecticut residential heat pump additions (8, 9, 10, 12 and 14 thousand housing units in 2027 through 2031) [@isone_Final2026Heat_2026], multiplied by Eversource's 78.4% share of the households served by Eversource and United Illuminating in Table 6 of the RASS report [@nmr_R2202ResidentialAppliance_2025].
-- **Shares** use the 1,212,521 Rate Year residential customers.
+- **Shares** use the `{python} num(rate_year_customers)` Rate Year residential customers, the average bills rendered for Rates 1, 5, and 7 in Exhibit CLP-RATES-2.10 [@clp_Docket260510Exhibit_2026g].

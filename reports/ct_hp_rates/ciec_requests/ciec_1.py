@@ -10,7 +10,9 @@ enrollment bounds and a non-HP per-kWh increase.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any, cast
 
 import polars as pl
@@ -278,6 +280,53 @@ def existing_customers_table(floor: Mapping[str, float], ceiling: Mapping[str, f
             row("Ceiling", ceiling),
         ]
     )
+
+
+_EXHIBIT_RATES_2 = (
+    Path(__file__).resolve().parents[3] / "context/sources/ct_hp_rates/exhibit_clp_rates_2_residential.md"
+)
+_RATE_YEAR_HEADING = "### 4b. Page 2"
+_BILL_ROW = re.compile(r"^\|\s*(1|5|7)\s*\|[^|]*\|\s*([0-9,]+(?:\.\d+)?)", re.MULTILINE)
+
+
+def rate_year_residential_customers(path: Path | None = None) -> int:
+    """Residential customers Eversource filed for the Rate Year.
+
+    Sum of the average number of bills rendered for Rates 1, 5, and 7 on
+    Exhibit CLP-RATES-2.10, page 2 (Rate Year ending June 30, 2028), rounded
+    to a customer. Rate 5's Rate Year cell is unreadable in the workbook, so
+    the extract carries the Test Year count forward, as the exhibit notes.
+    """
+    text = (path or _EXHIBIT_RATES_2).read_text()
+    try:
+        section = text.split(_RATE_YEAR_HEADING, 1)[1].split("\n## ", 1)[0]
+    except IndexError as exc:
+        raise RuntimeError(f"{path or _EXHIBIT_RATES_2} has no {_RATE_YEAR_HEADING!r} section") from exc
+    bills = {rate: float(count.replace(",", "")) for rate, count in _BILL_ROW.findall(section)}
+    missing = {"1", "5", "7"} - bills.keys()
+    if missing:
+        raise RuntimeError(f"Rate Year bill counts missing for rates {sorted(missing)}")
+    return round(sum(bills.values()))
+
+
+def cumulative_enrollment(
+    existing: int,
+    annual_new: Sequence[int],
+    years: Sequence[int],
+) -> list[tuple[int, int]]:
+    """Cumulative customers from the year before the first rate year through the last.
+
+    The first point is the stock already enrolled. Each later point adds that
+    year's installations and keeps everyone already enrolled.
+    """
+    if len(years) == 0:
+        raise ValueError("years is empty")
+    stock = existing
+    points = [(int(years[0]) - 1, stock)]
+    for year, new in zip(years, annual_new, strict=True):
+        stock += new
+        points.append((int(year), stock))
+    return points
 
 
 def makeup_table(rows: Sequence[tuple[str, str, Mapping[str, float]]]) -> str:

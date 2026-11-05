@@ -24,6 +24,8 @@ makeup_increase = ciec_1.makeup_increase
 new_enrollment_path = ciec_1.new_enrollment_path
 sum_monthly_rates = ciec_1.sum_monthly_rates
 with_winter_rates = ciec_1.with_winter_rates
+rate_year_residential_customers = ciec_1.rate_year_residential_customers
+cumulative_enrollment = ciec_1.cumulative_enrollment
 
 
 def test_sum_monthly_rates_adds_each_month() -> None:
@@ -52,6 +54,15 @@ def test_new_enrollment_accumulates_and_adds_to_existing() -> None:
     assert existing["distribution_5"] == 100
     assert [row["customers"] for row in path] == [2, 4]
     assert [row["distribution"] for row in combined] == [24, 28]
+
+
+def test_rate_year_customers_sum_rates_1_5_and_7() -> None:
+    assert rate_year_residential_customers() == 1_212_521
+
+
+def test_cumulative_enrollment_keeps_the_starting_stock() -> None:
+    points = cumulative_enrollment(7_928, [3_460, 3_460], [2027, 2028])
+    assert points == [(2026, 7_928), (2027, 11_388), (2028, 14_848)]
 
 
 def test_makeup_increase_is_the_annual_adder_over_delivery_only() -> None:

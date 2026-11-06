@@ -12,6 +12,23 @@ Read when the helper script fails or you need to debug a fetch.
 | Case jacket    | `https://webpscxb.pscmaryland.com/DMS/case/{case_no}`                    |
 | PSC uploads    | `https://psc.maryland.gov/wp-content/uploads/`                           |
 
+## Cloudflare bot protection (checked Nov 2026 from EC2 us-west-2)
+
+| Request (browser User-Agent)             | https | http |
+| ---------------------------------------- | ----- | ---- |
+| `/DMS/maillogsearch` (GET and POST)      | 403   | 200  |
+| `/DMS/maillogpdfview/MailLog/0/0/{ML}/0` | 403   | 403  |
+| `/DMS/case/{case_no}`                    | 403   | 403  |
+| `/DMS/pdfview/...~pdf` (resolved path)   | 403   | 200  |
+
+The 403 is a Cloudflare managed challenge (`cf-mitigated: challenge`, "Just a
+moment..." page with a Turnstile checkbox). A non-browser User-Agent gets 403
+on http too. Headless Playwright Chrome (system `google-chrome`) gets the
+checkbox and is re-challenged after clicking. Path case, trailing slashes,
+query strings, POST, and Referer/Sec-Fetch headers do not avoid it. The Cursor
+IDE browser passes immediately, so read the viewer's `btnOpenPdfFile`
+`data-pdf` there and download over http with `--pdf-path` (see SKILL.md).
+
 ## Technique 1: MailLog search (step by step)
 
 ### Why two hops?
@@ -65,7 +82,7 @@ from urllib.parse import urljoin
 
 import requests
 
-BASE = "https://webpscxb.pscmaryland.com"
+BASE = "http://webpscxb.pscmaryland.com"  # https is Cloudflare-challenged
 ML = "218934"
 OUT = Path("context/sources/md_hp_rates/mdpuc_218934_pc44_rate_design_final_report.pdf")
 
@@ -85,7 +102,10 @@ def hidden_fields(html: str) -> dict[str, str]:
     return out
 
 with requests.Session() as s:
-    s.headers["User-Agent"] = "Mozilla/5.0 (compatible; Switchbox/1.0)"
+    s.headers["User-Agent"] = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+    )
     page = s.get(f"{BASE}/DMS/maillogsearch", timeout=60)
     page.raise_for_status()
 
@@ -117,12 +137,12 @@ with requests.Session() as s:
 ```bash
 # Step 1: save search page, extract __VIEWSTATE manually or with a script
 curl -sS -c /tmp/psc_cookies.txt \
-  'https://webpscxb.pscmaryland.com/DMS/maillogsearch' \
+  -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/130.0.0.0 Safari/537.36' 'http://webpscxb.pscmaryland.com/DMS/maillogsearch' \
   -o /tmp/maillogsearch.html
 
 # Step 2: POST search (substitute VIEWSTATE values from step 1)
 curl -sS -b /tmp/psc_cookies.txt -c /tmp/psc_cookies.txt \
-  -X POST 'https://webpscxb.pscmaryland.com/DMS/maillogsearch' \
+  -X POST -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/130.0.0.0 Safari/537.36' 'http://webpscxb.pscmaryland.com/DMS/maillogsearch' \
   --data-urlencode 'ctl00$ContentPlaceHolder1$txtSearch=218934' \
   --data-urlencode 'ctl00$ContentPlaceHolder1$btnSearch=Search' \
   --data-urlencode '__VIEWSTATE=PASTE_HERE' \

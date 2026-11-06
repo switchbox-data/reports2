@@ -79,6 +79,21 @@ def test_td_increase_table_divides_rounded_revenue_by_kwh() -> None:
         ciec.td_increase_table(enrolled, 1.2, 0.34, 0.0, td_rate=0.10, full_rate=0.20)
 
 
+def test_cohort_revenue_bills_later_enrollees_at_the_second_rate() -> None:
+    enrolled = [(2026, 10), (2027, 25)]
+    rows = ciec.cohort_revenue_rows(enrolled, 1.2, 0.34, 2.0, 0.5)
+    assert rows[0]["existing_customers"] == 10
+    assert rows[0]["new_customers"] == 0
+    assert rows[0]["distribution"] == 12  # round(10 * 1.2)
+    assert rows[0]["transmission"] == 3  # round(10 * 0.34)
+    assert rows[1]["new_customers"] == 15
+    assert rows[1]["distribution"] == 42  # 12 + round(15 * 2.0)
+    assert rows[1]["transmission"] == 11  # 3 + round(15 * 0.5)
+    assert rows[1]["total"] == 53
+    with pytest.raises(ValueError, match="starting stock"):
+        ciec.cohort_revenue_rows([(2026, 10), (2027, 4)], 1.0, 1.0, 1.0, 1.0)
+
+
 def test_per_kwh_increases_rejects_nonpositive_sales() -> None:
     with pytest.raises(ValueError, match="kwh must be positive"):
         ciec.per_kwh_increases([{"year": 2027, "distribution": 1.0, "transmission": 1.0}], 0.0)

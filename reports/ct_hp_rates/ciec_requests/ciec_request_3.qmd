@@ -27,11 +27,11 @@ from pathlib import Path
 
 import polars as pl
 from ciec_1 import (
-    group_revenue,
+    cohort_increase_table,
+    cohort_reduction_table,
+    cohort_revenue_rows,
     num,
     subclass_weights,
-    td_increase_table,
-    td_reduction_table,
 )
 from lib.rates_analysis.rate_case_funcs import load_billing_kwh_annual
 
@@ -39,12 +39,14 @@ from lib.rates_analysis.rate_case_funcs import load_billing_kwh_annual
 _ciec_1_path = Path("../cache/ciec_1_vars.pkl")
 assert _ciec_1_path.exists(), f"Missing {_ciec_1_path} — render ciec_request_1.qmd first"
 ciec_1 = pickle.loads(_ciec_1_path.read_bytes())
-for _key in ("floor_enrolled", "ceiling_enrolled", "rate1_gen_monthly"):
+for _key in ("floor_enrolled", "ceiling_enrolled", "rate1_gen_monthly", "new_dec_dist", "new_dec_tx"):
     if _key not in ciec_1:
         raise RuntimeError(f"Missing {_key} in {_ciec_1_path} — render ciec_request_1.qmd first")
 
 dec_dist = float(ciec_1["dec_dist"])
 dec_tx = float(ciec_1["dec_tx"])
+new_dec_dist = float(ciec_1["new_dec_dist"])
+new_dec_tx = float(ciec_1["new_dec_tx"])
 years = [int(year) for year in ciec_1["years"]]
 rate_year_customers = int(ciec_1["rate_year_customers"])
 rate1_dist = float(ciec_1["rate1_dist"])
@@ -83,8 +85,8 @@ if abs(rate1_delivery - (rate1_dist + rate1_tx)) > 1e-12:
 def _matches_revenue(enrolled: list[tuple[int, int]], revenue: list[dict[str, float]]) -> None:
     if [year for year, _customers in enrolled[1:]] != years:
         raise RuntimeError(f"enrolled years {[year for year, _ in enrolled[1:]]} != {years}")
-    for (year, customers), row in zip(enrolled[1:], revenue, strict=True):
-        rev = group_revenue(customers, dec_dist, dec_tx)
+    expected = cohort_revenue_rows(enrolled, dec_dist, dec_tx, new_dec_dist, new_dec_tx)[1:]
+    for (year, customers), row, rev in zip(enrolled[1:], revenue, expected, strict=True):
         if int(row["year"]) != year or int(row["customers"]) != customers:
             raise RuntimeError(f"{year} enrollment does not match the CIEC-1 revenue row")
         if row["distribution"] != rev["distribution"] or row["transmission"] != rev["transmission"]:
@@ -116,20 +118,28 @@ if nonhp_n != _nonhp_weights.height or nonhp_kwh <= 0:
     raise RuntimeError(f"Non-HP kWh join kept {nonhp_n} of {_nonhp_weights.height} buildings")
 stock_customers = hp_customers + nonhp_customers
 
-floor_reduction_table_md = td_reduction_table(floor_enrolled, dec_dist, dec_tx)
-ceiling_reduction_table_md = td_reduction_table(ceiling_enrolled, dec_dist, dec_tx)
-floor_increase_table_md = td_increase_table(
+floor_reduction_table_md = cohort_reduction_table(
+    floor_enrolled, dec_dist, dec_tx, new_dec_dist, new_dec_tx
+)
+ceiling_reduction_table_md = cohort_reduction_table(
+    ceiling_enrolled, dec_dist, dec_tx, new_dec_dist, new_dec_tx
+)
+floor_increase_table_md = cohort_increase_table(
     floor_enrolled,
     dec_dist,
     dec_tx,
+    new_dec_dist,
+    new_dec_tx,
     nonhp_kwh,
     td_rate=rate1_delivery,
     full_rate=rate1_full,
 )
-ceiling_increase_table_md = td_increase_table(
+ceiling_increase_table_md = cohort_increase_table(
     ceiling_enrolled,
     dec_dist,
     dec_tx,
+    new_dec_dist,
+    new_dec_tx,
     nonhp_kwh,
     td_rate=rate1_delivery,
     full_rate=rate1_full,
@@ -199,7 +209,7 @@ Assumptions:
 - **Timing.** Five rate years, beginning July 1 of 2027 through 2031, as in CIEC-1. Each figure is a full year of bills. A calendar year's installations are assigned to the rate year that begins that July. The 2026 installations are in the existing-customer count, and that count is included in every rate year.
 - **Who pays.** Residential customers who are not on Rate HP, in proportion to annual kWh. The per-kWh result is the increase in the Rate 1 distribution charge and the Rate 1 transmission charge. Customers on Rate HP are outside that sales total.
 - **Enrollment.** Floor and ceiling counts from CIEC-1(b) and CIEC-1(c). Every heat pump installer enrolls, none opt out, and enrollment persists.
-- **Load.** The per-customer reduction is held constant, and so is non-heat-pump sales. The reduction grows only because enrollment grows. Sales are weighted ResStock grid consumption on CAIRO's billing basis, the same load source as the heat pump bill in CIEC-1(a). The sales base is every Eversource home without a heat pump, so homes on Rate 5 and Rate 7 are included with Rate 1. ResStock weights that stock to `{python} num(stock_customers)` homes. The Rate Year bill count for Rates 1, 5, and 7 is `{python} num(rate_year_customers)`.
+- **Load.** Customers already enrolled are billed at the baseline heat-pump decrease from CIEC-1(a). Customers who enroll in 2027 through 2031 are billed at the post-upgrade decrease. Each decrease is held constant, and so are non-heat-pump sales. The reduction grows because enrollment grows. Sales are weighted ResStock grid consumption on CAIRO's billing basis for Eversource homes without a heat pump in the baseline. Homes on Rate 5 and Rate 7 are included with Rate 1. ResStock weights that stock to `{python} num(stock_customers)` homes. The Rate Year bill count for Rates 1, 5, and 7 is `{python} num(rate_year_customers)`.
 - **Charges.** The increase is volumetric and the same in every month. The distribution charge includes riders. The riders match Rate 1, so the revenue reduction itself is the winter energy charge. Rate HP's winter rates stay at the levels used in CIEC-1(a). % of T&D uses today's distribution and transmission charges. % of T&D and generation adds the average of the twelve monthly generation rates. The customer charge stays at Rate 1.
 
 ```{python}
@@ -212,12 +222,11 @@ from build_ciec_3_workbook import DRIVE_NAME, RevenueRow, build_workbook
 
 def _revenue_rows(enrolled: list[tuple[int, int]]) -> list[RevenueRow]:
     rows: list[RevenueRow] = []
-    for i, (year, customers) in enumerate(enrolled):
-        rev = group_revenue(customers, dec_dist, dec_tx)
+    for i, rev in enumerate(cohort_revenue_rows(enrolled, dec_dist, dec_tx, new_dec_dist, new_dec_tx)):
         rows.append(
             RevenueRow(
-                "Existing" if i == 0 else str(year),
-                customers,
+                "Existing" if i == 0 else str(int(rev["year"])),
+                int(rev["customers"]),
                 rev["distribution"],
                 rev["transmission"],
             )

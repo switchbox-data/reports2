@@ -9,20 +9,27 @@ Sheets
 README
     What the file is and how the sheets connect.
 hp_home_8760
-    One row per hour for the representative Eversource heat-pump home.
-    ``kWh`` is the sample-weight weighted average. Month and season are
-    formulas on the timestamp.
+    One row per hour for the customer who already has a heat pump.
+    ``kWh`` is the sample-weight weighted average of upgrade 00. Month and
+    season are formulas on the timestamp.
+new_home_8760
+    One row per hour for a customer who enrolls later. ``kWh`` is the
+    weighted average of upgrade 02 loads for upgrade 00 homes without a
+    heat pump.
 rates
     Rate 1 components, the Rate HP winter rates, and the monthly schedule
-    the bill uses.
+    both bills use.
 bill_change
-    Monthly bills for that home. kWh is a sum of the hourly sheet. The
-    decrease is the cent-rounded annual bill.
+    Monthly bills for the existing-customer home. The decrease is the
+    cent-rounded annual bill.
+bill_change_new
+    The same bill for the later-enrollee home.
 enrollment
     Floor and ceiling. The bounds are formulas on the stated inputs.
     Cumulative counts keep everyone already enrolled.
 revenue
-    Customers times the one-customer decrease, rounded to the dollar.
+    The starting stock times the existing-home decrease, plus later
+    enrollees times the new-home decrease. Each product rounds to the dollar.
 """
 
 from __future__ import annotations
@@ -144,11 +151,14 @@ class EnrollmentInputs:
 @dataclass
 class Case:
     hourly: pl.DataFrame
+    hourly_new: pl.DataFrame
     charges: list[Charge]
     winter_dist: float
     winter_tx: float
     n_buildings: int
+    n_buildings_new: int
     total_weight: float
+    total_weight_new: float
     enrollment: EnrollmentInputs
 
 
@@ -232,11 +242,20 @@ def _write_readme(wb: Workbook) -> None:
         ("", False),
         ("hp_home_8760", True),
         (
-            "8,760 hours for the representative Eversource home that already has a heat pump. "
+            "8,760 hours for the Eversource home that already has a heat pump. "
             "It is the sample-weight weighted average of ResStock upgrade 00 buildings assigned to "
             "Eversource with has_hp true: each hour is the sum of kWh times weight, divided by the sum of weight. "
             "kWh is CAIRO grid consumption. Timestamps are UTC, and the month follows that timestamp, "
             "which is how the bill is calculated. Month and season are formulas.",
+            False,
+        ),
+        ("", False),
+        ("new_home_8760", True),
+        (
+            "8,760 hours for a customer who enrolls after installing a heat pump. "
+            "The buildings are the upgrade 00 Eversource homes with has_hp false. "
+            "Each hour is their upgrade 02 load, weighted by the upgrade 00 sample weight. "
+            "Month and season are formulas.",
             False,
         ),
         ("", False),
@@ -245,7 +264,8 @@ def _write_readme(wb: Workbook) -> None:
             "Rate 1 is the proposed Rate Year schedule. Distribution is core delivery plus the riders. "
             "Rate HP replaces distribution and transmission in January, February, March, November, and "
             "December. The winter rates include the riders. Summer, generation, and the customer charge "
-            "stay at Rate 1. The winter rates are the unrounded rates behind Table 4 of the direct testimony.",
+            "stay at Rate 1. The winter rates are the unrounded rates behind Table 4 of the direct testimony. "
+            "Both homes use this schedule.",
             False,
         ),
         ("", False),
@@ -253,7 +273,15 @@ def _write_readme(wb: Workbook) -> None:
         (
             "Each month's kWh is the sum of that month on hp_home_8760. Volumetric charges are kWh times "
             "the rate on the rates sheet. The customer charge is dollars per month. The comparison rounds "
-            "each annual component to the cent, then adds those cents. The decrease is Rate 1 minus Rate HP.",
+            "each annual component to the cent, then adds those cents. The decrease is Rate 1 minus Rate HP. "
+            "This is the bill for customers already enrolled.",
+            False,
+        ),
+        ("", False),
+        ("bill_change_new", True),
+        (
+            "The same bill, with kWh from new_home_8760. This is the bill for a customer who enrolls "
+            "in 2027 through 2031.",
             False,
         ),
         ("", False),
@@ -271,9 +299,10 @@ def _write_readme(wb: Workbook) -> None:
         ("revenue", True),
         (
             "Each row is a full year for the customers enrolled by that year. "
-            "Distribution and transmission are the customer count times the one-customer decrease, "
-            "each rounded to the dollar. T&D adds those two dollars. The existing customers are included "
-            "in every later year.",
+            "The starting stock is billed at the existing-home decrease. Customers added after that "
+            "are billed at the new-home decrease. Each group's distribution and transmission round to "
+            "the dollar, then the two groups are added. T&D adds those dollars. The existing customers "
+            "are included in every later year.",
             False,
         ),
     ]
@@ -284,17 +313,23 @@ def _write_readme(wb: Workbook) -> None:
             cell.font = TITLE_FONT if row == 1 else HEADER_FONT
     ws.column_dimensions["A"].width = 120
     ws.row_dimensions[1].height = 22
-    for row in (8, 11, 14, 17, 20):
+    for row in (8, 11, 14, 17, 20, 23, 26):
         ws.row_dimensions[row].height = 48
 
 
-def _write_hourly(wb: Workbook, case: Case) -> int:
-    ws = wb.create_sheet("hp_home_8760")
+def _write_hourly(
+    wb: Workbook,
+    sheet_name: str,
+    hourly: pl.DataFrame,
+    n_buildings: int,
+    total_weight: float,
+) -> int:
+    ws = wb.create_sheet(sheet_name)
     headers = ["timestamp_utc", "kwh", "month", "season"]
     for col, header in enumerate(headers, start=1):
         _put(ws, 1, col, header, bold=True)
-    timestamps = [_naive_utc(ts) for ts in case.hourly["timestamp"].to_list()]
-    kwh = [float(value) for value in case.hourly["kwh"].to_list()]
+    timestamps = [_naive_utc(ts) for ts in hourly["timestamp"].to_list()]
+    kwh = [float(value) for value in hourly["kwh"].to_list()]
     for i, (ts, hour_kwh) in enumerate(zip(timestamps, kwh, strict=True), start=2):
         _put(ws, i, 1, ts, fmt=FMT_TIME)
         _put(ws, i, 2, hour_kwh, fmt=FMT_KWH)
@@ -312,9 +347,9 @@ def _write_hourly(wb: Workbook, case: Case) -> int:
         )
     last = 1 + len(timestamps)
     _put(ws, 1, 6, "buildings", bold=True)
-    _put(ws, 1, 7, case.n_buildings, fmt=FMT_COUNT)
+    _put(ws, 1, 7, n_buildings, fmt=FMT_COUNT)
     _put(ws, 2, 6, "sample weight", bold=True)
-    _put(ws, 2, 7, case.total_weight, fmt="#,##0.00")
+    _put(ws, 2, 7, total_weight, fmt="#,##0.00")
     _put(ws, 3, 6, "annual kWh", bold=True)
     _put(ws, 3, 7, f"=SUM(B2:B{last})", fmt=FMT_KWH)
     _put(ws, 4, 6, "winter kWh", bold=True)
@@ -461,14 +496,22 @@ def _write_rates(wb: Workbook, case: Case) -> dict[str, int]:
     return {"first_billed": first_billed, "cents_row": cents_row}
 
 
-def _write_bills(wb: Workbook, rates_rows: dict[str, int], last_hour: int) -> dict[str, str]:
-    ws = wb.create_sheet("bill_change")
-    _heading(ws, 1, "Bill change, Rate 1 to Rate HP")
+def _write_bills(
+    wb: Workbook,
+    sheet_name: str,
+    hourly_sheet: str,
+    rates_rows: dict[str, int],
+    last_hour: int,
+    *,
+    title: str,
+) -> dict[str, str]:
+    ws = wb.create_sheet(sheet_name)
+    _heading(ws, 1, title)
     _put(
         ws,
         2,
         1,
-        "kWh sums hp_home_8760. Volumetric charges multiply that kWh by the rates sheet. "
+        f"kWh sums {hourly_sheet}. Volumetric charges multiply that kWh by the rates sheet. "
         "The customer charge does not. The table below rounds the annual total of each component to the cent.",
         wrap=True,
     )
@@ -500,7 +543,7 @@ def _write_bills(wb: Workbook, rates_rows: dict[str, int], last_hour: int) -> di
         row = first + i
         rate_row = first_billed + i
         _put(ws, row, 1, f"=rates!A{rate_row}")
-        kwh_formula = f"=SUMIFS(hp_home_8760!$B$2:$B${last_hour},hp_home_8760!$C$2:$C${last_hour},A{row})"
+        kwh_formula = f"=SUMIFS({hourly_sheet}!$B$2:$B${last_hour},{hourly_sheet}!$C$2:$C${last_hour},A{row})"
         _put(ws, row, 2, kwh_formula, fmt=FMT_KWH)
         _put(ws, row, 3, f"=rates!C{rate_row}", fmt=FMT_DOLLAR)
         _put(ws, row, 4, f"=B{row}*rates!D{rate_row}", fmt=FMT_DOLLAR)
@@ -557,7 +600,7 @@ def _write_bills(wb: Workbook, rates_rows: dict[str, int], last_hour: int) -> di
         )
 
     _put(ws, total_row + 2, 1, "Winter kWh")
-    _put(ws, total_row + 2, 2, "=hp_home_8760!G4", fmt=FMT_KWH)
+    _put(ws, total_row + 2, 2, f"={hourly_sheet}!G4", fmt=FMT_KWH)
     _put(ws, total_row + 3, 1, "Annual kWh")
     _put(ws, total_row + 3, 2, f"=B{annual}", fmt=FMT_KWH)
 
@@ -686,7 +729,12 @@ def _write_enrollment(wb: Workbook, enrollment: EnrollmentInputs) -> dict[str, s
     }
 
 
-def _write_revenue(wb: Workbook, decrease: dict[str, str], enrollment: dict[str, str]) -> None:
+def _write_revenue(
+    wb: Workbook,
+    decrease: dict[str, str],
+    decrease_new: dict[str, str],
+    enrollment: dict[str, str],
+) -> None:
     ws = wb.create_sheet("revenue")
     _heading(ws, 1, "Revenue reduction")
     _put(
@@ -694,17 +742,22 @@ def _write_revenue(wb: Workbook, decrease: dict[str, str], enrollment: dict[str,
         2,
         1,
         "A full year of bills for the customers enrolled by that year. "
-        "Distribution and transmission each round to the dollar. T&D is their sum. "
+        "The starting stock uses the existing-home decrease. Later enrollees use the new-home decrease. "
+        "Each group's distribution and transmission round to the dollar, then the groups are added. "
         "The existing customers are included in 2027 through 2031.",
         wrap=True,
     )
     ws.merge_cells("A2:E2")
-    ws.row_dimensions[2].height = 32
+    ws.row_dimensions[2].height = 48
 
-    _put(ws, 4, 1, "One customer, distribution decrease")
+    _put(ws, 4, 1, "Existing customer, distribution decrease")
     _put(ws, 4, 2, f"=bill_change!{decrease['dec_dist']}", fmt=FMT_DOLLAR)
-    _put(ws, 5, 1, "One customer, transmission decrease")
+    _put(ws, 5, 1, "Existing customer, transmission decrease")
     _put(ws, 5, 2, f"=bill_change!{decrease['dec_tx']}", fmt=FMT_DOLLAR)
+    _put(ws, 6, 1, "New customer, distribution decrease")
+    _put(ws, 6, 2, f"=bill_change_new!{decrease_new['dec_dist']}", fmt=FMT_DOLLAR)
+    _put(ws, 7, 1, "New customer, transmission decrease")
+    _put(ws, 7, 2, f"=bill_change_new!{decrease_new['dec_tx']}", fmt=FMT_DOLLAR)
 
     headers = [
         "Year",
@@ -718,25 +771,53 @@ def _write_revenue(wb: Workbook, decrease: dict[str, str], enrollment: dict[str,
         "Ceiling T&D",
     ]
     for col, header in enumerate(headers, start=1):
-        _put(ws, 7, col, header, bold=True)
-        ws.cell(7, col).alignment = Alignment(wrap_text=True, vertical="bottom")
-    ws.row_dimensions[7].height = 32
+        _put(ws, 9, col, header, bold=True)
+        ws.cell(9, col).alignment = Alignment(wrap_text=True, vertical="bottom")
+    ws.row_dimensions[9].height = 32
 
     existing_row = int(enrollment["existing_row"])
     n_rows = int(enrollment["n_rows"])
+    floor_existing = f"enrollment!$B${existing_row}"
+    ceiling_existing = f"enrollment!$C${existing_row}"
     for i in range(n_rows):
-        row = 8 + i
+        row = 10 + i
         src = existing_row + i
+        floor_new = f"(B{row}-{floor_existing})"
+        ceiling_new = f"(F{row}-{ceiling_existing})"
         _put(ws, row, 1, f"=enrollment!A{src}", fmt="0")
         _put(ws, row, 2, f"=enrollment!B{src}", fmt=FMT_COUNT)
-        _put(ws, row, 3, f"=ROUND(B{row}*$B$4,0)", fmt=FMT_REVENUE)
-        _put(ws, row, 4, f"=ROUND(B{row}*$B$5,0)", fmt=FMT_REVENUE)
+        _put(
+            ws,
+            row,
+            3,
+            f"=ROUND({floor_existing}*$B$4,0)+ROUND({floor_new}*$B$6,0)",
+            fmt=FMT_REVENUE,
+        )
+        _put(
+            ws,
+            row,
+            4,
+            f"=ROUND({floor_existing}*$B$5,0)+ROUND({floor_new}*$B$7,0)",
+            fmt=FMT_REVENUE,
+        )
         _put(ws, row, 5, f"=C{row}+D{row}", fmt=FMT_REVENUE)
         _put(ws, row, 6, f"=enrollment!C{src}", fmt=FMT_COUNT)
-        _put(ws, row, 7, f"=ROUND(F{row}*$B$4,0)", fmt=FMT_REVENUE)
-        _put(ws, row, 8, f"=ROUND(F{row}*$B$5,0)", fmt=FMT_REVENUE)
+        _put(
+            ws,
+            row,
+            7,
+            f"=ROUND({ceiling_existing}*$B$4,0)+ROUND({ceiling_new}*$B$6,0)",
+            fmt=FMT_REVENUE,
+        )
+        _put(
+            ws,
+            row,
+            8,
+            f"=ROUND({ceiling_existing}*$B$5,0)+ROUND({ceiling_new}*$B$7,0)",
+            fmt=FMT_REVENUE,
+        )
         _put(ws, row, 9, f"=G{row}+H{row}", fmt=FMT_REVENUE)
-    _put(ws, 8, 10, "2026 is the existing stock.", wrap=True)
+    _put(ws, 10, 10, "2026 is the existing stock. Later rows add the new-customer bill.", wrap=True)
 
     ws.freeze_panes = "A8"
     ws.column_dimensions["A"].width = 46
@@ -748,11 +829,27 @@ def _write_revenue(wb: Workbook, decrease: dict[str, str], enrollment: dict[str,
 def build_workbook(case: Case) -> Workbook:
     wb = Workbook()
     _write_readme(wb)
-    last_hour = _write_hourly(wb, case)
+    last_hour = _write_hourly(wb, "hp_home_8760", case.hourly, case.n_buildings, case.total_weight)
+    last_hour_new = _write_hourly(wb, "new_home_8760", case.hourly_new, case.n_buildings_new, case.total_weight_new)
     rate_rows = _write_rates(wb, case)
-    decrease = _write_bills(wb, rate_rows, last_hour)
+    decrease = _write_bills(
+        wb,
+        "bill_change",
+        "hp_home_8760",
+        rate_rows,
+        last_hour,
+        title="Bill change, customers who already have a heat pump",
+    )
+    decrease_new = _write_bills(
+        wb,
+        "bill_change_new",
+        "new_home_8760",
+        rate_rows,
+        last_hour_new,
+        title="Bill change, customers who enroll after installing a heat pump",
+    )
     enrollment = _write_enrollment(wb, case.enrollment)
-    _write_revenue(wb, decrease, enrollment)
+    _write_revenue(wb, decrease, decrease_new, enrollment)
     return wb
 
 

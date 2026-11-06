@@ -382,6 +382,133 @@ def td_increase_table(
     )
 
 
+def cohort_revenue_rows(
+    enrolled: Sequence[tuple[int, int]],
+    existing_dec_dist: float,
+    existing_dec_tx: float,
+    new_dec_dist: float,
+    new_dec_tx: float,
+) -> list[dict[str, float]]:
+    """Annual revenue reduction when the starting stock and later enrollees have different bills.
+
+    The first point in ``enrolled`` is the stock already enrolled. Those customers
+    are billed at the existing-home decrease. Customers added after that point are
+    billed at the new-home decrease. Each group's dollars are rounded, then added.
+    Later rows keep the starting stock.
+    """
+    if len(enrolled) == 0:
+        raise ValueError("enrolled is empty")
+    existing_n = int(enrolled[0][1])
+    rows: list[dict[str, float]] = []
+    for year, customers in enrolled:
+        customers_n = int(customers)
+        new_n = customers_n - existing_n
+        if new_n < 0:
+            raise ValueError(f"{year} has {customers_n} customers, below the starting stock of {existing_n}")
+        existing = group_revenue(existing_n, existing_dec_dist, existing_dec_tx)
+        new = group_revenue(new_n, new_dec_dist, new_dec_tx)
+        dist = existing["distribution"] + new["distribution"]
+        tx = existing["transmission"] + new["transmission"]
+        rows.append(
+            {
+                "year": float(year),
+                "customers": float(customers_n),
+                "existing_customers": float(existing_n),
+                "new_customers": float(new_n),
+                "distribution": dist,
+                "transmission": tx,
+                "total": dist + tx,
+            }
+        )
+    return rows
+
+
+def cohort_reduction_table(
+    enrolled: Sequence[tuple[int, int]],
+    existing_dec_dist: float,
+    existing_dec_tx: float,
+    new_dec_dist: float,
+    new_dec_tx: float,
+    *,
+    first_label: str = "Existing",
+) -> str:
+    """Annual revenue reduction for one enrollment path billed on two loads.
+
+    The first row is the starting stock at the existing-home decrease. Each later
+    row keeps that stock and adds the new-home decrease for customers enrolled
+    since the first point. T&D is distribution plus transmission.
+    """
+    body: list[str] = []
+    for i, row in enumerate(
+        cohort_revenue_rows(enrolled, existing_dec_dist, existing_dec_tx, new_dec_dist, new_dec_tx)
+    ):
+        label = first_label if i == 0 else str(int(row["year"]))
+        cells = [
+            label,
+            f"{int(row['customers']):,}",
+            money(row["distribution"], 0),
+            money(row["transmission"], 0),
+            money(row["total"], 0),
+        ]
+        body.append("| " + " | ".join(cells) + " |")
+    return "\n".join(
+        [
+            "| Year | Customers | Distribution | Transmission | T&D |",
+            "| --- | ---: | ---: | ---: | ---: |",
+            *body,
+        ]
+    )
+
+
+def cohort_increase_table(
+    enrolled: Sequence[tuple[int, int]],
+    existing_dec_dist: float,
+    existing_dec_tx: float,
+    new_dec_dist: float,
+    new_dec_tx: float,
+    kwh: float,
+    *,
+    td_rate: float,
+    full_rate: float,
+    first_label: str = "Existing",
+    accuracy: int = 4,
+) -> str:
+    """Per-kWh charge increase when the starting stock and later enrollees have different bills.
+
+    Revenue comes from :func:`cohort_revenue_rows`. Each row divides that revenue
+    by ``kwh``. The last two columns are the T&D increase as a share of ``td_rate``
+    and of ``full_rate``.
+    """
+    if kwh <= 0:
+        raise ValueError(f"kwh must be positive, got {kwh}")
+    if td_rate <= 0 or full_rate <= 0:
+        raise ValueError(f"rates must be positive, got td_rate={td_rate} and full_rate={full_rate}")
+    body: list[str] = []
+    for i, row in enumerate(
+        cohort_revenue_rows(enrolled, existing_dec_dist, existing_dec_tx, new_dec_dist, new_dec_tx)
+    ):
+        label = first_label if i == 0 else str(int(row["year"]))
+        dist = row["distribution"] / kwh
+        tx = row["transmission"] / kwh
+        td = dist + tx
+        cells = [
+            label,
+            f"{dist * 100:,.{accuracy}f}",
+            f"{tx * 100:,.{accuracy}f}",
+            f"{td * 100:,.{accuracy}f}",
+            pct(td / td_rate),
+            pct(td / full_rate),
+        ]
+        body.append("| " + " | ".join(cells) + " |")
+    return "\n".join(
+        [
+            "| Year | Distribution (¢/kWh) | Transmission (¢/kWh) | T&D (¢/kWh) | % of T&D | % of T&D and generation |",
+            "| --- | ---: | ---: | ---: | ---: | ---: |",
+            *body,
+        ]
+    )
+
+
 def td_reduction_table(
     enrolled: Sequence[tuple[int, int]],
     dec_dist: float,

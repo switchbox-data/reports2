@@ -40,13 +40,17 @@ def test_workbook_derives_bills_and_revenue_from_the_hourly_load() -> None:
             "kwh": [1.0] * 12,
         }
     )
+    hourly_new = hourly.with_columns(pl.col("kwh") * 2)
     case = builder.Case(
         hourly=hourly,
+        hourly_new=hourly_new,
         charges=charges,
         winter_dist=0.03,
         winter_tx=0.01,
         n_buildings=2,
+        n_buildings_new=4,
         total_weight=2.0,
+        total_weight_new=5.0,
         enrollment=builder.EnrollmentInputs(
             rebates_since_2023=4_400,
             clm_2026=3_528,
@@ -60,17 +64,28 @@ def test_workbook_derives_bills_and_revenue_from_the_hourly_load() -> None:
     )
     wb = builder.build_workbook(case)
 
-    assert wb.sheetnames == ["README", "hp_home_8760", "rates", "bill_change", "enrollment", "revenue"]
+    assert wb.sheetnames == [
+        "README",
+        "hp_home_8760",
+        "new_home_8760",
+        "rates",
+        "bill_change",
+        "bill_change_new",
+        "enrollment",
+        "revenue",
+    ]
     hourly_ws = wb["hp_home_8760"]
     assert hourly_ws["C2"].value.startswith("=CHOOSE(MONTH(A2)")
     assert "Winter" in hourly_ws["D2"].value
     assert hourly_ws["B2"].value == 1.0
+    assert wb["new_home_8760"]["B2"].value == 2.0
 
     bill = wb["bill_change"]
     assert bill["B5"].value.startswith("=SUMIFS(hp_home_8760!")
     assert bill["D5"].value.startswith("=B5*rates!")
     assert bill["C5"].value.startswith("=rates!C")
     assert bill["D22"].value.startswith("=B22-C22")
+    assert wb["bill_change_new"]["B5"].value.startswith("=SUMIFS(new_home_8760!")
 
     enrollment = wb["enrollment"]
     assert enrollment["B5"].value == 4_400
@@ -82,6 +97,7 @@ def test_workbook_derives_bills_and_revenue_from_the_hourly_load() -> None:
 
     revenue = wb["revenue"]
     assert revenue["B4"].value == "=bill_change!$D$22"
-    assert revenue["C8"].value == "=ROUND(B8*$B$4,0)"
-    assert revenue["E8"].value == "=C8+D8"
-    assert revenue["B8"].value == "=enrollment!B24"
+    assert revenue["B6"].value == "=bill_change_new!$D$22"
+    assert revenue["C10"].value == "=ROUND(enrollment!$B$24*$B$4,0)+ROUND((B10-enrollment!$B$24)*$B$6,0)"
+    assert revenue["E10"].value == "=C10+D10"
+    assert revenue["B10"].value == "=enrollment!B24"

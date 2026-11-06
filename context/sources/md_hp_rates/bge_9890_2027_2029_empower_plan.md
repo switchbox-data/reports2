@@ -1,17 +1,23 @@
 ---
 source_file: ml333852_bge_2027_2029_empower_plan.pdf
 citekey: bge_Docket9890Baltimore_2026
-docket: "Case No. 9890 (printed on the transmittal letter and filing cover: In The Matter of The 2027-2029 EmPOWER Maryland Program)"
+zotero_item: "QTFTHWQ5"
+public_url: https://drive.google.com/file/d/1ab972PT7Ie9bN894M2hTbFM__f_N6oQl/view
+short_url: https://pub.switch.box/bge_Docket9890Baltimore_2026
+source_url: https://webpscxb.pscmaryland.com/DMS/maillogpdfview/MailLog/0/0/333852/0
+md5: "2f52257c6d65cf4daec176952b2a1373"
+validated: 2026-11-05
+docket: '9890'
 utility: Baltimore Gas and Electric Company
 filing_date: 2026-09-01
 filer: Baltimore Gas and Electric Company (BGE)
 document_type: filing
 pages_total: 160
-extraction_scope: "partial: transcribes the transmittal letter and the Joint Exelon Utilities affordability comments (PDF pp. 1-7); the filing cover and table of contents (pp. 8-10); the executive summary, legislation overview and goal scenarios (pp. 11-23); the portfolio-design, stakeholder and implementation sections (pp. 27-35, 39, 43); the full residential portfolio, including Efficient Products (HPWH), Residential HVAC, Home Upgrade, New Construction and Smart Energy Manager (pp. 44-72); the non-residential portfolio overview (p. 73); the end of Section 9 and the table of attachments (p. 120); the heat pump, HVAC and electrification rows of executive-summary tables ES-1 to ES-5 for the High and Low Scenarios (pp. 121-140); the residential and commercial incentive matrices (pp. 141-145); the Attachment 3 input assumptions (p. 146); and the residential and gas EmPOWER surcharge bill-impact sheets (pp. 152-156). Not transcribed: Work Group outcomes and goal alignment (pp. 24-26), multifamily navigation (pp. 36-38), DRIVE Act and UBCA coordination (pp. 40-42), the non-residential, demand response and pilot sections (pp. 74-119), the avoided-cost sheets (pp. 147-151) and the I&C charge sheets (pp. 157-160)."
+extraction_scope: partial
 citation_scheme: page
-context: "BGE's filing, made in compliance with Maryland PSC Order No. 92522, of its proposed 2027-2029 (Cycle 7) EmPOWER Maryland energy efficiency, electrification and demand response portfolio, in a High and a Low GHG-goal scenario. It is preceded by a joint Exelon utilities comment piece on near-term affordability and the Utility RELIEF Act."
-contents: "Transmittal letter; Summary Recommendations on affordability; BGE Case 9890 filing (executive summary, legislation, portfolio design, residential, non-residential, demand response, pilots); Attachment 1 executive-summary tables (High and Low Scenarios); Attachment 2 incentive matrices; Attachment 3 avoided-cost inputs; Attachments 4-6 EmPOWER surcharge and bill-impact sheets."
-why_here: "What BGE proposes for residential heat pump, HPWH, central AC and midstream HVAC incentives, electrification budgets and participation under the High and Low Scenarios, and how BGE frames the EmPOWER surcharge and bill affordability around them."
+context: BGE's Cycle 7 EmPOWER Maryland program filing for 2027-2029, filed September 1, 2026 in Case No. 9890 in compliance with Order 92522. It proposes a High and a Low greenhouse-gas scenario and is bundled with the joint Exelon utilities' affordability comments.
+contents: Transmittal letter, affordability comments, the residential portfolio including HVAC and heat pump water heaters, the heat pump and HVAC rows of the High and Low scenario tables, and the residential surcharge sheets. Avoided-cost sheets and commercial programs are marked not transcribed.
+why_here: BGE's proposed 2027-2029 heat pump incentives, HVAC budgets, and electrification participation under the High and Low scenarios.
 ---
 
 # Baltimore Gas and Electric Company: 2027-2029 EmPOWER Maryland Program Filing (Case No. 9890)

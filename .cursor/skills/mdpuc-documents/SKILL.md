@@ -61,6 +61,25 @@ uv run python .cursor/skills/mdpuc-documents/scripts/fetch_maillog_pdf.py \
   -o context/sources/md_hp_rates/mdpuc_<ML>_<slug>.pdf
 ```
 
+**Cloudflare (datacenter IPs, e.g. EC2):** Every `https://` request to the
+DMS host gets a Cloudflare Turnstile challenge (HTTP 403, `cf-mitigated:
+challenge`); headless Chrome does not pass it. Over `http://` with a browser
+User-Agent, `maillogsearch` and the final `pdfview` download pass, but the
+`maillogpdfview` viewer and case jacket are still challenged. The script uses
+http and stops with instructions when the viewer is challenged:
+
+1. Open `https://webpscxb.pscmaryland.com/DMS/maillogpdfview/MailLog/0/0/<ML>/0`
+   in a real browser. The Cursor IDE browser works (it runs on your own
+   machine), and its `Runtime.evaluate` can read
+   `document.querySelector('.btnOpenPdfFile').getAttribute('data-pdf')`.
+2. Rerun the script with `--pdf-path '<that data-pdf>'`. A filing with several
+   attachments has one `btnOpenPdfFile` per file; run once per file.
+
+Newer filings' paths use the uploaded filename
+(`.../DMS%6032%601573%60/Johnston_BGE%202025%20Mid-Year...~pdf`), not a
+`<ML>_D#######` ID, so the path cannot be guessed. A wrong path returns a
+~4 KB HTML error page with HTTP 200.
+
 **Workflow (if scripting manually):**
 
 1. GET `maillogsearch` → extract `__VIEWSTATE`, `__VIEWSTATEGENERATOR`

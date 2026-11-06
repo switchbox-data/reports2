@@ -1,0 +1,159 @@
+---
+title: "Responses to Connecticut Industrial Energy Consumers, CIEC-6"
+subtitle: "Docket No. 26-05-10"
+author: "Conservation Law Foundation and Sierra Club"
+date: 2026-11-06
+bibliography: ../../references.yaml
+csl: ../../chicago-author-date-switchbox.csl
+reference-location: margin
+citation-location: document
+execute:
+  warning: false
+  message: false
+format:
+  html:
+    theme: ../../.style/switchbox.scss
+    page-layout: article
+    toc: false
+---
+
+```{python}
+#| echo: false
+
+from __future__ import annotations
+
+import pickle
+from pathlib import Path
+
+import polars as pl
+from ciec_1 import (
+    annual_bill_increase_stats,
+    autoenrolled_bill_table,
+    cents,
+    dollar,
+    group_revenue,
+    num,
+    subclass_weights,
+)
+from lib.rates_analysis.rate_case_funcs import load_billing_kwh_annual
+
+# Same revenue reduction and non-heat-pump sales as CIEC-3(c). The bill impact
+# is that response's per-kWh increase times each home's annual kWh.
+_ciec_1_path = Path("../cache/ciec_1_vars.pkl")
+assert _ciec_1_path.exists(), f"Missing {_ciec_1_path} — render ciec_request_1.qmd first"
+ciec_1 = pickle.loads(_ciec_1_path.read_bytes())
+for _key in ("floor_enrolled", "ceiling_enrolled", "dec_dist", "dec_tx"):
+    if _key not in ciec_1:
+        raise RuntimeError(f"Missing {_key} in {_ciec_1_path} — render ciec_request_1.qmd first")
+
+dec_dist = float(ciec_1["dec_dist"])
+dec_tx = float(ciec_1["dec_tx"])
+floor_enrolled = [(int(year), int(customers)) for year, customers in ciec_1["floor_enrolled"]]
+ceiling_enrolled = [(int(year), int(customers)) for year, customers in ciec_1["ceiling_enrolled"]]
+floor_existing = int(floor_enrolled[0][1])
+ceiling_existing = int(ceiling_enrolled[0][1])
+if floor_existing != int(ciec_1["floor_revenue"][0]["existing_customers"]):
+    raise RuntimeError("floor existing customers do not match the CIEC-1 revenue row")
+if ceiling_existing != int(ciec_1["ceiling_revenue"][0]["existing_customers"]):
+    raise RuntimeError("ceiling existing customers do not match the CIEC-1 revenue row")
+
+_nonhp_weights = subclass_weights(
+    ciec_1["release"], ciec_1["state"], ciec_1["utility"], ciec_1["upgrade"], has_hp=False
+)
+_nonhp_annual = load_billing_kwh_annual(ciec_1["state"], ciec_1["utility"], ciec_1["batch"], ciec_1["segment"])
+_nonhp_id = _nonhp_annual.select("bldg_id").head(1).collect()["bldg_id"].dtype
+_nonhp_weights = _nonhp_weights.with_columns(pl.col("bldg_id").cast(_nonhp_id))
+nonhp_buildings = (
+    _nonhp_annual.join(_nonhp_weights.lazy().select("bldg_id", "weight"), on="bldg_id", how="inner")
+    .select("bldg_id", "weight", pl.col("annual_kwh_grid").alias("annual_kwh"))
+    .collect()
+    .sort("bldg_id")
+)
+nonhp_n = nonhp_buildings.height
+nonhp_customers = float(nonhp_buildings["weight"].sum())
+nonhp_kwh = float((nonhp_buildings["annual_kwh"] * nonhp_buildings["weight"]).sum())
+if nonhp_n != _nonhp_weights.height or nonhp_kwh <= 0:
+    raise RuntimeError(f"Non-HP kWh join kept {nonhp_n} of {_nonhp_weights.height} buildings")
+
+
+def _bound(customers: int) -> dict[str, float]:
+    """Per-kWh charge and the weighted bill-increase distribution."""
+    rev = group_revenue(customers, dec_dist, dec_tx)
+    per_kwh = (rev["distribution"] + rev["transmission"]) / nonhp_kwh
+    stats = annual_bill_increase_stats(nonhp_buildings, per_kwh)
+    mean_customers = (rev["distribution"] + rev["transmission"]) / nonhp_customers
+    if abs(stats["mean"] - mean_customers) > 1e-6:
+        raise RuntimeError(f"{customers} mean bill is not the revenue reduction per customer")
+    return {"per_kwh": per_kwh, **stats}
+
+
+floor = _bound(floor_existing)
+ceiling = _bound(ceiling_existing)
+floor_per_kwh = floor["per_kwh"]
+floor_mean = floor["mean"]
+floor_median = floor["median"]
+ceiling_per_kwh = ceiling["per_kwh"]
+ceiling_mean = ceiling["mean"]
+ceiling_median = ceiling["median"]
+bill_table_md = autoenrolled_bill_table(floor_existing, ceiling_existing, dec_dist, dec_tx, nonhp_buildings)
+```
+
+**Witness:** Juan-Pablo Velez\
+**Request from:** Connecticut Industrial Energy Consumers\
+**Date issued:** October 29, 2026
+
+## CIEC-6(c)
+
+### Question
+
+Please provide Mr. Velez's estimate of the bill impact of Rate HP on (i) residential customers who do not take service under Rate HP and (ii) non-residential customers, including those taking service under Rate 39 and Rate 57 [@ciec_Docket260510First_2026].
+
+### Response
+
+Non-residential customers would see no bill change. That includes customers on Rate 39 and Rate 57. Their bill impact is **`{python} dollar(0, 0)`**. If Rate HP left the Company short of its revenue requirement, that shortfall would be recovered from residential customers who do not take Rate HP, including customers on Rate 1, Rate 5, and Rate 7.
+
+CIEC-3(c) estimates the increase in the Rate 1 distribution and transmission charges that would recover this shortfall. This response applies those charges to each residential customer's annual electricity use and reports the resulting bill. The source of the shortfall is limited to customers the Company already counts on Rate 1 who then move to Rate HP. The revenue requirement was set on the expectation that those customers would pay Rate 1. The direct testimony recommends auto-enrolling existing heat pump customers, so their bills would fall below the Rate 1 amount the Company planned to collect. A customer who installs a heat pump later and takes Rate HP does not create that shortfall. Rate HP is calibrated so that a new heat pump customer pays the embedded-cost revenue requirement and, on top of that, the additional transmission and distribution marginal cost of the heat pump. Revenue from those new customers would cover the revenue requirement, so it is not recovered from other residential customers here.
+
+The annual bill increase for a residential customer who does not take Rate HP is the Rate 1 distribution charge increase plus the Rate 1 transmission charge increase, in dollars per kWh, times the customer's annual kWh. The customer charge and the generation charge stay at Rate 1. At the floor, that charge increase is **`{python} cents(floor_per_kwh)`** per kWh. At the ceiling it is **`{python} cents(ceiling_per_kwh)`** per kWh. Both are the T&D increases from CIEC-3(c).
+
+The table below shows a summary of the bill increase for the population of residential customers who do not take Rate HP using the simulated ResStock electricity consumption results. It covers the same range of existing customers as CIEC-3(c). The floor and the ceiling are the existing-customer bounds in CIEC-1(b). The rows between them are 20, 40, 60, and 80 percent of the way from the floor to the ceiling, with the customer count rounded to the customer.
+
+```{python}
+#| echo: false
+#| output: asis
+
+print(bill_table_md)
+```
+
+At the floor, **`{python} num(floor_existing)`** existing heat pump customers would move to Rate HP. The average residential customer who does not take Rate HP would pay **`{python} dollar(floor_mean, 2)`** more per year, or **`{python} dollar(floor_mean / 12, 2)`** per month. The median is **`{python} dollar(floor_median, 2)`**.
+
+At the ceiling, **`{python} num(ceiling_existing)`** existing customers would move to Rate HP. The average bill increase is **`{python} dollar(ceiling_mean, 2)`** a year, or **`{python} dollar(ceiling_mean / 12, 2)`** per month. The median is **`{python} dollar(ceiling_median, 2)`**.
+
+Assumptions:
+
+- **What is recovered.** Only the revenue the Company would no longer collect from customers with heat pumps today who move from Rate 1 to Rate HP. Customers who install a heat pump in 2027 through 2031 and take the calibrated Rate HP are outside this recovery.
+- **Who pays.** Residential customers who are not on Rate HP, in proportion to annual kWh. The result is an increase in the annual distribution and transmission bill. Non-residential customers, including customers on Rate 39 and Rate 57, are outside that recovery. Their bill impact is zero.
+- **Bill.** The annual increase is the Rate 1 distribution charge increase plus the Rate 1 transmission charge increase, each in dollars per kWh, times annual grid kWh. The customer charge and the generation charge stay at Rate 1.
+- **Enrollment.** Floor and ceiling counts of existing customers from CIEC-1(b). Every identified heat pump customer is auto-enrolled, none opt out, and enrollment persists.
+- **Load.** Load data are simulated results from ResStock. The revenue reduction is calculated from the ResStock load of heat pump customers, and the total kWh of customers without a heat pump also comes from ResStock.
+
+```{python}
+#| echo: false
+#| output: false
+
+from build_ciec_1a_workbook import DRIVE_FOLDER_ID, upload_xlsx
+from build_ciec_6_workbook import DRIVE_NAME, RevenueRow, build_workbook
+
+
+def _existing_row(customers: int) -> RevenueRow:
+    rev = group_revenue(customers, dec_dist, dec_tx)
+    return RevenueRow("Existing", customers, rev["distribution"], rev["transmission"])
+
+
+_wb = build_workbook(_existing_row(floor_existing), _existing_row(ceiling_existing), nonhp_buildings)
+_xlsx_path = Path("../cache") / DRIVE_NAME
+_wb.save(_xlsx_path)
+_link = upload_xlsx(_xlsx_path, DRIVE_FOLDER_ID, DRIVE_NAME)
+_xlsx_path.unlink()
+print(f"Uploaded {DRIVE_NAME}: {_link}")
+```

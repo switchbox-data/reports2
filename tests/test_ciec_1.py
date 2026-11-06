@@ -130,3 +130,41 @@ def test_autoenrolled_tables_use_only_the_existing_decrease() -> None:
 def test_per_kwh_increases_rejects_nonpositive_sales() -> None:
     with pytest.raises(ValueError, match="kwh must be positive"):
         ciec.per_kwh_increases([{"year": 2027, "distribution": 1.0, "transmission": 1.0}], 0.0)
+
+
+def test_annual_bill_increase_stats_weights_kwh_times_the_charge() -> None:
+    import polars as pl
+
+    buildings = pl.DataFrame({"weight": [1.0, 1.0], "annual_kwh": [1000.0, 3000.0]})
+    stats = ciec.annual_bill_increase_stats(buildings, 0.004)
+    assert stats["mean"] == pytest.approx(8)
+    assert stats["median"] == pytest.approx(4)
+    assert stats["p25"] == pytest.approx(4)
+    assert stats["p75"] == pytest.approx(12)
+    assert stats["mean"] == pytest.approx(0.004 * 2000)
+
+    zeros = ciec.annual_bill_increase_stats(buildings, 0.0)
+    assert zeros["mean"] == 0
+    assert zeros["median"] == 0
+    with pytest.raises(ValueError, match="non-negative"):
+        ciec.annual_bill_increase_stats(buildings, -0.01)
+    with pytest.raises(ValueError, match="empty"):
+        ciec.annual_bill_increase_stats(buildings.clear(), 0.01)
+    with pytest.raises(ValueError, match="annual_kwh"):
+        ciec.annual_bill_increase_stats(buildings.drop("annual_kwh"), 0.01)
+
+
+def test_autoenrolled_bill_table_applies_the_existing_decrease_to_each_home() -> None:
+    import polars as pl
+
+    buildings = pl.DataFrame({"bldg_id": [1, 2], "weight": [1.0, 1.0], "annual_kwh": [1000.0, 3000.0]})
+    table = ciec.autoenrolled_bill_table(10, 25, 1.2, 0.4, buildings)
+    assert "| Share of the range | Customers | Mean | 25th | Median | 75th |" in table
+    # round(10 * 1.2) + round(10 * 0.4) = 16, over 4,000 kWh. Bills are $4 and $12.
+    assert "| Floor | 10 | \\$8.00 | \\$4.00 | \\$4.00 | \\$12.00 |" in table
+    # 13 customers: round(15.6) + round(5.2) = 21. Bills are $5.25 and $15.75.
+    assert "| 20% | 13 | \\$10.50 | \\$5.25 | \\$5.25 | \\$15.75 |" in table
+    # 25 customers: 30 + 10 = 40. Bills are $10 and $30.
+    assert "| Ceiling | 25 | \\$20.00 | \\$10.00 | \\$10.00 | \\$30.00 |" in table
+    with pytest.raises(ValueError, match="kwh must be positive"):
+        ciec.autoenrolled_bill_table(10, 25, 1.2, 0.4, pl.DataFrame({"weight": [1.0], "annual_kwh": [0.0]}))

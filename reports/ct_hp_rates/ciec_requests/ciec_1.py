@@ -5,7 +5,8 @@ The weighted monthly load and the monthly bill calculation already live in
 ``lib.format.pct``. The functions here are the CIEC-1 steps those modules do
 not cover: folding Rate 1 charges, applying the winter Rate HP rates, selecting
 a heat-pump subclass, and scaling one customer's revenue reduction to the
-enrollment bounds and a non-HP per-kWh increase.
+enrollment bounds, a non-HP per-kWh increase, and the annual bill increase
+that charge produces.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ import polars as pl
 
 from lib.format import pct as format_pct
 from lib.rates_analysis.hh_summary_funcs import resstock_metadata_path, scan_utility_bldg_ids
-from lib.rates_analysis.rate_case_funcs import monthly_bill_from_profile
+from lib.rates_analysis.rate_case_funcs import monthly_bill_from_profile, weighted_mean, weighted_quantile
 
 RateSpec = dict[str, Any]
 
@@ -600,6 +601,82 @@ def autoenrolled_increase_table(
     return "\n".join(
         [
             "| Share of the range | Distribution (¢/kWh) | Transmission (¢/kWh) | T&D (¢/kWh) | % of T&D | % of T&D and generation |",
+            "| --- | ---: | ---: | ---: | ---: | ---: |",
+            *[line(label, customers) for label, customers in enrollment_range(floor_customers, ceiling_customers)],
+        ]
+    )
+
+
+def _usage(buildings: pl.DataFrame) -> pl.DataFrame:
+    """``annual_kwh`` and ``weight`` for the bill-increase stats, or an error naming what is wrong."""
+    missing = [name for name in ("annual_kwh", "weight") if name not in buildings.columns]
+    if missing:
+        raise ValueError(f"buildings is missing {missing}")
+    if buildings.height == 0:
+        raise ValueError("buildings is empty")
+    usage = buildings.select("annual_kwh", "weight")
+    if usage["weight"].null_count() or usage["annual_kwh"].null_count():
+        raise ValueError("weight or annual_kwh has nulls")
+    weight = float(usage["weight"].sum())
+    if weight <= 0:
+        raise ValueError(f"weight must be positive, got {weight}")
+    return usage
+
+
+def annual_bill_increase_stats(buildings: pl.DataFrame, dollars_per_kwh: float) -> dict[str, float]:
+    """Weighted mean and percentiles of ``annual_kwh * dollars_per_kwh``.
+
+    The mean is that charge times weighted-mean consumption. When
+    ``dollars_per_kwh`` is a revenue reduction divided by weighted kWh, the
+    mean is that revenue divided by the number of customers. Keys are
+    ``mean``, ``p25``, ``median``, and ``p75``.
+    """
+    if dollars_per_kwh < 0:
+        raise ValueError(f"dollars_per_kwh must be non-negative, got {dollars_per_kwh}")
+    usage = _usage(buildings)
+    bills = usage.select((pl.col("annual_kwh") * dollars_per_kwh).alias("bill"), "weight")
+    return {
+        "mean": weighted_mean(bills, "bill"),
+        "p25": weighted_quantile(bills, "bill", 0.25),
+        "median": weighted_quantile(bills, "bill", 0.50),
+        "p75": weighted_quantile(bills, "bill", 0.75),
+    }
+
+
+def autoenrolled_bill_table(
+    floor_customers: int,
+    ceiling_customers: int,
+    dec_dist: float,
+    dec_tx: float,
+    buildings: pl.DataFrame,
+) -> str:
+    """Weighted annual bill increase that recovers only the auto-enrolled revenue reduction.
+
+    Rows are :func:`enrollment_range`. Each row divides :func:`group_revenue`
+    by the weighted kWh in ``buildings`` and multiplies that per-kWh charge by
+    each home's ``annual_kwh``. The mean and the percentiles use ``weight``.
+    """
+    usage = _usage(buildings)
+    kwh = float((usage["annual_kwh"] * usage["weight"]).sum())
+    if kwh <= 0:
+        raise ValueError(f"kwh must be positive, got {kwh}")
+
+    def line(label: str, customers: int) -> str:
+        rev = group_revenue(customers, dec_dist, dec_tx)
+        stats = annual_bill_increase_stats(buildings, (rev["distribution"] + rev["transmission"]) / kwh)
+        cells = [
+            label,
+            f"{customers:,}",
+            money(stats["mean"], 2),
+            money(stats["p25"], 2),
+            money(stats["median"], 2),
+            money(stats["p75"], 2),
+        ]
+        return "| " + " | ".join(cells) + " |"
+
+    return "\n".join(
+        [
+            "| Share of the range | Customers | Mean | 25th | Median | 75th |",
             "| --- | ---: | ---: | ---: | ---: | ---: |",
             *[line(label, customers) for label, customers in enrollment_range(floor_customers, ceiling_customers)],
         ]

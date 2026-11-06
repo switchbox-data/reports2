@@ -509,6 +509,103 @@ def cohort_increase_table(
     )
 
 
+def enrollment_range(floor_customers: int, ceiling_customers: int) -> list[tuple[str, int]]:
+    """Customer counts from the floor to the ceiling in steps of 20 percent.
+
+    Zero is the floor and 100 percent is the ceiling. Each step in between is that
+    share of the distance from the floor to the ceiling, rounded to a customer.
+    """
+    if ceiling_customers < floor_customers:
+        raise ValueError(f"ceiling {ceiling_customers} is below floor {floor_customers}")
+    span = ceiling_customers - floor_customers
+    rows: list[tuple[str, int]] = []
+    for share in (0.0, 0.2, 0.4, 0.6, 0.8, 1.0):
+        customers = round(floor_customers + share * span)
+        label = "Floor" if share == 0 else "Ceiling" if share == 1 else f"{share:.0%}"
+        rows.append((label, customers))
+    return rows
+
+
+def autoenrolled_reduction_table(
+    floor_customers: int,
+    ceiling_customers: int,
+    dec_dist: float,
+    dec_tx: float,
+) -> str:
+    """Annual revenue reduction for the auto-enrolled stock, from the floor to the ceiling.
+
+    Rows are :func:`enrollment_range`. Every row uses the existing-home decrease.
+    Customers who install a heat pump later are not included. T&D is distribution
+    plus transmission.
+    """
+
+    def line(label: str, customers: int) -> str:
+        rev = group_revenue(customers, dec_dist, dec_tx)
+        cells = [
+            label,
+            f"{customers:,}",
+            money(rev["distribution"], 0),
+            money(rev["transmission"], 0),
+            money(rev["distribution"] + rev["transmission"], 0),
+        ]
+        return "| " + " | ".join(cells) + " |"
+
+    return "\n".join(
+        [
+            "| Share of the range | Customers | Distribution | Transmission | T&D |",
+            "| --- | ---: | ---: | ---: | ---: |",
+            *[line(label, customers) for label, customers in enrollment_range(floor_customers, ceiling_customers)],
+        ]
+    )
+
+
+def autoenrolled_increase_table(
+    floor_customers: int,
+    ceiling_customers: int,
+    dec_dist: float,
+    dec_tx: float,
+    kwh: float,
+    *,
+    td_rate: float,
+    full_rate: float,
+    accuracy: int = 4,
+) -> str:
+    """Per-kWh charge increase that recovers only the auto-enrolled revenue reduction.
+
+    Rows are :func:`enrollment_range`. Each row divides :func:`group_revenue` for
+    that customer count by ``kwh``. Distribution, transmission, and T&D are ¢/kWh.
+    The last two columns are the T&D increase as a share of ``td_rate`` and of
+    ``full_rate``. ``full_rate`` is distribution plus transmission plus generation.
+    """
+    if kwh <= 0:
+        raise ValueError(f"kwh must be positive, got {kwh}")
+    if td_rate <= 0 or full_rate <= 0:
+        raise ValueError(f"rates must be positive, got td_rate={td_rate} and full_rate={full_rate}")
+
+    def line(label: str, customers: int) -> str:
+        rev = group_revenue(customers, dec_dist, dec_tx)
+        dist = rev["distribution"] / kwh
+        tx = rev["transmission"] / kwh
+        td = dist + tx
+        cells = [
+            label,
+            f"{dist * 100:,.{accuracy}f}",
+            f"{tx * 100:,.{accuracy}f}",
+            f"{td * 100:,.{accuracy}f}",
+            pct(td / td_rate),
+            pct(td / full_rate),
+        ]
+        return "| " + " | ".join(cells) + " |"
+
+    return "\n".join(
+        [
+            "| Share of the range | Distribution (¢/kWh) | Transmission (¢/kWh) | T&D (¢/kWh) | % of T&D | % of T&D and generation |",
+            "| --- | ---: | ---: | ---: | ---: | ---: |",
+            *[line(label, customers) for label, customers in enrollment_range(floor_customers, ceiling_customers)],
+        ]
+    )
+
+
 def td_reduction_table(
     enrolled: Sequence[tuple[int, int]],
     dec_dist: float,

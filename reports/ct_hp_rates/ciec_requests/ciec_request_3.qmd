@@ -27,9 +27,10 @@ from pathlib import Path
 
 import polars as pl
 from ciec_1 import (
-    cohort_increase_table,
-    cohort_reduction_table,
+    autoenrolled_increase_table,
+    autoenrolled_reduction_table,
     cohort_revenue_rows,
+    group_revenue,
     num,
     subclass_weights,
 )
@@ -80,6 +81,8 @@ rate1_gen_label = f"{rate1_gen * 100:.3f}"
 rate1_full_label = f"{rate1_full * 100:.3f}"
 if abs(rate1_delivery - (rate1_dist + rate1_tx)) > 1e-12:
     raise RuntimeError("delivery rate is not distribution plus transmission")
+if abs(rate1_full - (rate1_dist + rate1_tx + rate1_gen)) > 1e-12:
+    raise RuntimeError("volumetric rate is not distribution plus transmission plus generation")
 
 
 def _matches_revenue(enrolled: list[tuple[int, int]], revenue: list[dict[str, float]]) -> None:
@@ -118,28 +121,14 @@ if nonhp_n != _nonhp_weights.height or nonhp_kwh <= 0:
     raise RuntimeError(f"Non-HP kWh join kept {nonhp_n} of {_nonhp_weights.height} buildings")
 stock_customers = hp_customers + nonhp_customers
 
-floor_reduction_table_md = cohort_reduction_table(
-    floor_enrolled, dec_dist, dec_tx, new_dec_dist, new_dec_tx
-)
-ceiling_reduction_table_md = cohort_reduction_table(
-    ceiling_enrolled, dec_dist, dec_tx, new_dec_dist, new_dec_tx
-)
-floor_increase_table_md = cohort_increase_table(
-    floor_enrolled,
+floor_existing = int(floor_enrolled[0][1])
+ceiling_existing = int(ceiling_enrolled[0][1])
+reduction_table_md = autoenrolled_reduction_table(floor_existing, ceiling_existing, dec_dist, dec_tx)
+increase_table_md = autoenrolled_increase_table(
+    floor_existing,
+    ceiling_existing,
     dec_dist,
     dec_tx,
-    new_dec_dist,
-    new_dec_tx,
-    nonhp_kwh,
-    td_rate=rate1_delivery,
-    full_rate=rate1_full,
-)
-ceiling_increase_table_md = cohort_increase_table(
-    ceiling_enrolled,
-    dec_dist,
-    dec_tx,
-    new_dec_dist,
-    new_dec_tx,
     nonhp_kwh,
     td_rate=rate1_delivery,
     full_rate=rate1_full,
@@ -158,59 +147,42 @@ If any revenue reduction resulting from Rate HP were recovered solely from the r
 
 ### Response
 
-CIEC-1(a) estimates the annual reduction in distribution and transmission revenue under Rate HP. The floor and the ceiling are the enrollment bounds in CIEC-1(b) and CIEC-1(c), for the customers already enrolled and for each of the first five rate years. The existing row is that starting stock, including the 2026 installations. Each later row adds that year's installations and keeps everyone already enrolled.
+CIEC-1(a) estimates how much less distribution and transmission revenue the Company would collect from heat pump customers on Rate HP than on Rate 1. That estimate counts every customer who would pay less, including customers who install a heat pump in 2027 through 2031.
 
-Floor:
+This request asks a different question. If Rate HP left the Company short of its revenue requirement, and that shortfall were recovered only from the residential class, how much would Rate 1 distribution and transmission charges rise.
 
-```{python}
-#| echo: false
-#| output: asis
+The shortfall is limited to customers the Company already counts on Rate 1 who then move to Rate HP. The revenue requirement was set on the expectation that those customers would pay Rate 1. The direct testimony recommends auto-enrolling existing heat pump customers, so their bills would fall below the Rate 1 amount the Company planned to collect.
 
-print(floor_reduction_table_md)
-```
+A customer who installs a heat pump later and takes Rate HP does not create that shortfall. Rate HP is calibrated so that a new heat pump customer pays the embedded-cost revenue requirement and, on top of that, the additional transmission and distribution marginal cost of the heat pump. Revenue from those new customers would cover the revenue requirement, so it is not recovered from other residential customers here.
 
-Ceiling:
+The figure below displays the total revenue reduction that will occur for a range of existing customers who move to Rate HP. The floor and the ceiling are the existing-customer bounds in CIEC-1(b), including the 2026 installations. The rows between them are 20, 40, 60, and 80 percent of the way from the floor to the ceiling, with the customer count rounded to the customer. Every row uses the same per-customer decrease from CIEC-1(a).
 
 ```{python}
 #| echo: false
 #| output: asis
 
-print(ceiling_reduction_table_md)
+print(reduction_table_md)
 ```
 
-Residential customers without a heat pump use **`{python} num(nonhp_kwh)`** kWh a year.
+The rate increase (i.e. dollars per kWh) for the other residential customers depends on how much electricity they use. Residential customers without a heat pump use **`{python} num(nonhp_kwh)`** kWh a year, as estimated from the ResStock baseline data. Each row in the table below takes the revenue reduction for each value in the range above and divides it by this consumption. The reduction in distribution revenue from Rate HP is matched by an increase in the distribution charge, and the reduction in transmission revenue is matched by an increase in the transmission charge.
 
-Each increase below is that row's revenue reduction divided by this consumption. The distribution reduction is added to the distribution charge, and the transmission reduction to the transmission charge.
+% of T&D is the combined increase divided by today's Rate 1 delivery charge of **`{python} rate1_delivery_label`** ¢/kWh. That charge is the Rate 1 distribution charge of **`{python} rate1_dist_label`** ¢/kWh plus the Rate 1 transmission charge of **`{python} rate1_tx_label`** ¢/kWh.
 
-% of T&D divides the combined increase by **`{python} rate1_delivery_label`** ¢/kWh, today's distribution charge of **`{python} rate1_dist_label`** ¢/kWh plus the transmission charge of **`{python} rate1_tx_label`** ¢/kWh. % of T&D and generation divides it by **`{python} rate1_full_label`** ¢/kWh, that rate plus the average generation charge of **`{python} rate1_gen_label`** ¢/kWh. Generation is **`{python} rate1_gen_jan_jun_label`** ¢/kWh from January through June and **`{python} rate1_gen_jul_dec_label`** ¢/kWh from July through December, and the average is the mean of the twelve monthly rates.
-
-Floor:
+% of T&D and generation is the combined increase divided by today's Rate 1 volumetric charge of **`{python} rate1_full_label`** ¢/kWh. That rate is the same Rate 1 delivery charge plus the average Rate 1 generation charge of **`{python} rate1_gen_label`** ¢/kWh, so it is Rate 1 distribution, transmission, and generation. The customer charge is monthly and is not included. Generation is **`{python} rate1_gen_jan_jun_label`** ¢/kWh from January through June and **`{python} rate1_gen_jul_dec_label`** ¢/kWh from July through December, and the average is the mean of the twelve monthly rates.
 
 ```{python}
 #| echo: false
 #| output: asis
 
-print(floor_increase_table_md)
+print(increase_table_md)
 ```
-
-Ceiling:
-
-```{python}
-#| echo: false
-#| output: asis
-
-print(ceiling_increase_table_md)
-```
-
-The supporting workpaper is `CIEC-3c_rate1_charge_increase.xlsx`. It carries the revenue reductions above as values, the electricity use of each home without a heat pump, and today's Rate 1 charges. The per-kWh increase and the percent change are formulas.
 
 Assumptions:
 
-- **Timing.** Five rate years, beginning July 1 of 2027 through 2031, as in CIEC-1. Each figure is a full year of bills. A calendar year's installations are assigned to the rate year that begins that July. The 2026 installations are in the existing-customer count, and that count is included in every rate year.
+- **What is recovered.** Only the revenue the Company would no longer collect from customers with heat pumps today who move from Rate 1 to Rate HP. Customers who install a heat pump in 2027 through 2031 and take the calibrated Rate HP are not included.
 - **Who pays.** Residential customers who are not on Rate HP, in proportion to annual kWh. The per-kWh result is the increase in the Rate 1 distribution charge and the Rate 1 transmission charge. Customers on Rate HP are outside that sales total.
-- **Enrollment.** Floor and ceiling counts from CIEC-1(b) and CIEC-1(c). Every heat pump installer enrolls, none opt out, and enrollment persists.
-- **Load.** Customers already enrolled are billed at the baseline heat-pump decrease from CIEC-1(a). Customers who enroll in 2027 through 2031 are billed at the post-upgrade decrease. Each decrease is held constant, and so are non-heat-pump sales. The reduction grows because enrollment grows. Sales are weighted ResStock grid consumption on CAIRO's billing basis for Eversource homes without a heat pump in the baseline. Homes on Rate 5 and Rate 7 are included with Rate 1. ResStock weights that stock to `{python} num(stock_customers)` homes. The Rate Year bill count for Rates 1, 5, and 7 is `{python} num(rate_year_customers)`.
-- **Charges.** The increase is volumetric and the same in every month. The distribution charge includes riders. The riders match Rate 1, so the revenue reduction itself is the winter energy charge. Rate HP's winter rates stay at the levels used in CIEC-1(a). % of T&D uses today's distribution and transmission charges. % of T&D and generation adds the average of the twelve monthly generation rates. The customer charge stays at Rate 1.
+- **Enrollment.** Floor and ceiling counts of existing customers from CIEC-1(b). Every identified heat pump customer is auto-enrolled, none opt out, and enrollment persists.
+- **Load.** The revenue reduction is the baseline heat-pump decrease from CIEC-1(a). Total consumption for customers without a heat pump comes from ResStock.
 
 ```{python}
 #| echo: false
@@ -220,23 +192,14 @@ from build_ciec_1a_workbook import DRIVE_FOLDER_ID, upload_xlsx
 from build_ciec_3_workbook import DRIVE_NAME, RevenueRow, build_workbook
 
 
-def _revenue_rows(enrolled: list[tuple[int, int]]) -> list[RevenueRow]:
-    rows: list[RevenueRow] = []
-    for i, rev in enumerate(cohort_revenue_rows(enrolled, dec_dist, dec_tx, new_dec_dist, new_dec_tx)):
-        rows.append(
-            RevenueRow(
-                "Existing" if i == 0 else str(int(rev["year"])),
-                int(rev["customers"]),
-                rev["distribution"],
-                rev["transmission"],
-            )
-        )
-    return rows
+def _existing_row(customers: int) -> RevenueRow:
+    rev = group_revenue(customers, dec_dist, dec_tx)
+    return RevenueRow("Existing", customers, rev["distribution"], rev["transmission"])
 
 
 _wb = build_workbook(
-    _revenue_rows(floor_enrolled),
-    _revenue_rows(ceiling_enrolled),
+    [_existing_row(floor_existing)],
+    [_existing_row(ceiling_existing)],
     _nonhp_buildings,
     distribution=rate1_dist,
     transmission=rate1_tx,

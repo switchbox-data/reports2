@@ -11,8 +11,9 @@ README
     What the file is and how the sheets connect.
 revenue
     Floor and ceiling distribution and transmission reductions for the
-    existing customers and for each of the next five rate years. These are
-    the CIEC-1(a) dollars, pasted as values. T&D adds the two components.
+    customers already on a heat pump who would be auto-enrolled. These are
+    the CIEC-1(a) dollars for that stock, pasted as values. Later installers
+    are not included. T&D adds the two components.
 nonhp_kwh
     One row per Eversource home without a heat pump. Weighted kWh is annual
     kWh times the sample weight. The total is a sum.
@@ -21,8 +22,8 @@ rates
     charges. T&D and T&D-plus-generation are formulas. The increase sheet
     divides by them.
 increase
-    Revenue reduction divided by total weighted kWh, and that increase as a
-    share of the Rate 1 charges.
+    The auto-enrolled revenue reduction divided by total weighted kWh, and
+    that increase as a share of the Rate 1 charges.
 """
 
 from __future__ import annotations
@@ -179,8 +180,11 @@ def _write_readme(wb: Workbook) -> None:
             False,
         ),
         (
-            "Increase in the Rate 1 distribution and transmission charges if the Rate HP revenue reduction "
-            "were recovered from residential customers who are not on Rate HP.",
+            "Increase in the Rate 1 distribution and transmission charges if the revenue no longer collected "
+            "from auto-enrolled heat pump customers were recovered from residential customers who are not on Rate HP. "
+            "Customers who install a heat pump later are not part of this recovery. Rate HP is calibrated so that "
+            "a new heat pump customer pays the embedded-cost revenue requirement and the additional transmission "
+            "and distribution marginal cost.",
             False,
         ),
         ("", False),
@@ -188,10 +192,10 @@ def _write_readme(wb: Workbook) -> None:
         ("", False),
         ("revenue", True),
         (
-            "Floor and ceiling revenue reductions from CIEC-1(a), for the existing customers and for each "
-            "of 2027 through 2031. Distribution and transmission are the values already calculated there, "
+            "Floor and ceiling revenue reductions from CIEC-1(a) for the customers already enrolled, including "
+            "the 2026 installations. Distribution and transmission are the values already calculated there, "
             "rounded to the dollar. This sheet does not recompute them. T&D adds the two components. "
-            "The existing customers are included in every later year.",
+            "Installations in 2027 through 2031 are not on this sheet.",
             False,
         ),
         ("", False),
@@ -215,7 +219,7 @@ def _write_readme(wb: Workbook) -> None:
         ("", False),
         ("increase", True),
         (
-            "Each row divides that year's revenue reduction by total weighted kWh. Distribution and transmission "
+            "Each row divides that bound's revenue reduction by total weighted kWh. Distribution and transmission "
             "are separate. T&D adds them. % of T&D divides the combined increase by the T&D rate. "
             "% of T&D and generation divides it by T&D plus average generation.",
             False,
@@ -238,9 +242,9 @@ def _write_revenue(wb: Workbook, floor: Sequence[RevenueRow], ceiling: Sequence[
     _note(
         ws,
         2,
-        "Annual revenue reduction from CIEC-1(a). The existing row is the starting stock, including the "
-        "2026 installations. Each later row adds that year's installations and keeps everyone already enrolled. "
-        "Distribution and transmission are inputs, already rounded to the dollar. T&D adds them.",
+        "Annual revenue reduction from CIEC-1(a) for customers who would move from Rate 1 to Rate HP. "
+        "The row is the starting stock, including the 2026 installations. Distribution and transmission "
+        "are inputs, already rounded to the dollar. T&D adds them. Later heat pump installations are excluded.",
         9,
     )
     _headers(
@@ -381,7 +385,7 @@ def _write_increase(wb: Workbook, n_years: int) -> None:
     _note(
         ws,
         2,
-        "Each increase is that row's revenue reduction divided by total weighted kWh on nonhp_kwh. "
+        "Each increase is that bound's auto-enrolled revenue reduction divided by total weighted kWh on nonhp_kwh. "
         "Distribution and transmission are separate, and T&D adds them. % of T&D divides the combined "
         "increase by the T&D rate. % of T&D and generation divides it by T&D plus average generation.",
         11,

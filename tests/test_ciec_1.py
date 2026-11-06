@@ -94,6 +94,39 @@ def test_cohort_revenue_bills_later_enrollees_at_the_second_rate() -> None:
         ciec.cohort_revenue_rows([(2026, 10), (2027, 4)], 1.0, 1.0, 1.0, 1.0)
 
 
+def test_autoenrolled_tables_use_only_the_existing_decrease() -> None:
+    assert ciec.enrollment_range(10, 25) == [
+        ("Floor", 10),
+        ("20%", 13),
+        ("40%", 16),
+        ("60%", 19),
+        ("80%", 22),
+        ("Ceiling", 25),
+    ]
+    with pytest.raises(ValueError, match="below floor"):
+        ciec.enrollment_range(25, 10)
+
+    reduction = ciec.autoenrolled_reduction_table(10, 25, 1.2, 0.34)
+    assert "| Share of the range | Customers | Distribution | Transmission | T&D |" in reduction
+    assert "| Floor | 10 | \\$12 | \\$3 | \\$15 |" in reduction
+    assert "| 20% | 13 | \\$16 | \\$4 | \\$20 |" in reduction
+    assert "| 40% | 16 | \\$19 | \\$5 | \\$24 |" in reduction
+    assert "| 60% | 19 | \\$23 | \\$6 | \\$29 |" in reduction
+    assert "| 80% | 22 | \\$26 | \\$7 | \\$33 |" in reduction
+    assert "| Ceiling | 25 | \\$30 | \\$8 | \\$38 |" in reduction
+
+    increase = ciec.autoenrolled_increase_table(10, 25, 1.2, 0.34, 1_000.0, td_rate=0.10, full_rate=0.20)
+    assert "| Share of the range | Distribution (¢/kWh) |" in increase
+    assert "| Floor | 1.2000 | 0.3000 | 1.5000 | 15.00% | 7.50% |" in increase
+    assert "| 20% | 1.6000 | 0.4000 | 2.0000 | 20.00% | 10.00% |" in increase
+    assert "| 40% | 1.9000 | 0.5000 | 2.4000 | 24.00% | 12.00% |" in increase
+    assert "| 60% | 2.3000 | 0.6000 | 2.9000 | 29.00% | 14.50% |" in increase
+    assert "| 80% | 2.6000 | 0.7000 | 3.3000 | 33.00% | 16.50% |" in increase
+    assert "| Ceiling | 3.0000 | 0.8000 | 3.8000 | 38.00% | 19.00% |" in increase
+    with pytest.raises(ValueError, match="kwh must be positive"):
+        ciec.autoenrolled_increase_table(10, 25, 1.2, 0.34, 0.0, td_rate=0.10, full_rate=0.20)
+
+
 def test_per_kwh_increases_rejects_nonpositive_sales() -> None:
     with pytest.raises(ValueError, match="kwh must be positive"):
         ciec.per_kwh_increases([{"year": 2027, "distribution": 1.0, "transmission": 1.0}], 0.0)

@@ -66,8 +66,10 @@ RUN /tmp/install-feature.sh "ghcr.io/rocker-org/devcontainer-features/quarto-cli
 # python3-tk: Required for matplotlib to work with quarto
 # chromium-browser: Shared library dependencies for Chromium, required for Mermaid diagrams in quarto (must be combined with installChromium=true above)
 # ghostscript: Required by dvisvgm for PostScript special processing (LaTeX math → SVG)
+# libreoffice-writer, fonts-liberation: headless soffice converts Word output to PDF so we can check
+# per-section headers and page numbers (interrogatory responses, expert testimony)
 RUN /tmp/install-feature.sh "ghcr.io/rocker-org/devcontainer-features/apt-packages:1" \
-    packages="python3-tk, chromium-browser, ghostscript"
+    packages="python3-tk, chromium-browser, ghostscript, libreoffice-writer, fonts-liberation"
 
 # Install Switchbox house fonts (GT Planar, IBM Plex Sans, Farnham Text) into
 # fontconfig so headless Chrome (used by `just draft` to PNG-rasterize GT

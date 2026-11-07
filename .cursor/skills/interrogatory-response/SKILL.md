@@ -36,8 +36,9 @@ before assuming the Connecticut format, and add a `<state>.md` here when you lea
    paraphrase or tidy. Then run `just check-interrogatory-responses <qmd>`: it confirms every line of
    every question appears in the extract and tells you exactly where a line diverges. Fix the QMD
    until it passes; never "fix" the extract.
-4. **Write the responses** (conventions below). `just check-interrogatory-responses` lists how many
-   are still unwritten.
+4. **Write the responses** (conventions below), with final citations from the first draft on.
+   `just check-interrogatory-responses` lists how many are still unwritten and fails on citation
+   problems it can detect.
 5. **Render for review.** From the report folder, `just interrogatories` writes
    `<name>_<date>.docx`: every response on its own pages with the filed header. Send that to counsel.
    Fold their comments into the QMD and re-render; the QMD is the source of truth.
@@ -59,10 +60,34 @@ before assuming the Connecticut format, and add a `<state>.md` here when you lea
   testimony already gives (cite it instead), no advocacy. Say what was and was not done: if the
   request asks for an estimate the witness did not prepare, say so and why (the requests often ask
   this directly).
-- **Point to the testimony by page and line**, taken from the extract with
-  `just sources-cite <extract.md> "<quoted words>"`, written as `Velez Direct at 14:5–7`. Cite outside
-  documents in a footnote written out in full, with the footnote definition right after the paragraph
-  that uses it, inside the `response` block. `[@key]` tags are dropped in Word.
+- **Every citation goes in a footnote, in the testimony's paralegal format** (read
+  `expert-testimony/citations.md` before writing one). That includes the witness's own testimony,
+  the Company's exhibits and its data responses, not only outside documents. The response text says
+  what the source shows; the footnote says where. In each response, cite a source in full the first
+  time (with its date and its `pub.switch.box` short link) and in short form or `_Id._` after that,
+  with `[@key]` once per footnote (Word drops the tags, so the footnote must read completely without
+  them). Pinpoints are `at 14`, `at 14:5–7`, `at 14 n.8` or `at 20 ¶ 54`, never "p." or "PDF p.".
+- **Drafts get final citations too**, including a first pass written as bullet points. Never leave
+  a citation key, a "p. 21" or an inline "(Velez Direct at …)" to tidy later: write the footnote in
+  full now. If a pinpoint cannot be verified yet, write the footnote anyway and flag the gap inside
+  it, e.g. `**[NOT INGESTED]**` or `**[TK: no public copy to link yet]**`. Discussion and counsel
+  blocks (`> **[DISCUSSION FOR JPV]**`, `**[COUNSEL]**`) are notes to the witness and may cite inline.
+- **Get every pinpoint from `just sources-cite`**, never by counting or from memory, and quote the
+  source's exact words in a parenthetical where the response relies on its wording. A set of data
+  responses often reprints earlier answers word for word, so the same passage can turn up several
+  times: read every hit `sources-cite` prints, check which response each is in, and cite the
+  original.
+- **Put derivations in footnotes.** The response text gives the number and what it is ("CL&P's share
+  of ISO New England's forecast"); the footnote gives the arithmetic, its inputs and their sources,
+  with the inputs computed inline.
+- **Footnote mechanics.** Put the definition right after the paragraph or bullet that uses it,
+  indented to that item's text (3 spaces under `a.`, 5 under a `-` bullet inside it), with a blank
+  line before and after; without the blank line after, Pandoc folds a following paragraph into the
+  note. Give every use its own footnote: Pandoc prints a note again for each reference to it.
+- **`just check-interrogatory-responses` enforces the mechanical parts**: it fails on an inline
+  citation in the response text, a citation key used as a citation, a "p." pinpoint, a footnote
+  without a blank line after it, and a footnote that is undefined, unused, or used twice. Run it after
+  every drafting pass, not just before rendering.
 - **Never hardcode a number.** If a number comes from the analysis, compute it inline like testimony.
   A number that is also in the filed testimony must match it.
 - **Attachments are separate files, not embedded.** Excel workbooks (build them with the

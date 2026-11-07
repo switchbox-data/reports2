@@ -323,6 +323,107 @@ def verify_questions(responses: list[Response], extract_text: str) -> list[str]:
     return problems
 
 
+# ---------------------------------------------------------------------------
+# Checking citations in the responses
+# ---------------------------------------------------------------------------
+
+_FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
+_FOOTNOTE_DEF = re.compile(r"^\s*\[\^(?P<label>[^\]]+)\]:")
+_FOOTNOTE_REF = re.compile(r"\[\^(?P<label>[^\]]+)\](?!:)")
+_DRAFT_NOTE = re.compile(
+    r"\[(?:TK|NOT INGESTED|NOT EXTRACTED|COUNSEL|RESEARCH|ANALYSIS|UNVERIFIED IDEA|EST|DISCUSSION FOR JPV)\b[^\]]*\]"
+)
+_INLINE_CITE = re.compile(
+    r"\((?:see |_?id\._? )?(?:\w[\w.-]* )?Direct\b|"
+    r"\b(?:Direct|Exhibit [\w.-]+|Response to [A-Z][\w-]*\d[\w()]*),? at \d|"
+    r"\(_?[Ii]d\._?,? at \d"
+)
+_BACKTICK_KEY = re.compile(r"`[a-z][a-z0-9]*_[A-Z]\w*_\d{4}[a-z]?`")
+_PAGE_ABBREV = re.compile(r"\b(?:PDF )?pp?\. \d")
+
+
+def check_citations(text: str) -> list[str]:
+    """Return one message per citation-style problem in the response blocks.
+
+    Citations go in footnotes written out as in the testimony (see the
+    ``expert-testimony`` skill's ``citations.md``), drafts included. Skipped:
+    question blocks, fenced code, ``>`` discussion blocks and bracketed draft
+    markers such as ``[TK: …]``.
+    """
+    body = _COMMENT.sub("", _FRONTMATTER.sub("", text, count=1))
+    problems: list[str] = []
+    label = "before the first response heading"
+    div: str | None = None
+    fence: str | None = None
+    defs: dict[str, int] = {}
+    refs: dict[str, int] = {}
+    lines = body.splitlines()
+    for i, line in enumerate(lines):
+        fenced = _FENCE.match(line)
+        if fence is not None:
+            if fenced and fenced.group(1)[0] == fence[0] and len(fenced.group(1)) >= len(fence):
+                fence = None
+            continue
+        if div is None:
+            heading = _HEADING.match(line)
+            if heading:
+                label = heading.group("label").strip()
+                continue
+            opened = _DIV_OPEN.match(line)
+            if opened:
+                div = opened.group("braced") or opened.group("bare")
+            continue
+        if _DIV_CLOSE.match(line):
+            div = None
+            continue
+        if div != "response":
+            continue
+        if fenced:
+            fence = fenced.group(1)
+            continue
+        if line.lstrip().startswith(">"):
+            continue
+        prose = _DRAFT_NOTE.sub("", line)
+        footnote = _FOOTNOTE_DEF.match(line)
+        for ref in _FOOTNOTE_REF.finditer(prose[footnote.end() :] if footnote else prose):
+            refs[ref.group("label")] = refs.get(ref.group("label"), 0) + 1
+        if footnote:
+            name = footnote.group("label")
+            defs[name] = defs.get(name, 0) + 1
+            if i + 1 < len(lines) and lines[i + 1].strip():
+                problems.append(
+                    f"{label}: add a blank line after footnote [^{name}]; without one, Pandoc folds a following "
+                    "paragraph into the note."
+                )
+        elif _INLINE_CITE.search(prose):
+            problems.append(
+                f"{label}: a citation in the response text (“{line.strip()[:60]}”); move it to a footnote written "
+                "out as in the testimony."
+            )
+        if key := _BACKTICK_KEY.search(prose):
+            problems.append(
+                f"{label}: a citation key used as a citation (“{key.group(0)}”); write the source out in a "
+                "footnote, with `[@key]` after it."
+            )
+        if page := _PAGE_ABBREV.search(prose):
+            problems.append(
+                f"{label}: “{page.group(0)}”; pinpoints are written `at 14` or `at 14:5\u20137`, never p., pp. or PDF p."
+            )
+    for name, n in defs.items():
+        if n > 1:
+            problems.append(f"Footnote [^{name}] is defined {n} times.")
+        if name not in refs:
+            problems.append(f"Footnote [^{name}] is defined but never used.")
+    for name, n in refs.items():
+        if n > 1:
+            problems.append(
+                f"Footnote [^{name}] is referenced {n} times; Pandoc repeats the note. Give each use its own."
+            )
+        if name not in defs:
+            problems.append(f"Footnote [^{name}] is used but never defined.")
+    return problems
+
+
 def _find_extract(qmd_path: Path, name: str) -> Path | None:
     """Resolve ``source_extract`` against the repo root, then the .qmd folder."""
     candidates = [qmd_path.resolve().parent / name]
@@ -350,8 +451,10 @@ def check_file(qmd_path: Path) -> Report:
     except InterrogatoryError as err:
         errors.extend(err.problems)
 
-    responses, problems = parse_body(qmd_path.read_text(encoding="utf-8"))
+    text = qmd_path.read_text(encoding="utf-8")
+    responses, problems = parse_body(text)
     errors.extend(problems)
+    errors.extend(check_citations(text))
     report = Report(fields=fields, responses=responses, errors=errors)
 
     if fields is not None:

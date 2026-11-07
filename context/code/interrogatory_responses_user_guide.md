@@ -7,7 +7,7 @@ How to answer another party's interrogatories or data requests and get Word file
 1. **Create the file:** `just new-interrogatory-responses reports/<report>/<name>.qmd`
 2. **Fill in the form** at the top of the file (the `interrogatory_responses:` block).
 3. **Add each question**, copied exactly, then **check** it: `just check-interrogatory-responses reports/<report>/<name>.qmd`
-4. **Write the responses.**
+4. **Write the responses**, with every citation in a footnote in the testimony's format, even in a first draft. Run the check again: it also fails on inline citations, "p." pinpoints and footnote formatting mistakes.
 5. **Render for review:** from the report folder, `just interrogatories` (Connecticut report: `ciec_responses.qmd`).
 6. **Render for filing:** `just interrogatories-split`, which writes one Word file per response into `filing/`.
 

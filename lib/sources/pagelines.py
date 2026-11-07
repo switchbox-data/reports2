@@ -98,7 +98,7 @@ def _margin_numbers(words: list[dict], width: float, chars: list[dict] | None = 
     ]
     if chars:
         sizes = sorted(float(c["size"]) for c in chars if c["text"].strip())
-        if sizes:
+        if sizes:  # a page with only whitespace chars (blank or image-only) has no body size
             body_size = sizes[len(sizes) // 2]
             candidates = [w for w in candidates if _word_size(w, chars) >= body_size * _MIN_NUMBER_SIZE]
     columns: dict[int, list[dict]] = {}

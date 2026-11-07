@@ -4,6 +4,7 @@ citekey: velez_Docket2545GEPreFiled_2026
 zotero_item: "3NPGKJ82"
 public_url: https://drive.google.com/file/d/1mfEWYkTtckRBYUBd09YEoCLZ9nniLvUu/view
 short_url: https://pub.switch.box/velez_Docket2545GEPreFiled_2026
+source_url: https://ripuc.ri.gov/sites/g/files/xkgbur841/files/2026-04/JPV%20Witness%20Testimony%20FINAL.pdf
 md5: "d227e4162923eefa9cbb9f648d004997"
 validated: 2026-10-29
 docket: "25-45-GE"

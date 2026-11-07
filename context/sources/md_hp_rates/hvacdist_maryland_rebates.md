@@ -1,17 +1,16 @@
 ---
-source_file: hvacdistributors_MarylandRebates_nd.pdf
-citekey: hvacdistributors_MarylandRebates_nd
+citekey: hvacdistributors_MarylandRebates_2026
 zotero_item: "9AEIDXD7"
-short_url: https://pub.switch.box/hvacdistributors_MarylandRebates_nd
+public_url: https://web.archive.org/web/20261107153307/https://wp.hvacdist.com/contractor-support/product-rebates/maryland-rebates/
+short_url: https://pub.switch.box/hvacdistributors_MarylandRebates_2026
 source_url: https://wp.hvacdist.com/contractor-support/product-rebates/maryland-rebates/
 md5: "d37ad52f6d5c2fb9048f0e3b4442cc4f"
-validated: 2026-11-05
+validated: 2026-11-07
 extraction_scope: full
 citation_scheme: page
 context: Contractor-support page from HVAC Distributors summarizing Maryland utility HVAC rebate programs.
 contents: Program-by-program rebate amounts and documentation requirements, including BGE's midstream heat pump program.
 why_here: BGE's midstream application requires the customer installation address and BGE account number; cited in CCAN's Case No. 9888 surrebuttal.
-pages_total: 10
 ---
 
 # Maryland Rebates

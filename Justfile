@@ -143,6 +143,21 @@ check-testimony path_qmd:
     uv run python -m lib.just.testimony check {{ path_qmd }}
 
 # =============================================================================
+# 📨 INTERROGATORY RESPONSES
+# =============================================================================
+# All responses to one set of requests live in one .qmd (an `interrogatory_responses:` block, then one
+# section per question). Render from the report folder with `just interrogatories` (one combined Word
+# file for review) or `just interrogatories-split` (one Word file per response, for filing).
+
+# Create a new responses .qmd with the frontmatter block in place, e.g. just new-interrogatory-responses reports/ct_hp_rates/ciec_responses.qmd
+new-interrogatory-responses path_qmd:
+    uv run python -m lib.just.interrogatory new {{ path_qmd }}
+
+# Check fields, structure and (if `source_extract` is set) that every question line matches the extract, e.g. just check-interrogatory-responses reports/ct_hp_rates/ciec_responses.qmd
+check-interrogatory-responses path_qmd:
+    uv run python -m lib.just.interrogatory check {{ path_qmd }}
+
+# =============================================================================
 # 🏗️  DEVELOPMENT ENVIRONMENT SETUP
 # =============================================================================
 # These commands help you set up your development environment

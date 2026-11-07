@@ -121,6 +121,16 @@ def test_quote_stops_at_math_glyphs_and_unbolds_open_paren():
     assert "**\\$256**(" in md
 
 
+def test_quote_stays_within_its_bullet():
+    stream = _ptoks(
+        "● Generation increases by $575 per year, to $1,645, ● Distribution increases by $235 per year, to $678, "
+        "● Transmission increases by $110 per year"
+    )
+    k = next(i for i, t in enumerate(stream) if t.text.startswith("$678"))
+    _, plain = quote_for(Occurrence(0, stream[k : k + 1], stream, k, k + 1, "exact"))
+    assert plain == "Distribution increases by $235 per year, to [$678],"
+
+
 def test_find_var_line_literal_and_template():
     nb = Notebook(
         "rep",

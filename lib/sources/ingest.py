@@ -352,6 +352,11 @@ class Ingest:
         if not meta.is_web_page:
             return SKIPPED, "not a web page"
         assert self.item_key and meta.source_url
+        if not meta.wants_wayback:
+            self.report.notes.append(
+                f"Wayback skipped by the card (use_wayback: false): the short link points to the live page {meta.source_url}"
+            )
+            return SKIPPED, "card opts out of Wayback"
         known = extra.get(self._item_extra(), zotero.WAYBACK_URL)
         if known:
             meta.wayback_url = known

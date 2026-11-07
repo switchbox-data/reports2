@@ -61,12 +61,14 @@ def format_locations(locs: list[tuple[int, int, str]]) -> str:
     return "; ".join(parts)
 
 
+BREAKS = {"•", "●", "▪", "◦", "Q.", "A."}
+
 ABBREVIATIONS = {"no.", "vs.", "e.g.", "i.e.", "etc.", "st.", "dr.", "mr.", "ms.", "approx.", "u.s.", "fig.", "p."}
 
 
 def _ends_sentence(tok: PdfToken) -> bool:
     t = tok.text
-    if t in {"•", "Q.", "A."}:
+    if t in BREAKS:
         return True
     return bool(re.search(r"[.?!:]”?$", t)) and t.lower() not in ABBREVIATIONS
 
@@ -90,7 +92,7 @@ def quote_for(occ: Occurrence) -> tuple[str, str]:
     if _ends_sentence(occ.tokens[-1]):
         after, trail = [], ""
     for k, t in enumerate(after):
-        if t.text in {"•", "Q.", "A."}:
+        if t.text in BREAKS:
             after, trail = after[:k], ""
             break
         if _ends_sentence(t):

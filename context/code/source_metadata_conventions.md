@@ -39,6 +39,7 @@ How items in the Switchbox Zotero group library are named and keyed. `reports/re
 - **Several organizations:** one creator per organization. The item's short form joins theirs Chicago-style ("NYSEG and RG&E"; "NYSERDA et al." for four or more).
 - **Organizations plus people** (mostly testimony): normalize the organization's name and set no short form.
 - **Testimony** names the witness as the person author and the party they testify for as `publisher`: the utility for a utility witness ("Baltimore Gas and Electric Company" for BGE's Jennifer A. Karas), the intervenor for an intervenor witness. A consultant testifying for a utility still gets the utility as publisher, not the consulting firm, so readers see whose case it is. The commission is not the publisher; the `Docket <number>:` title already places the document in its proceeding. Panel testimony lists every witness on the panel. Testimony filed jointly by two companies lists both in `publisher`, separated by a semicolon.
+- **Switchbox's own testimony** (a Switchbox witness, such as Juan-Pablo Velez) puts Switchbox first in `publisher`, then every party the witness testified for, separated by semicolons: "Switchbox; Conservation Law Foundation; Sierra Club". Switchbox comes first so our testimony can be found in the library across dockets; the parties follow so readers still see whose case it is.
 - **Combined multi-witness files** (a petition bundling a dozen witnesses' testimony, an omnibus exhibit file of every party's testimony) have the filing company, or whoever compiled the file, as the author; the key witnesses are named in the index row. A witness's separately filed testimony still names the witness.
 - **Information-request responses** are authored by the company that answered; the person who prepared the response is named in the index row, not as a creator.
 - **Known collisions:** MA DPU versus RI DPUC; NY PSC versus MD PSC; "MPSC" means Maryland here and Michigan elsewhere (use MD PSC).
@@ -140,6 +141,23 @@ Choose the Zotero item type by the kind of document. The library today (excludin
 
 Orders, testimony, exhibits and tariffs are `document` (not `report`) because they are items in a proceeding, not standalone publications. A study filed in a docket (an MCOS study attached to testimony) is still a `report`: the docket goes in its title and the `Docket:` Extra line. A workbook is `dataset` even when it is an exhibit of a filing; a workbook that is the only form of an exhibit is still a `dataset`.
 
+## Information requests and their responses
+
+Discovery comes in sets: a party serves a set of numbered questions (interrogatories, information requests, data requests), and the utility answers each one. How the answers reach the docket varies by commission. Connecticut PURA posts every answer as its own PDF; in Maryland, BGE filed each CCAN set as one document. Check the docket before assuming either. Whatever the filing format, the library keeps **one item per set**, not one per answer.
+
+This rule was adopted in November 2026 for Connecticut Docket 26-05-10. Per-answer items already in the library from other dockets (the Massachusetts DPU responses, for example) stay as they are unless someone decides to merge them; apply the rule to new ingests.
+
+- **Responses:** one item for each set of questions as the party served it, so the answers line up with the request document they answer. Choose the file in this order:
+  1. The commission's own document for the set, when it has one.
+  2. A compilation the utility filed later, for convenience (Eversource files `<Party> Set <n>_COMBINED.pdf` on the PURA docket), as long as it reproduces the answers exactly and covers that set. If a compilation spills into another set (Eversource's "CLF-SC Set 1" compilation also carries the second set's CLF-SC-021 to 023), keep only the pages for this set; the other set's answers belong to its own item.
+  3. Otherwise, merge the per-answer PDFs from the response filing or filings, in question order.
+
+  Title: `Docket <number>: Responses to <first label> to <last label>` ("Docket 26-05-10: Responses to CLF-SC-024 to CLF-SC-035", "Docket 9888: Response to CCAN Data Requests 1-1 to 1-11"). Author: the company that answered. Date: the filing date of the answers, not of a later compilation; when the item's file is a compilation, the front matter's `context` says so and gives both dates.
+- **Requests:** one item for each set of questions, authored by the party or parties that served it, titled with the document's own heading ("Docket 26-05-10: Conservation Law Foundation and Sierra Club's Third Set of Interrogatories") and dated by its certificate of service.
+- **Kept separate:** attachments filed as their own files (workbooks, and documents such as a planning guide attached to an answer), each its own item titled from its label ("Docket 26-05-10: Response to CLF-SC-023, Attachment 1, Distribution System Planning Guide"); and supplemental or revised answers filed later (PURA's `SP01`, `RV01`), each its own item.
+- **Citations still name the answer.** Testimony and reports cite the individual answer by its number, and the page within it, as the commission does (`Eversource Response to Interrogatory OCC-25`, `Interrog. Resp. OCC-157, Att. 1` in PURA decisions); testimony follows `.cursor/skills/expert-testimony/citations.md`. The set's citation key and short link carry the citation to the document. Each answer's pages restart at 1, so a page pinpoint is always given with the answer number.
+- **Extracts** of a set put a heading at each answer (`## CLF-SC-024`) so an answer can be found and quoted on its own.
+
 ## Which date to use
 
 The date on the card is the date the document **took its present form**, as printed on it:
@@ -150,7 +168,7 @@ The date on the card is the date the document **took its present form**, as prin
 - **Workbooks:** they print no date, so the filing date, or the date of the information-request response they are attached to.
 - **Studies and reports:** the publication date; for a report with a revision, the date of the revision cited.
 - **Papers:** the date of the published version (not the preprint's).
-- **Web pages:** the page's own published or last-updated date, if printed; `access_date` records when it was captured. If neither is printed, leave `date` empty (the citation key then ends in `nd`) and say so on the card.
+- **Web pages:** the page's own published or last-updated date, if printed; `access_date` records when it was captured. If none is printed, infer one from the page (a dated file it links to, a "last updated" in the markup, HTTP headers, the Wayback Machine's first capture) and say on the card how confident you are. If nothing supports an inference, use the access date. The snapshot shows the page as it was on that day, which is what a citation of a web page needs. Never leave `date` empty (the key would end in `nd`).
 
 Use `YYYY-MM-DD` when the day is printed, else `YYYY-MM` or `YYYY`. Never take a date from a filename or the Zotero "added" time.
 
@@ -192,4 +210,6 @@ A workbook is a source with a file but usually no readable prose: the item type 
 
 ## Web pages
 
-Web pages change, so the record is a snapshot: ingest captures the page with a headless browser (a PDF attached to the Zotero item, plus the HTML converted to markdown for the extract), saves it to the Wayback Machine, and stores the live URL as the `url` link attachment. The item type is `webpage` (or `blogPost` / `newspaperArticle` / `magazineArticle`), the site name goes in `container`, the organization that runs the site is the author, `access_date` is the capture date, and the `date` is the page's own date or empty. The citation URL is the short link, which forwards to the Wayback snapshot, so readers see the page as we cited it even after it changes or disappears. Only when the site blocks the Wayback Machine does the short link forward to the live page.
+Web pages change, so the record is a snapshot: ingest captures the page with a headless browser (a PDF attached to the Zotero item, plus the HTML converted to markdown for the extract), saves it to the Wayback Machine, and stores the live URL as the `url` link attachment. The item type is `webpage` (or `blogPost` / `newspaperArticle` / `magazineArticle`), the site name goes in `container`, the organization that runs the site is the author, `access_date` is the capture date, and the `date` is the page's own date, else an inferred date, else the access date (see "Which date to use"). The citation URL is the short link, which forwards to the Wayback snapshot, so readers see the page as we cited it even after it changes or disappears. Only when the site blocks the Wayback Machine does the short link forward to the live page.
+
+A page a snapshot cannot reproduce (a dashboard whose charts are drawn by script from an embedded service, such as a Power BI report) gets `use_wayback: false` on its card. Ingest then skips the Wayback save and the short link forwards to the live page; the PDF capture is still attached to the Zotero item. The cost is link rot, which we accept for these pages.

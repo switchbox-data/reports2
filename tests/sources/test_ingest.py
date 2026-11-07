@@ -418,6 +418,29 @@ def test_wayback_blocked_is_noted_not_failed(world, repo, tmp_path, pub_remote):
     assert remote_links(pub_remote, tmp_path)[card.citekey] == "https://example.org/blocked"
 
 
+def test_use_wayback_false_skips_the_snapshot_and_links_the_live_page(world, repo, tmp_path, pub_remote):
+    card = make_card(
+        item_type="webpage",
+        title="Script-rendered dashboard",
+        creators=[{"name": "Example Energy Institute"}],
+        abbreviation=None,
+        docket=None,
+        source_file=None,
+        source_url="https://example.org/dashboard",
+        use_wayback=False,
+        extract_path="context/sources/ma_hp_rates/dashboard.md",
+    )
+    report = run(world, repo, card, None)
+    assert report.ok, report.to_dict()
+    assert world.calls["wayback"] == 0
+    assert statuses(report)["wayback"] == "skipped"
+    item = only_item(world)
+    titles = {c["title"] for c in world.attachments_of(item["key"])}
+    assert ingest.CAPTURE_TITLE in titles and ingest.WAYBACK_TITLE not in titles
+    assert any("use_wayback" in n for n in report.notes)
+    assert remote_links(pub_remote, tmp_path)[card.citekey] == "https://example.org/dashboard"
+
+
 def test_batch_makes_one_short_link_commit_and_survives_one_failure(
     world, repo, pdf_file, extract_file, pub_remote, tmp_path
 ):

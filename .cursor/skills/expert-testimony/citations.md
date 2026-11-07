@@ -40,6 +40,7 @@ Later: `Case Direct at 138.` or `Case Direct at Ex. MDC-2, Appendix A: Program L
 - **Another party's exhibits:** the witness's short form, then the exhibit's label as that party prints it: `Karas Direct, Company Exhibit JAK-2, at Sheet E-13`. _(standardized: the filed testimony also once wrote `Karas Direct, Exhibit JAK-1`.)_
 - **A data response attached to another party's exhibit:** `Karas Rebuttal, Company Exhibit JAK-5, BGE Response to OPC DR 7-11, Attach. 1`.
 - **A data response that is not an exhibit:** `BGE Response to CCAN DR 1-1`. The form is always `[Responding party] Response to [Requesting party] DR [set]-[question]`, with no leading zeros (`DR 1-4`, not `DR 01-04` or `CCANDR01-04`).
+- **One library item holds a whole set of responses** (see "Information requests and their responses" in `context/code/source_metadata_conventions.md`), so every response in a set links to the set's short link and carries the set's citation key. The citation text still names the single response and its page: `BGE Response to CCAN DR 1-8`, `CL&P Response to CLF-003(b), at 2`.
 
 ## Commission orders
 

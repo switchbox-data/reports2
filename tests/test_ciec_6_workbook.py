@@ -27,7 +27,7 @@ def _load() -> ModuleType:
 builder = _load()
 
 
-def _case() -> tuple[object, object, pl.DataFrame]:
+def _case() -> tuple[object, object, pl.DataFrame, object, object]:
     floor = builder.RevenueRow("Existing", 10, 100.0, 40.0)
     ceiling = builder.RevenueRow("Existing", 30, 300.0, 50.0)
     buildings = pl.DataFrame(
@@ -37,12 +37,15 @@ def _case() -> tuple[object, object, pl.DataFrame]:
             "annual_kwh": [100.0, 40.0],
         }
     )
-    return floor, ceiling, buildings
+    # Weighted kWh is 40 * 2 + 100 * 1.5 = 230. The charges are those dollars over that kWh.
+    floor_charge = builder.ChargeRow(100 / 230, 40 / 230, 140 / 230)
+    ceiling_charge = builder.ChargeRow(300 / 230, 50 / 230, 350 / 230)
+    return floor, ceiling, buildings, floor_charge, ceiling_charge
 
 
 def test_workbook_bills_each_home_at_the_per_kwh_increase() -> None:
-    floor, ceiling, buildings = _case()
-    wb = builder.build_workbook(floor, ceiling, buildings)
+    floor, ceiling, buildings, floor_charge, ceiling_charge = _case()
+    wb = builder.build_workbook(floor, ceiling, buildings, floor_charge, ceiling_charge)
 
     assert wb.sheetnames == ["README", "revenue", "customers", "increase", "summary"]
 
@@ -63,56 +66,68 @@ def test_workbook_bills_each_home_at_the_per_kwh_increase() -> None:
     assert customers["C8"].value == 40.0
     assert customers["D8"].value == "=B8*C8"
     assert customers["D9"].value == "=B9*C9"
-    assert customers["E8"].value == "=SUM($B$8:B8)"
-    assert customers["E9"].value == "=SUM($B$8:B9)"
-    assert customers["F8"].value == "=C8*increase!$B$5"
-    assert customers["G8"].value == "=C8*increase!$C$5"
-    assert customers["H8"].value == "=F8+G8"
-    assert customers["I9"].value == "=C9*increase!$E$5"
-    assert customers["K9"].value == "=I9+J9"
+    assert customers["E8"].value == "=C8*increase!$B$5"
+    assert customers["F8"].value == "=C8*increase!$C$5"
+    assert customers["G8"].value == "=E8+F8"
+    assert customers["H9"].value == "=C9*increase!$E$5"
+    assert customers["J9"].value == "=H9+I9"
+    assert all(customers.cell(7, col).value != "cumulative weight" for col in range(1, 11))
     assert customers["B4"].value == "=SUM(D8:D9)"
     assert customers["B6"].value == "=SUM(B8:B9)"
     assert customers["H8"].fill.patternType is None
 
     increase = wb["increase"]
-    assert increase["A5"].value == "=revenue!A5"
-    assert increase["B5"].value == "=revenue!C5/customers!$B$4"
-    assert increase["C5"].value == "=revenue!D5/customers!$B$4"
-    assert increase["D5"].value == "=B5+C5"
-    assert increase["E5"].value == "=revenue!G5/customers!$B$4"
-    assert increase["G5"].value == "=E5+F5"
+    assert increase["A5"].value == "Existing"
+    assert increase["B5"].value == pytest.approx(100 / 230)
+    assert increase["C5"].value == pytest.approx(40 / 230)
+    assert increase["D5"].value == pytest.approx(140 / 230)
+    assert increase["E5"].value == pytest.approx(300 / 230)
+    assert increase["F5"].value == pytest.approx(50 / 230)
+    assert increase["G5"].value == pytest.approx(350 / 230)
+    assert increase["B5"].fill.fgColor.rgb[-6:] == "FFF2CC"
+    assert increase["D5"].fill.fgColor.rgb[-6:] == "FFF2CC"
+    assert all(not str(increase.cell(5, col).value).startswith("=") for col in range(1, 8))
 
     summary = wb["summary"]
     assert summary["A7"].value == "Mean bill"
-    assert summary["B7"].value == "=SUMPRODUCT(customers!H8:H9,customers!B8:B9)/customers!$B$6"
-    assert summary["C6"].value == "=SUMPRODUCT(customers!J8:J9,customers!B8:B9)/customers!$B$6"
+    assert summary["B7"].value == "=SUMPRODUCT(customers!G8:G9,customers!B8:B9)/customers!$B$6"
+    assert summary["C6"].value == "=SUMPRODUCT(customers!I8:I9,customers!B8:B9)/customers!$B$6"
     assert summary["B8"].value == "=revenue!E5/customers!$B$6"
     assert summary["C8"].value == "=revenue!I5/customers!$B$6"
     assert summary["A9"].value == "25th percentile"
-    assert summary["B10"].value == '=INDEX(customers!H$8:H9,COUNTIF(customers!E$8:E9,"<"&0.50*customers!$B$6)+1)'
-    assert summary["C9"].value == '=INDEX(customers!K$8:K9,COUNTIF(customers!E$8:E9,"<"&0.25*customers!$B$6)+1)'
+    running = "SCAN(0,customers!$B$8:$B9,LAMBDA(acc,w,acc+w))"
+    assert summary["B10"].value == f"=INDEX(customers!G$8:G9,XMATCH(0.50*customers!$B$6,{running},1))"
+    assert summary["C9"].value == f"=INDEX(customers!J$8:J9,XMATCH(0.25*customers!$B$6,{running},1))"
     assert summary["A11"].value == "75th percentile"
 
 
 def test_rejects_inputs_that_cannot_support_the_bill() -> None:
-    floor, ceiling, buildings = _case()
+    floor, ceiling, buildings, floor_charge, ceiling_charge = _case()
     with pytest.raises(ValueError, match="labels"):
         builder.build_workbook(
             builder.RevenueRow("Existing", 10, 100.0, 40.0),
             builder.RevenueRow("2027", 30, 300.0, 50.0),
             buildings,
+            floor_charge,
+            ceiling_charge,
         )
     with pytest.raises(ValueError, match="empty"):
-        builder.build_workbook(floor, ceiling, buildings.clear())
+        builder.build_workbook(floor, ceiling, buildings.clear(), floor_charge, ceiling_charge)
     with pytest.raises(ValueError, match="positive"):
         builder.build_workbook(
             floor,
             ceiling,
             buildings.with_columns(pl.lit(0.0).alias("weight")),
+            floor_charge,
+            ceiling_charge,
         )
     with pytest.raises(ValueError, match="non-negative"):
         builder.build_workbook(
             floor,
             ceiling,
             buildings.with_columns(pl.lit(-1.0).alias("annual_kwh")),
+            floor_charge,
+            ceiling_charge,
         )
+    with pytest.raises(ValueError, match="non-negative"):
+        builder.build_workbook(floor, ceiling, buildings, builder.ChargeRow(-0.01, 0.0, 0.0), ceiling_charge)

@@ -51,9 +51,14 @@ before assuming the Connecticut format, and add a `<state>.md` here when you lea
 - **Answer exactly what is asked, part by part.** Use the question's own letters: `a.`, `b.` as
   paragraphs starting with the letter. A yes/no confirmation starts with "Confirmed." or "Not
   confirmed." and then explains. Do not argue beyond the question.
-- **Voice.** The response is the witness's. Plain and specific, no advocacy, "would" for modeled
-  outcomes. Say what was and was not done: if the request asks for an estimate the witness did not
-  prepare, say so and why (the requests often ask this directly).
+- **Voice.** Same as the testimony: the Switchbox report voice (step 1 of the `expert-testimony`
+  skill) in the testimony's formal register. First person singular ("I did not prepare," "my
+  analysis shows"), no contractions, "CLF and Sierra Club" in the third person, exact numbers,
+  "would" for modeled outcomes, no hedge words. Be shorter than the testimony: answer the question
+  in the fewest sentences that fully do so, then stop. No restating the question, no background the
+  testimony already gives (cite it instead), no advocacy. Say what was and was not done: if the
+  request asks for an estimate the witness did not prepare, say so and why (the requests often ask
+  this directly).
 - **Point to the testimony by page and line**, taken from the extract with
   `just sources-cite <extract.md> "<quoted words>"`, written as `Velez Direct at 14:5–7`. Cite outside
   documents in a footnote written out in full, with the footnote definition right after the paragraph

@@ -134,7 +134,16 @@ increase_table_md = autoenrolled_increase_table(
     td_rate=rate1_delivery,
     full_rate=rate1_full,
 )
-# CIEC-6 reads this cache instead of recomputing the per-kWh increase or the non-heat-pump sales.
+
+
+def _per_kwh(customers: int) -> dict[str, float]:
+    rev = group_revenue(customers, dec_dist, dec_tx)
+    dist, tx = rev["distribution"] / nonhp_kwh, rev["transmission"] / nonhp_kwh
+    return {"dist": dist, "tx": tx, "total": dist + tx, "pct_of_td": (dist + tx) / rate1_delivery}
+
+
+# CIEC-6 reads this cache instead of recomputing the per-kWh increase or the non-heat-pump sales;
+# ciec_responses.qmd reads the per-kWh bounds, nonhp_n and rate1_delivery inline.
 _ciec_3_vars = {
     "dec_dist": dec_dist,
     "dec_tx": dec_tx,
@@ -144,6 +153,10 @@ _ciec_3_vars = {
     "nonhp_customers": nonhp_customers,
     "nonhp_buildings": _nonhp_buildings,
     "increases": autoenrolled_increases(floor_existing, ceiling_existing, dec_dist, dec_tx, nonhp_kwh),
+    "floor_per_kwh": _per_kwh(floor_existing),
+    "ceiling_per_kwh": _per_kwh(ceiling_existing),
+    "nonhp_n": nonhp_n,
+    "rate1_delivery": rate1_delivery,
 }
 _ciec_3_path = Path("../cache/ciec_3_vars.pkl")
 _ciec_3_path.write_bytes(pickle.dumps(_ciec_3_vars))
@@ -197,33 +210,6 @@ Assumptions:
 - **Who pays.** Residential customers who are not on Rate HP, in proportion to annual kWh. The per-kWh result is the increase in the Rate 1 distribution charge and the Rate 1 transmission charge. Customers on Rate HP are outside that sales total.
 - **Enrollment.** Floor and ceiling counts of existing customers from CIEC-1(b). Every identified heat pump customer is auto-enrolled, none opt out, and enrollment persists.
 - **Load.** The revenue reduction is the baseline heat-pump decrease from CIEC-1(a). Total consumption for customers without a heat pump comes from ResStock.
-
-```{python}
-#| echo: false
-#| output: false
-
-# Values the CIEC responses file reads inline.
-def _per_kwh(customers: int) -> dict[str, float]:
-    rev = group_revenue(customers, dec_dist, dec_tx)
-    dist, tx = rev["distribution"] / nonhp_kwh, rev["transmission"] / nonhp_kwh
-    return {"dist": dist, "tx": tx, "total": dist + tx, "pct_of_td": (dist + tx) / rate1_delivery}
-
-
-Path("../cache/ciec_3_vars.pkl").write_bytes(
-    pickle.dumps(
-        {
-            "floor_existing": floor_existing,
-            "ceiling_existing": ceiling_existing,
-            "floor_per_kwh": _per_kwh(floor_existing),
-            "ceiling_per_kwh": _per_kwh(ceiling_existing),
-            "nonhp_kwh": nonhp_kwh,
-            "nonhp_customers": nonhp_customers,
-            "nonhp_n": nonhp_n,
-            "rate1_delivery": rate1_delivery,
-        }
-    )
-)
-```
 
 ```{python}
 #| echo: false

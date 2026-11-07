@@ -1,8 +1,27 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 53-70 (printed pp. 51-68), Chapter 5; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 53-70 (printed pp. 51-68) of the manual, Chapter 5; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back. Footnotes 24, 28, 31, 39, 42, which the first extraction split across the page's columns, are rejoined. The end of footnote 41 ("dependent costs ."), which the first extraction dropped, is restored._
+
+[PDF pp. 1-52 not transcribed: front matter to Works Cited in Part I, in 00_front_matter.md to 04_works_cited_part1.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 53 | printed p. 51]
+
 # Part II: Overarching Issues and Frameworks for Cost Allocation
+
+[PDF p. 54 | printed p. 52]
 
 ## 5. Key Common Analytical Elements
 
-everal key analytical processes and decisions must be made regardless of the overall framework and specific **S** methods used for cost allocation. These common
+Several key analytical processes and decisions must be made regardless of the overall framework and specific methods used for cost allocation. These common
 
 analytical elements include:
 
@@ -34,9 +53,9 @@ Another important reality is that the accounting category to which a cost is ass
 
 [^23]: As explained throughout this section, the critical coincident peak load may be a single peak hour but more typically is some combination of loads over multiple hours .
 
-[^24]: Several other terms are used for individual customers’ noncoincident peak demand, including “undiversified maximum customer demand .” Unfortunately, both “NCP” and “maximum customer demand” can also be
+[^24]: Several other terms are used for individual customers’ noncoincident peak demand, including “undiversified maximum customer demand .” Unfortunately, both “NCP” and “maximum customer demand” can also be used to refer to various class peaks, particularly when used with modifiers . This manual will use “customer NCP” to refer to individual customer peaks and “class NCP” to refer to aggregated peaks by class, often specifying the level of the system for the relevant class NCP . Class NCP is sometimes referred to as the maximum class peak, maximum diversified demand or other similar terms .
 
-> used to refer to various class peaks, particularly when used with modifiers . This manual will use “customer NCP” to refer to individual customer peaks and “class NCP” to refer to aggregated peaks by class, often specifying the level of the system for the relevant class NCP . Class NCP is sometimes referred to as the maximum class peak, maximum diversified demand or other similar terms .
+[PDF p. 55 | printed p. 53]
 
 these notionally fixed costs cannot be driven by energy use. As discussed in the text box on pages 78-79, this assumption is incorrect. Utilities make investments and commit to “fixed” expenses for many reasons: to meet peak demands, to reduce fuel costs, to reduce energy losses, to access lower-cost energy resources and to expand the system to attract additional business. As a result, this manual will use the phrase “dispatch O&M costs” to reflect operations and maintenance costs that vary directly with generation output and “nondispatch O&M costs” for O&M costs that are incurred independently of output levels.
 
@@ -50,8 +69,6 @@ There can be significant capital investments and nondispatch O&M costs that are 
 
 The shortest-term variable costs for utilities are mostly fuel costs and the portions of power purchases that vary with energy taken. In addition, some O&M costs are usually
 
-[^25]: These costs are comparable to tire replacements that are caused by wear and tear closely correlated with miles driven .
-
 considered variable with output: the costs of some consumable materials (especially for pollution control equipment), as well as the costs of replacements (such as lubricants and filters) and overhauls that are required after a specified amount of output, equivalent full-load hours of operation or similar measures.[^26]
 
 In many cases, utilities classify costs based on accounting data and administrative convenience, rather than the underlying reasons why the costs were incurred and why any capital investments are still part of the system. For example, utilities may treat some O&M and interim capital additions as variable and energy-related for one set of purposes, such as rate design or evaluation of potential generation resources, but treat the same costs as demand-related for cost allocation purposes for simplicity. Cost of service studies are normally driven primarily by accounting data that do not readily differentiate dispatch O&M costs from nondispatch O&M costs and capital additions.
@@ -64,7 +81,11 @@ The short-run variable cost of power generation is typically straightforward, pr
 
 The short-run variable costs of some generation facilities, including storage and dispatchable hydro, are very low. Storage facilities require the operation of other resources (which may well have variable costs) to charge them. Dispatch
 
+[^25]: These costs are comparable to tire replacements that are caused by wear and tear closely correlated with miles driven .
+
 [^26]: These costs are comparable to the costs of automotive oil changes and routine services that are the consequence primarily of miles driven .
+
+[PDF p. 56 | printed p. 54]
 
 decisions for storage and dispatchable hydro resources are typically made to maximize the benefits from the limited supply of other time-shiftable generation resources.
 
@@ -76,10 +97,6 @@ Beyond these energy needs, most regions of the United States also plan around th
 
 Although the typical planning procedures used to date by utilities and ISOs have often served their original purposes to measure the least-cost resources available at the utility system level, these procedures often oversimplify important aspects of overall capacity and reliability issues. The key principle is that reliability-related costs are not all “caused” by one hour or a few hours of demand during the year. A system must have some form and level of capacity available at all hours. Loss-of-energy expectation[^27] studies generally show that
 
-[^27]: Different analysts refer to related measures as loss-of-load hours, loss-ofload expectation, expected unserved energy and loss-of-load probability .
-
-[^28]: Some of the utilities in the ISOs/RTOs are restructured and do not provide generation services, so the cost of service study need not deal with
-
 adding capacity at any hour to a system, even **off-peak** hours, has a small but discernible beneficial impact on reliability. Many resources can be justified only if all of the attributes are considered, including contribution to meeting peak demand and contribution to meeting other needs such as fuel cost reduction.
 
 The typical vertically integrated utility calculates the installed capacity requirement by determining what amount of existing and new capacity will provide acceptable reliability, measured by such statistical parameters as the mathematical expected value of the number of hours in which it cannot serve load or of the amount of customer energy it will not be able to serve in a year, due to insufficient available generation. Those expected values are computed from models that simulate the scheduling of generation maintenance and the random timing of forced outages for many potential combinations of outages and load levels. In large portions of North America, the capacity requirement is determined regionally by an ISO/RTO and then allocated to the load-serving entities, transmission control areas or utilities.[^28]
@@ -88,7 +105,11 @@ Required reserves are usually expressed as the percentage **reserve margin** , w
 
 Capacity may be defined as installed capacity, demonstrated capacity or unforced capacity (installed capacity reduced by the resource’s forced outage rate). There may be special provisions to recognize that an installed MW of solar, wind or seasonal hydro capacity is not equivalent to an installed MW of combustion turbine capacity with guaranteed fuel availability or a MW of battery storage capacity located at a distribution substation. Capacity requirements may also be satisfied with curtailable load, energy storage or expected price response to peak pricing. The cost of capacity to meet a very short-term need is very different from the cost of **baseload capacity** that serves customers around the clock
 
-> generation costs . However, all the utilities in the SPP and most of those in MISO are vertically integrated, as are some jurisdictions in PJM (West Virginia, Virginia, Kentucky and the PJM pieces of North Carolina, Indiana and Michigan) and ISO-NE (Vermont) and municipal and cooperative utilities in most restructured jurisdictions .
+[^27]: Different analysts refer to related measures as loss-of-load hours, loss-ofload expectation, expected unserved energy and loss-of-load probability .
+
+[^28]: Some of the utilities in the ISOs/RTOs are restructured and do not provide generation services, so the cost of service study need not deal with generation costs . However, all the utilities in the SPP and most of those in MISO are vertically integrated, as are some jurisdictions in PJM (West Virginia, Virginia, Kentucky and the PJM pieces of North Carolina, Indiana and Michigan) and ISO-NE (Vermont) and municipal and cooperative utilities in most restructured jurisdictions .
+
+[PDF p. 57 | printed p. 55]
 
 and throughout the year, and the cost analyst must be aware of these differences.
 
@@ -124,6 +145,8 @@ Table 2. Cost drivers for power supply
 | **Solar**                             | Power at some hours                             | High                         | Low                  | None                           |
 | **Storage**                           | Power at peak hours, plus reserves at all hours | High                         | Low                  | Low — for<br>purchased<br>kWhs |
 
+[PDF p. 58 | printed p. 56]
+
 capacity to serve peak needs was typically considered to be a combustion turbine. These units had low investment costs and low ongoing O&M expenses but were inefficient and typically used more expensive fuels. These characteristics made them perfect to run infrequently during peak times and for other short-term reliability needs. Conversely, it made sense to make major investments in units with high upfront costs but high efficiency and cheap fuel prices and to run these units nearly year-round. These major investments were driven by year-round energy requirements, not peak loads.
 
 Today, in contrast, the least expensive form of capacity to serve extreme peak loads may not be a generating unit at all. For very low-duration loads, demand response, customer response to critical peak pricing or battery storage may be the least-cost resource to serve a very short-duration peak, sometimes described as a needle peak. The ability to curtail an end-use load saves not only the amount of capacity represented by the reduced load but also the marginal line losses and reserves that would be required to reliably sustain that load. Similarly, the ability to dispatch DERs also avoids line losses that would be required to deliver generated capacity to that location.[^29]
@@ -142,6 +165,8 @@ Although separating all the causes of the structure of an existing transmission 
 
 [^29]: The capacity saved can be as high as 1 .4 times the load reduced, when marginal line losses and reserves are taken into account . For a detailed discussion of this, see Lazar and Baldwin (2011) .
 
+[PDF p. 59 | printed p. 57]
+
 utility whose distribution of load and generation has changed over the decades, decisions about the nature and location of generation facilities can have important effects on the costs of the transmission system.
 
 Energy load over the course of many hours also affects the sizing and cost of transmission. Underground transmission is particularly sensitive to the buildup of heat around the lines, so the duration of peak loads and the extent to which loads decline from the peak period to the off-peak period affects the sizing of underground lines. An underground line may be able to carry twice as much load for a 15-minute peak after a day of low loads as for an eight-hour peak with a high daily load factor. To reduce losses and the buildup of heat from frequent high loads, utilities must install larger cables, or more cables, than they would to meet shorter duration loads.
@@ -151,10 +176,6 @@ The capacity of overhead lines is often limited by the sagging caused by thermal
 The costs of substations, including the power transformers on which they are centered, are determined by both peak loads and energy use. The capacity of a station transformer is limited by the buildup of heat created by electric energy losses in the equipment. Every time a transformer approaches or exceeds its rated capacity (a common occurrence, since transformers can typically operate well above their rated capacity for short periods), its internal insulation deteriorates and it loses a portion of its useful life.
 
 Figure 16 illustrates the effect of the length of the peak load, and the load in preceding hours, on the load that a transformer can carry without losing operating life (Bureau of Reclamation, 1991, p. 14). The initial load in Figure 16 is defined as the maximum of the average load in the preceding
-
-[^30]: This specific example is for self-cooled and water-cooled transformers designed for a 55 degrees Celsius temperature rise; other designs show similar patterns .
-
-[^31]: Utilities recognize that the length of overloads is critical to determining whether a transformer needs to be replaced . For example, Potomac
 
 Figure 16. Permissible overload for varying periods
 
@@ -168,8 +189,6 @@ Similarly, if the transformer’s high-load period is currently eight hours in t
 
 Short peaks and low off-peak loads allow the transformer to cool between peaks, so it can tolerate a higher peak current. Long overloads and higher load levels increase the rate of aging per overload, and frequent overloads lead to rapid failure of the transformer.
 
-> Electric Power Co . (Pepco) in Maryland has established standards for replacing line transformers when the estimated average load over a fivehour period exceeds 160% of the rating of overhead transformers or 100% for pad-mounted transformers (Lefkowitz, 2016, p . 41) . The company has not found it necessary to establish comparable policies for shorter periods .
-
 Table 3. Cost drivers for transmission
 
 | Connection to (or between)                       | Purpose                                         | Typical length<br>of line | Investment-<br>related costs | Maintenance<br>costs |
@@ -181,6 +200,12 @@ Table 3. Cost drivers for transmission
 | **Neighbor utilities**                           | Reserve sharing; energy trading                 | Short to long             | Vary                         | Low                  |
 | **Substations networked**<br>**for reliability** | Power at some hours                             | Short                     | Medium                       | Low                  |
 | **Storage and substations**                      | Power at peak hours, plus reserves at all hours | Very short                | Very low                     | Low                  |
+
+[^30]: This specific example is for self-cooled and water-cooled transformers designed for a 55 degrees Celsius temperature rise; other designs show similar patterns .
+
+[^31]: Utilities recognize that the length of overloads is critical to determining whether a transformer needs to be replaced . For example, Potomac Electric Power Co . (Pepco) in Maryland has established standards for replacing line transformers when the estimated average load over a fivehour period exceeds 160% of the rating of overhead transformers or 100% for pad-mounted transformers (Lefkowitz, 2016, p . 41) . The company has not found it necessary to establish comparable policies for shorter periods .
+
+[PDF p. 60 | printed p. 58]
 
 In a low load factor system, these high loads will occur less frequently, and the heavy loading will not last as long. If the only high-demand hours were the 12 monthly peak hours, for example, most transformers would be retired for other reasons before they experienced significant damage from overloads. In this situation, larger losses of service life per overload would be acceptable, and the short peak would allow greater overloads for the same loss of service life.
 
@@ -202,9 +227,7 @@ Figure 17. Summer peak day load from 10 residential customers on one line transf
 
 Customer coincident peak<br>Total load shape<br>Customer noncoincident peak<br>Hour of day<br>1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24<br>
 
-Source: Confidential load research sample
-
-same time as the 4 p.m. coincident peak for the group, and the coincident peak is only 86% of the sum of the individual peaks on this day. Furthermore, although not shown in this figure, this coincident peak is only 64% of the sum of the annual noncoincident peaks for the individual customers. It is important to note that a group of 10 residential customers is often less diverse than the combined loads from multiple customer classes, which determine the need for substation and generation capacity upstream of the final line transformer.
+Source: Confidential load research sample [PDF p. 61 | printed p. 59] same time as the 4 p.m. coincident peak for the group, and the coincident peak is only 86% of the sum of the individual peaks on this day. Furthermore, although not shown in this figure, this coincident peak is only 64% of the sum of the annual noncoincident peaks for the individual customers. It is important to note that a group of 10 residential customers is often less diverse than the combined loads from multiple customer classes, which determine the need for substation and generation capacity upstream of the final line transformer.
 
 It is important to note that the load exceeds 50 kVA for only three hours and is below 40 kVA for 18 hours of this summer peak day. Referring back to Figure 16, under these circumstances, a 50-kVA transformer would likely be adequate to serve this load, because the overload is for only a short period. By contrast, the sum of the maximum noncoincident peak loads of the 10 customers is more than 90 kVA.
 
@@ -225,6 +248,8 @@ Table 4. Cost drivers for distribution
 | **Meters: Traditional**     | Measuring usage                                            | Low                          | Low                  |
 | **Meters: Advanced**        | Multiple functions                                         | Medium                       | Low                  |
 
+[PDF p. 62 | printed p. 60]
+
 average embedded cost of service, a circumstance that results in benefits to the utility and other ratepayers.
 
 The final components in the distribution system are meters, typically installed for all residential and general service customers but not for very predictable loads like traffic signals or streetlights. How to classify the cost is a matter of debate. On one hand, a meter is needed because usage levels vary from customer to customer and month to month, a theoretically usage-related cost. But on the other hand, one meter is needed for every metered customer, and meter costs do not typically vary from customer to customer within a class. In addition, **smart meters** entail both higher direct investment costs and back office investments but provide generation, transmission and distribution system benefits by allowing more precise measurement and control of local loads and more accurate assignment of peaking capacity requirements. Lastly, the cost of current transformers and potential transformers necessary to meter large customers should be included as part of their metering costs — an issue common between embedded and marginal cost methods.[^32] Table 4 summarizes cost drivers in the distribution system.
@@ -243,6 +268,8 @@ Similarly, most customers served by single-phase primary distribution are served
 
 [^33]: Conversely, the 4-kV supply to some customers is from transformers fed directly from transmission without using the 25-kV system .
 
+[PDF p. 63 | printed p. 61]
+
 On the other hand, some distinctions in voltage level represent incremental investment:
 
 - Most customers served at distribution voltages cannot take service directly from the transmission system. Even if a transmission line runs right past a supermarket or housing development, the utility must run a feeder from a distribution substation to serve those customers. Distribution in its broadest sense is thus principally an incremental service, rather than an alternative to transmission, needed by and provided to some customers but not all.[^34]
@@ -253,10 +280,6 @@ These incremental costs should be functionalized so that they are allocated to t
 
 In other situations, distinguishing between incremental and complementary costs can be more complicated. Examples include the treatment of transmission equipment at different voltages and the treatment of secondary poles. Many embedded cost of service studies treat subtransmission as an incremental cost separate from transmission and charge more for delivery to customer classes served directly from the subtransmission system or from substations fed by the subtransmission system. For the most part, utilities use lower transmission voltage where it is less expensive than higher voltages, either due to the lower cost of construction relative
 
-[^34]: In some cases, a distribution substation and feeder can bring service to customers that would otherwise be served by an extension of the transmission system at higher cost . Identifying and accounting for that limited complementary service is probably not warranted in most embedded cost of service study applications .
-
-[^35]: Another way of looking at this relationship is that secondary customers are those for whom providing service at secondary has a lower total cost than providing service at primary . Sharing utility-owned transformer capacity is less expensive than having each customer build its own transformer . See Chapter 11 for a discussion of primary and secondary distribution and their allocation .
-
 to the total load that needs to be served by the line or the happenstance that the subtransmission line is already in place. If it is less expensive to serve customers with the lower voltage, it would be inequitable to charge them more for being served at that voltage.
 
 Similarly, distribution poles carrying only secondary lines are less expensive than poles carrying primary lines. If a customer served by a secondary-only pole had to be served at primary voltage instead, the primary pole would be more expensive, and that higher cost would almost certainly be allocated to all distribution customers. Secondary poles (unlike line transformers and most secondary lines) are lower-cost alternatives to some primary poles.[^37]
@@ -265,9 +288,15 @@ Similarly, distribution poles carrying only secondary lines are less expensive t
 
 In addition to administrative simplicity, the purpose of separating customers into broad classes flows from the idea that different types of customers are responsible for different types of costs, and thus it is fairer and more efficient to charge them separate rates. One set of rates for each customer class, based on separate cost characteristics, is the key feature of postage stamp pricing for electric utilities. As a result, it is very important to determine appropriate customer classes with different cost characteristics at the outset of a cost of service study. The number of classes will vary from utility to utility and may vary depending on the costing methodology being used. In addition to equitable cost allocation, different rate structures are often used for different rate classes. For example, residential customer classes generally do not have demand charges today, but most large industrial classes do. This means that decisions regarding the number and type of customer classes can also have rate design implications,
 
+[^34]: In some cases, a distribution substation and feeder can bring service to customers that would otherwise be served by an extension of the transmission system at higher cost . Identifying and accounting for that limited complementary service is probably not warranted in most embedded cost of service study applications .
+
+[^35]: Another way of looking at this relationship is that secondary customers are those for whom providing service at secondary has a lower total cost than providing service at primary . Sharing utility-owned transformer capacity is less expensive than having each customer build its own transformer . See Chapter 11 for a discussion of primary and secondary distribution and their allocation .
+
 [^36]: Although most networked secondary conductors parallel primary lines and are incremental to the primary system, a limited number of secondary conductors extending beyond the primary lines are complementary, because they avoid the need to extend primary lines .
 
 [^37]: Similarly, a portion of the secondary lines replaces primary lines . If the customers that can be served with secondary poles required primary service, the utility would need to extend the primary lines rather than secondary lines . Hence, a portion of the secondary lines is also complementary to the primary system, rather than additive .
+
+[PDF p. 64 | printed p. 62]
 
 ###### although this is not necessarily permanent.
 
@@ -287,19 +316,13 @@ A word of caution is appropriate here. With respect to technology-driven class c
 
 To begin, electric space heating customers are likely to have different load characteristics from the nonheating customers, with significantly more usage and a different daily load shape in the winter. For a winter-peaking system, this could mean that electric heating customers should be allocated proportionately more costs. Conversely, in a summer-peaking system, electric heating customers should be allocated proportionately fewer overall costs. However, this issue, which is essentially a question of a potential intraclass cross-subsidy between types of residential customers, can also be addressed through changes to rate design. Seasonally differentiated rates, if based appropriately on cost causation, can achieve the same distributional impact as separate rate classes for heating and nonheating customers while bringing additional benefits from the improved efficiency of pricing.
 
-The creation of an electric heating rate class can have other implications. In regions where electric heating customers are disproportionately low-income, this decision also has significant equity implications. There can also be environmental repercussions to this choice. Concerns would arise, for example, if electric heating rates promote use of gas and coal in power plants to replace direct burning of gas on-site for heating, which historically was often more efficient on a total energy basis. Recent developments in efficient electric heating, particularly air and ground source heat pumps, may have switched the valence of these questions. In certain areas, higher-income customers may be disproportionately adopting efficient electric heating. And the new electric technologies may now be significantly cleaner and more efficient than on-site combustion of natural gas, particularly if powered by
-
-zero emissions electric resources. A seasonal and time-varying cost study and time-varying rates may enable appropriate cost recovery without need for a separate class.
+The creation of an electric heating rate class can have other implications. In regions where electric heating customers are disproportionately low-income, this decision also has significant equity implications. There can also be environmental repercussions to this choice. Concerns would arise, for example, if electric heating rates promote use of gas and coal in power plants to replace direct burning of gas on-site for heating, which historically was often more efficient on a total energy basis. Recent developments in efficient electric heating, particularly air and ground source heat pumps, may have switched the valence of these questions. In certain areas, higher-income customers may be disproportionately adopting efficient electric heating. And the new electric technologies may now be significantly cleaner and more efficient than on-site combustion of natural gas, particularly if powered by [PDF p. 65 | printed p. 63] zero emissions electric resources. A seasonal and time-varying cost study and time-varying rates may enable appropriate cost recovery without need for a separate class.
 
 Several states have considered creating a separate rate class for customers with solar PV systems. Because solar customers may have different usage patterns than other customers, this is reasonable to investigate. However, it is not clear that there is a significant cross-subsidy to address, particularly at low levels of PV adoption. Current rate design practices for solar customers in many jurisdictions — such as net metering using **flat volumetric rates** , monthly netting and crediting at the retail rate — are fairly simple. These rate design practices could be improved significantly over time and integrated with broader rate design reforms. For example, a time-varying cost study would allow the creation of more granular time-varying rates so that solar customers pay an appropriate price for power received during nonsolar hours and are credited with an appropriate price for power delivered to the distribution system during solar hours. This would include changes to netting periods, which would reveal more information about how a solar customer actually uses the electric system.
 
 In terms of rate classes for specific technologies, some utilities separate out customers with electric water heating as a proxy for a flat load shape and the potential for load control. In the future, some utilities may seek to make electric vehicle adoption a separate rate class as a substantially controllable load with distinct usage characteristics. However, these technologies may not need consideration as a separate rate class, particularly given efforts to improve the cost causation basis of rate design more generally. Again, time-varying rates will appropriately charge customers with peak-oriented loads and appropriately benefit customers with loads concentrated in low-cost hours or controlled into those hours.
 
 Some utilities have implemented separate rate classes
-
-[^38]: This distinction is important where some distribution costs are classified as customer-related . In those situations, each multifamily building (rather than each meter) should be treated as one customer, as would a single commercial customer of the same size and load .
-
-[^39]: For example, Seattle City Light, a municipal utility, has two rate schedules for most commercial and industrial classes within the city: one for the highly networked higher-cost underground system in the urban core,
 
 for single-family and multifamily residential customers. There are many reasons to believe that the cost of serving multifamily buildings is substantially lower than serving single-family homes on average:
 
@@ -319,7 +342,11 @@ for single-family and multifamily residential customers. There are many reasons 
 
 There may be countervailing considerations in some service territories, such as if multifamily buildings are served by more expensive underground service and single-family buildings are served with cheaper overhead lines. A similar set of considerations may cause some utilities to disaggregate customers by geography, such as those residing inside and outside city limits.[^39] Customers in deeply rural areas tend to be more expensive to serve, since they typically are too far from their neighbors to share transformers, require a long run of primary line along the public way, and generally
 
-and another for the balance of the city, plus separate higher rates for the adjacent cities and towns where it provides service . Compare Schedules MDC, MDD, MDS and MDT at Seattle City Light (n .d .) . The city of Austin, Texas, also applies different rates to customers outside the city limits (Austin Energy, 2017) . In many places, cities impose franchise fees or municipal taxes that make customer bills inside cities higher than those outside cities, even though the cost data may suggest the opposite is more equitable .
+[^38]: This distinction is important where some distribution costs are classified as customer-related . In those situations, each multifamily building (rather than each meter) should be treated as one customer, as would a single commercial customer of the same size and load .
+
+[^39]: For example, Seattle City Light, a municipal utility, has two rate schedules for most commercial and industrial classes within the city: one for the highly networked higher-cost underground system in the urban core, and another for the balance of the city, plus separate higher rates for the adjacent cities and towns where it provides service . Compare Schedules MDC, MDD, MDS and MDT at Seattle City Light (n .d .) . The city of Austin, Texas, also applies different rates to customers outside the city limits (Austin Energy, 2017) . In many places, cities impose franchise fees or municipal taxes that make customer bills inside cities higher than those outside cities, even though the cost data may suggest the opposite is more equitable .
+
+[PDF p. 66 | printed p. 64]
 
 have higher unit costs related to lower load per mile of distribution line.[^40]
 
@@ -339,15 +366,13 @@ At the very least, these data must be available by class across the entire syste
 
 [^40]: These factors may be offset by the utility’s policy for charging new customers for extending the distribution system, as discussed in Section 11 .2
 
+[PDF p. 67 | printed p. 65]
+
 class, the feeders serving the class, the substations serving the class and so on. Modern AMI and advanced distribution monitoring systems, if properly configured, can provide those data. Some utilities now routinely collect interval load data at each level of the system, while others are starting to acquire those capabilities.
 
 The data needed for different cost allocation frameworks and methods can vary greatly, and it is difficult to generalize because of this. But at a high level, embedded cost techniques rely on one year of data or the equivalent forecast for one year. For many inputs, marginal cost techniques often rely on multiple years of data in order to estimate how costs are changing with respect to different factors over time. Different data may be needed for each step of the process, starting from the functionalization of costs down to the creation of **allocation factors** , or allocators, to split up the costs to customer classes.
 
 Where the utility’s metering and data collection do not directly provide comprehensive load data for all customers and system components, two options are available. The first and generally preferable option is sampling. Most investorowned and larger consumer-owned utilities install **interval meters** specifically for load research purposes on a sample of customers in each class that does not have widespread interval metering.[^41] The number and distribution of those meters should be determined to provide a representative mix of customer loads within the class (or other subgroups of interest) and to produce estimates of critical values (such as contribution to the monthly system peak load) that reach target levels of statistical significance.[^42] These samples are typically a few hundred per class in order to meet the PURPA standard. Second, some smaller utilities borrow “proxy data” from a nearby utility with similar customer characteristics and more robust load research capabilities. Class load data
-
-[^41]: Utilities usually have interval meters on customers over some consumption threshold for billing purposes . Smaller customers may have meters that record only total energy consumption over the billing period (typically a month), or both monthly energy and maximum hourly (or 15-minute) demand, neither of which provides any useful data for allocating timedependent costs .
-
-[^42]: In 1979, FERC issued regulations to implement PURPA § 133 (16 U .S .C . § 2643), which requires the gathering of information on the cost of service .
 
 are usually publicly available for regulated utilities. Neither sampled load nor proxy load will provide the precision of comprehensive interval metering, but they can provide reasonable estimates of the contribution of the group to demand at each hour, enabling development of cutting-edge techniques such as time-specific allocation methods.
 
@@ -360,8 +385,6 @@ Different elements of load research data are relevant in the creation of allocat
 - At the bulk power level, all customers share the generation and transmission system, and the diversity of all usage should be reflected, whether at the highest system hour of the year (a method known as 1 CP, for coincident peak), the highest hour of each month (12 CP) or the highest 200 hours of the year (200 CP), all **on-peak** hours, **midpeak** hours and off-peak hours, or any other criteria relevant for allocation.
 
 Table 5 on the next page shows illustrative load research data for four customer classes. For the purposes of clear examples throughout the manual, we adopt the convention
-
-> C .F .R . Title 18, Chapter 1, Subchapter K, Part 290 .403(b) established the requirement, since repealed, that “the sampling method and procedures for collecting, processing, and analyzing the sample loads, taken together, shall be designed so as to provide reasonably accurate data consistent with available technology and equipment . An accuracy of plus or minus 10 percent at the 90 percent confidence level shall be used as a target for the measurement of group loads at the time of system and customer group peaks .” See Federal Energy Regulatory Commission Order 48 (1979) .
 
 Table 5. Illustrative load research data
 
@@ -388,6 +411,12 @@ Table 5. Illustrative load research data
 | System monthly 12 CP      | 225         | 250                     | 175                   | 10                 | 660       | Transmission,<br>generation            |
 | System 200 CP             | 200         | 240                     | 150                   | 10                 | 600       |                                        |
 
+[^41]: Utilities usually have interval meters on customers over some consumption threshold for billing purposes . Smaller customers may have meters that record only total energy consumption over the billing period (typically a month), or both monthly energy and maximum hourly (or 15-minute) demand, neither of which provides any useful data for allocating time-dependent costs . costs .
+
+[^42]: In 1979, FERC issued regulations to implement PURPA § 133 (16 U .S .C . § 2643), which requires the gathering of information on the cost of service . C .F .R . Title 18, Chapter 1, Subchapter K, Part 290 .403(b) established the requirement, since repealed, that “the sampling method and procedures for collecting, processing, and analyzing the sample loads, taken together, shall be designed so as to provide reasonably accurate data consistent with available technology and equipment . An accuracy of plus or minus 10 percent at the 90 percent confidence level shall be used as a target for the measurement of group loads at the time of system and customer group peaks .” See Federal Energy Regulatory Commission Order 48 (1979) .
+
+[PDF p. 68 | printed p. 66]
+
 of a commercial customer class of all general service customers served at secondary voltage, labeled as “Secondary commercial,” and an industrial customer class of all general service customers served at primary voltage, labeled as “Primary industrial.”
 
 In this illustration, the sum of individual customer noncoincident peak demands is 3,100 MWs, excluding the primary industrial class that is not shown in the table.[^43] However, the coincident peak demand served by the utility becomes more diverse as we move up the system, a phenomenon described in more detail in Section 5.1. As a result, the observed coincident peak demands are lower at more broadly shared portions of the system. At the highest level, this illustrative system has a 750-MW coincident peak demand for the highest single hour, labeled as “System 1 CP.” In between, the sum of the class NCPs at the circuit level, labeled as “Class NCP: circuit,” is 1,150 MWs, and the sum of the class NCPs at the substation level, labeled as “Class NCP: substation,” is 925 MWs. Customers served at primary
@@ -395,8 +424,6 @@ In this illustration, the sum of individual customer noncoincident peak demands 
 voltage (primary industrial) have no utility-provided line transformers, and the first level at which their demand is typically relevant is the circuit level.
 
 The street lighting class is important to note with respect to the volatility of results. Because this class has zero daytime usage and a very different (typically completely stable overnight) load profile than other classes, it is highly affected by the choice between noncoincident methods and either coincident or hourly methods. In addition, because streetlights represent many points of delivery but are typically located only in places where other customers are nearby, this class almost never “causes” the installation of a transformer or the creation of a secondary delivery point but also does account for a huge number of the individual points of use
-
-[^43]: In Table 5, the sum of customer NCPs for the primary industrial class is shown as “N/A” because these customers do not use line transformers and thus this demand metric is not generally relevant to this class . For more general purposes, we are assuming that the sum of customer NCPs for the primary industrial class in this illustration is 300 MWs, bringing the overall total to 3,400 MWs .
 
 Table 6. Simple allocation factors derived from illustrative load research data
 
@@ -425,6 +452,10 @@ Table 6. Simple allocation factors derived from illustrative load research data
 
 Note: Class percentages may not add up to 100 because of rounding .
 
+[^43]: In Table 5, the sum of customer NCPs for the primary industrial class is shown as “N/A” because these customers do not use line transformers and thus this demand metric is not generally relevant to this class . For more general purposes, we are assuming that the sum of customer NCPs for the primary industrial class in this illustration is 300 MWs, bringing the overall total to 3,400 MWs .
+
+[PDF p. 69 | printed p. 67]
+
 on the system. Put another way, we all like streetlights near our homes and businesses, but nearly all of them go in as a secondary effect of residential or commercial development; a few are along major highways without a nearby residence or business, but these are rare.
 
 The next step is generating allocation factors to be used in the allocation phase of the cost study. For embedded cost studies, these are applied to the total investment and expense by FERC account, while in marginal cost studies they are applied to the calculated unit costs for each type of system component.
@@ -445,6 +476,10 @@ Table 7. Composite allocation factors derived from illustrative load research da
 
 Note: Class percentages may not add up to 100 because of rounding .
 
+[PDF p. 70 | printed p. 68]
+
 In Table 6, we have calculated allocation factors shown as a class percentage of each usage metric. In Part II, we discuss in what circumstances each of these will be appropriate for embedded cost of service studies. In many cases, weighted combinations of these are appropriate. Several commonly used composite allocation factors are shown in Table 7, computed by weighting values in Table 6.
 
 Given the wide diversity of utilities and their load patterns, readers should be careful about overgeneralizing from these illustrative examples. However, some patterns will hold true across the board. For example, the minimum system method will always allocate more costs to classes with large numbers of customers, at least compared with the basic customer method.
+
+[PDF pp. 71-276 not transcribed: Chapter 6 to Glossary and back cover, in 06_basic_frameworks.md to glossary.md of this folder]

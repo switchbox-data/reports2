@@ -1,6 +1,23 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 71-84 (printed pp. 69-82), Chapter 6; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 71-84 (printed pp. 69-82) of the manual, Chapter 6; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back. Footnotes 47, 48, 49, 50, 52 had been extracted as plain text and are now footnote definitions. Footnote 45, which the first extraction split across the page's columns, is rejoined._
+
+[PDF pp. 1-70 not transcribed: front matter to Chapter 5, in 00_front_matter.md to 05_analytical_elements.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 71 | printed p. 69]
+
 ## 6. Basic Frameworks for Cost Allocation
 
-e group cost allocation studies into two primary families. Embedded cost studies look at existing **W** costs making up the existing revenue requirement. Marginal cost studies look at changes in cost that will be driven by changes in customer requirements over a reasonable planning period of perhaps five to 20 years. In the same family as marginal cost studies, total service long-run incremental cost (TSLRIC) studies look at the cost of creating a new system to provide today’s needs using today’s technologies, optimized to today’s needs. Each has a relevant role in determining the optimal allocation of costs, and regulators may want to consider more than one type of study when making allocation decisions for major utilities that affect millions of consumers.
+We group cost allocation studies into two primary families. Embedded cost studies look at existing costs making up the existing revenue requirement. Marginal cost studies look at changes in cost that will be driven by changes in customer requirements over a reasonable planning period of perhaps five to 20 years. In the same family as marginal cost studies, total service long-run incremental cost (TSLRIC) studies look at the cost of creating a new system to provide today’s needs using today’s technologies, optimized to today’s needs. Each has a relevant role in determining the optimal allocation of costs, and regulators may want to consider more than one type of study when making allocation decisions for major utilities that affect millions of consumers.
 
 ### 6.1 Embedded Cost of Service Studies
 
@@ -20,11 +37,11 @@ In this first step, cost of service studies divide the utility’s accounting co
 
 [^44]: The third step is usually called allocation, which is the same as the name of the entire process . This step involves the selection or development of allocation factors . Some analysts refer to this third step as factor allocation to prevent confusion .
 
-[^45]: Some of the costs, such as for energy efficiency programs and advanced
-
-> meters, may serve multiple functions and must be assigned among those functions or treated as special functional categories .
+[^45]: Some of the costs, such as for energy efficiency programs and advanced meters, may serve multiple functions and must be assigned among those functions or treated as special functional categories .
 
 [^46]: Some sources use the term “production” instead . This manual uses the term “generation” and generally includes exports from storage facilities under this category .
+
+[PDF p. 72 | printed p. 70]
 
 ##### Figure 18. Traditional embedded cost of service study flowchart
 
@@ -47,6 +64,8 @@ Although some utility analysts combine all costs into these three functions, the
   - Historically, in most cases functionalization decisions
 
 - can follow the utility’s accounting and are noncontroversial.
+
+[PDF p. 73 | printed p. 71]
 
 The investment that is booked as generation units is usually part of the generation function. But there are exceptions. In some situations, the function of an investment may not match the accounting category. Examples include the following:
 
@@ -98,6 +117,8 @@ In addition, many cost of service studies subfunctionalize some costs within a f
 
 - still be helpful in organizing thinking about cost causation, but the cost of service study may need to differentiate functions in new ways. For example, distributed generation, storage, energy efficiency, demand response and smart grid technologies can provide services that span generation, transmission and distribution.
 
+[PDF p. 74 | printed p. 72]
+
 #### 6.1.2 Classification
 
 The second step of the process classifies each function or subfunction (i.e., each type of plant and expense) as being caused by one or more categories of factors. In particular, most cost of service studies use the classification categories of demand (meaning some measure of loads in peak hours or other hours that contribute to stressing system reliability or increasing capacity requirements on the generation, transmission or distribution systems), energy and customer number, and some use other categories (e.g., direct assignment, such as of street lighting).
@@ -139,6 +160,8 @@ Table 8 reproduces a table from the 1992 NARUC _Electric Utility Cost Allocation
 
 This was a simplification even at the time, and changes to the industry and in the available data and analytical techniques merit reevaluation and reform. For example, a legacy framework for variable renewable capacity, particularly wind and solar, could treat the investment for utility-owned resources as 100% demand-related, since there are no variable fuel costs. However, power purchase agreements for these same resources are typically priced on a per-kWh basis from independent power producers. This could lead to two different approaches for the same asset depending on the ownership model, an obvious error in analysis that should be avoided by considering the actual products and services being provided. In addition, most of the benefits of wind and solar do not necessarily accrue at peak hours — the underlying justification of a demand-related classification. Similarly, analog meters were only useful for measuring customer usage and billing, but new AMI provides data that can be used for system planning and provides new opportunities for energy management and peak load reduction.
 
+[PDF p. 75 | printed p. 73]
+
 #### 6.1.3 Allocation
 
 The final step of the standard allocation process is the application of an allocation factor, or allocator, to each cost category.[^47] An allocator is a percentage breakdown of the selected cost driver among classes. Within each broad type of classification, utilities use multiple allocators for various cost categories. For example, many different measures of “demand” are used to allocate demand-related costs, including various measures of contribution to coincident peaks (a single annual system coincident peak, or 1 CP); the average of several high-load monthly coincident peaks (e.g., 3 CP or 4 CP); the average of all 12 monthly coincident peak contributions (12 CP); the average of class contribution to some number of high-load hours (e.g., 200 CP); or different measurements of class maximum load (class
@@ -153,7 +176,9 @@ Figure 19. Modern embedded cost of service study flowchart
 
 Revenue<br>requirement<br>Functionalization<br>Billing, customer<br>Generation Transmission Distribution service, and<br>A&G costs<br>Time assignment<br>Site<br>Peak hours Intermediate All hours, infrastructure,<br>hours including off-peak billing and<br>collection<br>Allocation<br>Secondary<br>Residential commercial Primary industrial Street lighting<br>
 
-47 Note that “allocation” is the term normally used for the entire process of assigning revenue requirements to classes and is also the term used for the last step of that process .
+[^47]: Note that “allocation” is the term normally used for the entire process of assigning revenue requirements to classes and is also the term used for the last step of that process .
+
+[PDF p. 76 | printed p. 74]
 
 system is used for a set of other purposes. This is sometimes referred to as an internal allocator because it comes internally from previous calculations in the process. This is in contrast with “external allocators” based on facts and calculations outside of the cost allocation process, such as system peak and energy usage. Lastly, a variety of costs may be allocated based on a revenue allocator, which is based on the division of costs across all the classes.
 
@@ -191,8 +216,6 @@ Table 9. Results of two illustrative embedded cost of service study approaches
 | **Difference**                    |                        |                                  |                                |                              |                                                        | **-15%**                        | **+26%**                     |
 | Note: Numbers .                   | may not add up to .    | total because of roun .          | ding .                         |                              |                                                        |                                 |                              |
 
-48 Some costs associated with providing service under rare combinations of load and operating contingencies may not fit well into this framework .
-
 Table 10. Illustrative allocation factors
 
 | Method<br>**Method**                                               | **Residential** | Commercial<br>and industrial |
@@ -205,6 +228,10 @@ Table 10. Illustrative allocation factors
 | **75% all energy/**<br>**25% on-peak energy**                      | 51 .3%          | 48 .8%                       |
 | **50% customer/**<br>**25% all energy/**<br>**25% on-peak energy** | 71 .3%          | 28 .8%                       |
 
+[^48]: Some costs associated with providing service under rare combinations of load and operating contingencies may not fit well into this framework .
+
+[PDF p. 77 | printed p. 75]
+
 on the highest-hour peak demand and most distribution costs allocated based on customer count. The second uses a simple time-based assignment method, in which all costs are allocated to usage in the hours for which the costs are incurred. This method recognizes that costs have a base level needed to provide service at all hours and incremental costs to provide service at peak hours. It also recognizes the multiple purposes for which advanced meter investments are made. The results are quite striking, with the second study showing a residential class revenue requirement 15% lower than the first. This set of assumptions probably forms the bookends between which most well-developed embedded cost studies would fall.
 
 The first approach presents a legacy method that some industrial and large commercial customer representatives still sometimes propose. The second is a method that residential consumer advocates often champion. This change in method drives a significant change in the result. Both of these are “cost of service” results.
@@ -215,15 +242,21 @@ Figure 20 on the next page shows a Sankey diagram for the legacy embedded cost o
 
 In contrast, Figure 21 on Page 77 shows a Sankey diagram for the modern study in Table 9. More than half of peak hours costs are allocated to the residential class, but the peak hours classification is much less significant than the demand-related classification in the legacy study. Similarly, the basic customer method classifies only billing and a portion of advanced metering costs as customer-related. These costs are still primarily allocated to the residential class, but the aggregated differential nevertheless comes out significantly lower than in the legacy study. The remainder of advanced metering costs is split between all energy and on-peak energy because the purpose of these investments is to reduce energy costs and peak capacity requirements.
 
+[PDF p. 78 | printed p. 76]
+
 ##### Figure 20. Sankey diagram for legacy embedded cost of service study
 
 Revenue requirement: 370<br>Billing &<br>Transmission: collection:<br>Generation: Distribution:<br>20 20<br>250 80<br>Energy-related: Demand-related: Customer-<br>related:<br>100 195<br>75<br>Residential: Commercial and industrial:<br>234.5 135.5<br>
+
+[PDF p. 79 | printed p. 77]
 
 ##### Figure 21. Sankey diagram for modern embedded cost of service study
 
 Revenue requirement: 370<br>Billing &<br>Transmission: collection:<br>Generation: Distribution:<br>20 20<br>250 80<br>Customer-<br>related:<br>All hours: Peak hours:<br>20<br>270 75<br>Residential: Commercial and industrial:<br>198.75 171.25<br>
 
 ###### “Fixed” versus “variable” costs
+
+[PDF p. 80 | printed p. 78]
 
 In the past, some cost allocation studies have relied on a simplified model of cost causation, in which certain costs are labeled as variable and then classified as energy-related and apportioned among classes based on class kWh usage. The remaining costs, labeled as fixed, are classified as demand-related or customer-related and allocated on some measure of peak demand or customer number, respectively.[^49] This antiquated approach is based on fundamental misconceptions regarding cost causation. But it still underlies many arguments about cost allocation, perhaps because it typically works to the benefit of customer classes with high load factors and small numbers of customers — which describes most utilities’ large industrial classes, data centers and even supermarkets.[^50] This technique ignores the reality that modern electric systems trade off capital, labor, contractual obligations, fuel and other expenditures to minimize costs.
 
@@ -253,23 +286,21 @@ As a result, these costs are not fixed over the planning horizon. From an econom
 
 Relatedly, nearly all competitive businesses and fee-charging public services recover their fixed costs based on units sold. Customers do not pay an access fee to enter a supermarket.
 
-- 49 In rate design, this approach has been extended to argue that all “fixed” costs must be recovered through **fixed charges** , often meaning customer and demand charges . These approaches promote neither equity nor efficiency .
+[^49]: In rate design, this approach has been extended to argue that all “fixed” costs must be recovered through **fixed charges** , often meaning customer and demand charges . These approaches promote neither equity nor efficiency .
 
-- 50 Similarly, the fixed/variable approach is attractive to those who would justify rate designs with lower energy charges and higher customer and demand charges .
+[^50]: Similarly, the fixed/variable approach is attractive to those who would justify rate designs with lower energy charges and higher customer and demand charges .
 
 [^51]: In previous decades, utilities would even argue that some fuel costs are fixed, on the grounds that having fuel on hand was necessary to allow the plant to function when required, or that a certain amount of fuel was required for startup, before any energy could be generated . These arguments appear to have largely disappeared, although similar issues are raised by the fuel security debate at FERC .
 
-- 52 Many observers would add another category — expenses whose amount and timing vary with hours of operation, output or unit starts — even though not all cost of service studies separate those costs from other O&M expenses .
+[^52]: Many observers would add another category — expenses whose amount and timing vary with hours of operation, output or unit starts — even though not all cost of service studies separate those costs from other O&M expenses .
+
+[PDF p. 81 | printed p. 79]
 
 Restaurants, theaters and airlines have many costs that can be characterized as fixed (land, buildings, equipment, a large share of labor) and vary their unit prices by time of use but ultimately recover their capital investments and long-term costs from sales of output. RAP has done extensive analysis of utility distribution system investment and the relationship of that investment to the number of customers, peak demands and total kWhs. We found that these costs are roughly linear with respect to each of these metrics (Shirley, 2001).
 
 Some version of the fixed/variable distinction may have been close to reality in the middle of the last century. Most utilities relied primarily on fossil steam plants, using newer, more efficient plants to serve baseloads and older plants to serve intermediate and peak loads. The capital costs of each were not very different. Fuel costs for oil, coal and natural gas were not very different. And because little was required in terms of emissions controls, coal plants were not much more expensive than other fossil-fueled plants.[^53] By the 1970s, however, conditions had changed radically. Oil prices rose dramatically, new coal plants were required to reduce air emissions, and new generation technologies arose: nuclear, with high capital and O&M cost but low fuel prices; and combustion turbines, with low capital and O&M costs but high fuel costs. Utilities suddenly had a menu of options among generation technologies, including the potential for trading off short-term fuel costs for long-term capital investments. Today that menu has expanded even more and includes storage, demand response, price-responsive customer load and distributed generation.
 
 As a result, the fixed/variable distinction has lost relevance and adherents over the last several decades. For example, many regulators classify capital investments using methods that recognize the contribution of energy requirements to the need for a wide variety of “fixed” costs for generation, transmission and distribution.[^54]
-
-[^53]: In some areas, such as the U .S . Northwest, Manitoba and Québec, utilities had access to ample low-cost hydro facilities and mostly avoided construction of thermal generation .
-
-[^54]: These methods are discussed in chapters 9, 10 and 11 .
 
 ### 6.2 Marginal Cost of Service Studies
 
@@ -278,6 +309,12 @@ The fundamental principle of marginal cost pricing is that economic efficiency i
 This is a very broad concept because it abstracts from and does not consider both theoretical and computational issues associated with the development of marginal costs. In contrast to the static snapshot that is typical of embedded cost approaches, marginal cost of service studies account for how costs change over time and which rate class characteristics are responsible for driving changes in cost. Importantly, marginal costs can be measured in the short run or long run. At one extreme, a true short-run marginal cost study will measure only a fraction of the cost of service, the portion that varies from hour to hour with usage assuming no changes in the capital stock. At the other, a total service long-run incremental cost study measures the cost of replacing today’s power system with a new, optimally designed and sized system that uses the newest technology. In between is a range of alternatives, many of which have been used in states like Maine, New York, Montana, Oregon and California in determining revenue allocation among classes.
 
 There is a strong theoretical link between optimal rate design and long-run marginal costs. Allocation based on marginal costs works backward from this premise; because pricing should be determined on this basis, cost allocation should as well. In its simplest form, a marginal cost study computes marginal costs for different elements of service, which can be estimated using a number of techniques, including proxies,
+
+[^53]: In some areas, such as the U .S . Northwest, Manitoba and Québec, utilities had access to ample low-cost hydro facilities and mostly avoided construction of thermal generation .
+
+[^54]: These methods are discussed in chapters 9, 10 and 11 .
+
+[PDF p. 82 | printed p. 80]
 
 regressions and other cost data. Table 11 shows illustrative marginal costs for different elements of the electric system.
 
@@ -307,6 +344,8 @@ For transmission and distribution costs in the NERA method, the marginal costs h
 
 [^55]: Short-run marginal cost approaches are actually much simpler, primarily varying fuel consumption and purchased power costs, but are applicable only in a limited number of circumstances .
 
+[PDF p. 83 | printed p. 81]
+
 For customer costs, the same type of arguments over classification between distribution demand and customer costs occur as in embedded cost studies. The marginal cost study needs data on the current costs of hooking up new customers by class. The method for annualizing the costs is in dispute (RECC versus a **new-customer-only method** that assigns the costs by new and replacement customers). O&M costs are again typically based on some type of average over historical and projected years.
 
 The time horizon used for the NERA approach has proven controversial because it assumed the utility would install exactly the number of new customer connections and distribution lines required by new customers (i.e., all customer costs are “marginal”) but would consider the adequacy of existing generation and transmission (which may be oversized to meet current needs) in determining the need for additional generation and transmission (meaning only some G&T costs are “marginal”). Many utilities have used a 10-year time horizon in this analysis, a period in which many found substantial excess capacity and, therefore, relatively low costs to meet increasing power supply needs. In addition, this methodology, as most often used, treats the cost of increased off-peak usage as only the fuel and variable power costs and losses associated with operating existing resources for additional hours, with no associated investment-related or maintenance-related cost, despite the reliance on expensive investments to produce that power.
@@ -329,6 +368,8 @@ The TSLRIC approach was developed in the context of regulatory reform for teleco
 
 The TSLRIC approach constructs a hypothetical system with optimal sizing of components, with neither excess capacity nor deficient capacity. It would use the most modern technology. In the context of an electric utility, it would likely rely on wind, solar and storage to a greater extent than most systems today, which would likely lead to lower costs. But it would also incur the cost of today’s environmental and land use restrictions, such as the requirement for lower emissions from generation and undergrounding of transmission and distribution lines. These requirements have substantial societal benefits but can also drive up electric system costs.
 
+[PDF p. 84 | printed p. 82]
+
 One advantage of a TSLRIC study over a NERA-style study is that no class is advantaged or disadvantaged by a current surplus or deficiency of power supply or distribution network capacity, since costs for all classes would be based on an optimal mix of resources to serve today’s needs. This is one of the most common critiques of the NERA methodology — that it favors any class that is served dominantly by the elements of a system that are in surplus.
 
 ### 6.3 Combining Frameworks
@@ -350,3 +391,5 @@ method to set rates for new customers or incremental usage. Some jurisdictions h
 Quantitative cost of service study results should serve only as a guide to the allocation of revenue responsibility among classes, not as the sole determinant. Even the best cost of service study reflects many judgments, assumptions and inputs. Other reasonable judgments, assumptions and inputs would result in different cost allocations. Additionally, loads may be unstable, significantly changing class revenue responsibility between cost studies, particularly for traditional studies that base costs on single peak hours in one or several months. More globally, concepts of equity extend beyond the cost of service study’s assignment of responsibility for causing costs or using the services provided by those costs to include relative ability to pay, gradualism in rate changes, differential risks by function and class and other policy considerations.
 
 Chapter 27 addresses the many ways in which the results of cost of service studies can be used to guide regulators.
+
+[PDF pp. 85-276 not transcribed: Chapter 7 to Glossary and back cover, in 07_21st_century_issues.md to glossary.md of this folder]

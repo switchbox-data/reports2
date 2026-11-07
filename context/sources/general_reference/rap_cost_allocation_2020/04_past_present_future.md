@@ -1,6 +1,23 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 45-50 (printed pp. 43-48), Chapter 4; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 45-50 (printed pp. 43-48) of the manual, Chapter 4; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back. Footnote 19, which the first extraction split across the page's columns, is rejoined._
+
+[PDF pp. 1-44 not transcribed: front matter to Chapter 3, in 00_front_matter.md to 03_electric_system.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 45 | printed p. 43]
+
 ## 4. Past, Present and Future of the U.S. Electric System
 
-hapter 3 described the basic elements of the electric system in the United States today, but these **C** elements developed out of a 130-year history of twists and turns based on technology, fuels, regulations and even international relations. Understanding the basics of these developments and how and why today’s system was formed is relevant to several important cost allocation issues discussed later in this manual. With respect to cost allocation, four primary results of these changes are worth noting:
+Chapter 3 described the basic elements of the electric system in the United States today, but these elements developed out of a 130-year history of twists and turns based on technology, fuels, regulations and even international relations. Understanding the basics of these developments and how and why today’s system was formed is relevant to several important cost allocation issues discussed later in this manual. With respect to cost allocation, four primary results of these changes are worth noting:
 
 Figure 13. Pearl Street Station, first commercial power plant in the United States
 
@@ -25,6 +42,8 @@ Electricity generation and delivery started in the late 19th century with three 
 Source: Wikipedia. _Pearl Street Station_
 
 over and under city streets. Multiple utilities emerged in some cities and competed against one another, which led to the building of duplicative networks of wires in many areas. These duplicative networks were aesthetically displeasing and considered by many to be economically wasteful. Relatively quickly, however, the natural monopoly characteristics led to the bankruptcy of many utilities or acquisition by a single dominant firm in each city.
+
+[PDF p. 46 | printed p. 44]
 
 In New York City, the winning utility, founded by Thomas Edison, eventually became the aptly named Consolidated Edison, or ConEd. Figure 13 depicts Edison’s first generating station. New York established the first state economic regulation of electric utilities in 1900, and it spread widely from there. In New Orleans, the city remains the regulator of the IOU; its regulatory activity predated the creation of the state commission that regulates all IOUs operating outside of New Orleans.
 
@@ -52,6 +71,8 @@ In some states, IOUs do serve some sparsely populated areas. This is often the r
 
 [^18]: In some cases, the IOU picked up dispersed service territory during the process of acquiring the assets of other power producers or to obtain state or local licenses for generation or transmission facilities .
 
+[PDF p. 47 | printed p. 45]
+
 ##### Figure 14. Investor-owned electric utility service territories in Texas
 
 AEP Texas Central Co .<br>AEP Texas North Co .<br>|| CenterPoint Energy<br>lS = — El Paso Electric Co .Entergy Texas ;<br>Oncor<br>Southwestern Electric Power Co .<br>al * aise Texas-New Mexico Power Co .<br>= Xcel Energy<br>reese 4Sae i. 5s BS<br>Sox, nfsare Spea<br>er nes<br>
@@ -67,6 +88,8 @@ From the 1950s to the early 1970s, electric sales skyrocketed due to a wide rang
 which was later repealed. In addition, generation of electricity with natural gas was to be prohibited at existing plants by 1990, with an exception for certain combined heat and power (CHP) facilities (Gordon, 1979). This law accelerated a trend toward the construction of large capital-intensive nuclear and coal power plants across the country in order to get away from the use of oil and natural gas for electricity. The confluence of all these trends, including high oil prices and expensive capitalintensive plants entering the rate base, led to major increases in electricity prices, as depicted in Figure 15 on the next page using U.S. Energy Information Administration data (2019).
 
 Congress also passed PURPA in 1978, which included provisions intended to open up competition in the provision of electricity and to reform state rate-making practices. On the competition side, PURPA required electric utilities to purchase power from independent producers at long-term prices based on **avoided costs** . With regard to state ratemaking practices, PURPA also required state commissions
+
+[PDF p. 48 | printed p. 46]
 
 Figure 15. US average retail residential electricity prices through 2018<br>14<br>12<br>Oil crises and rapid<br>development of coal<br>10 and nuclear plants<br>8<br>Restructuring and<br>6 natural gas development<br>Post-PURPA era<br>4<br>2<br>0<br>1960 1965 1970 1975 1980 1985 1990 1995 2000 2005 2010 2015<br>Cents per kWh (nominal, including taxes)<br>
 
@@ -86,11 +109,11 @@ of 1992.[^20] This law called for open access to transmission service and paved 
 
 - Midcontinent Independent System Operator (MISO),
 
-[^19]: The relevant provision of PURPA merely states: “Rates charged by any electric utility for providing electric service to each class of electric consumers shall be designed, to the maximum extent practicable, to reflect the costs of providing electric service to such class” (16 U .S .C . § 2621[d][1]) . This was clarified by the 2005 amendments to include “permit identification of differences in cost-incurrence, for each such class
-
-> of electric consumers, attributable to daily and seasonal time of use of service” (16 U .S .C . § 2625[b][1]) .
+[^19]: The relevant provision of PURPA merely states: “Rates charged by any electric utility for providing electric service to each class of electric consumers shall be designed, to the maximum extent practicable, to reflect the costs of providing electric service to such class” (16 U .S .C . § 2621[d][1]) . This was clarified by the 2005 amendments to include “permit identification of differences in cost-incurrence, for each such class of electric consumers, attributable to daily and seasonal time of use of service” (16 U .S .C . § 2625[b][1]) .
 
 [^20]: Pub . L . 102-486 . Retrieved from https://www .govinfo .gov/content/pkg/ STATUTE-106/pdf/STATUTE-106-Pg2776 .pdf
+
+[PDF p. 49 | printed p. 47]
 
 spanning from North Dakota through Michigan and Indiana and down to Louisiana while also including the Canadian province of Manitoba.
 
@@ -124,6 +147,8 @@ Some jurisdictions are looking at how to maximize the benefits of customer-sited
 
 [^21]: Texas is the exception, without any option for utility-provided energy supply service .
 
+[PDF p. 50 | printed p. 48]
+
 New York, E21 in Minnesota and the distribution resources plan proceedings in California. These efforts may even extend to new market structures at the retail level and new platforms for customers and third parties to exchange data and to offer and receive new types of services.
 
 Changes in the electricity system affect many parts of the cost allocation process.
@@ -139,3 +164,5 @@ Third, a range of supportive state and federal policies, combined with falling c
 Fourth, today’s sophisticated data and analytical capabilities present regulators and analysts alike with a wide range of new choices. Several decades ago, analysts were limited to simple categorizations and shortcuts. This includes the traditional division of costs as customer-related, demand-related or energy-related. Regulators are no longer bound by these limitations and should seek to improve on dated techniques.
 
 [^22]: For example, Xcel Energy has put forward a “steel for fuel” program, which substitutes wind and solar facilities for fuel-burning power plants (Xcel Energy, 2018, p . 5) .
+
+[PDF pp. 51-276 not transcribed: Works Cited in Part I to Glossary and back cover, in 04_works_cited_part1.md to glossary.md of this folder]

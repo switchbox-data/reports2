@@ -1,6 +1,23 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 175-180 (printed pp. 173-178), Chapter 16; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 175-180 (printed pp. 173-178) of the manual, Chapter 16; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back. Footnotes 198, 199 had been extracted as plain text and are now footnote definitions. Footnotes 203, 205, which the first extraction split across the page's columns, are rejoined._
+
+[PDF pp. 1-174 not transcribed: front matter to Chapter 15, in 00_front_matter.md to 15_revenues_offsets.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 175 | printed p. 173]
+
 ## 16. Differential Treatment of New Resources and New Loads
 
-n some situations, regulators have treated new resources or new loads using considerations that do not fit neatly **I** into the embedded cost of service study framework. In particular, equity may sometimes be improved by reflecting the history and projections of class loads. However, there are risks in adopting such an approach, particularly within customer classes. Regulators should be careful to ensure adoption of such techniques is not arbitrary or discriminatory and is grounded in solid reasoning.
+In some situations, regulators have treated new resources or new loads using considerations that do not fit neatly into the embedded cost of service study framework. In particular, equity may sometimes be improved by reflecting the history and projections of class loads. However, there are risks in adopting such an approach, particularly within customer classes. Regulators should be careful to ensure adoption of such techniques is not arbitrary or discriminatory and is grounded in solid reasoning.
 
 These differential treatment techniques are sometimes referred to as incremental cost of service studies[^193] and can be conceptualized as either applying two different embedded cost techniques or combining an embedded cost technique with a marginal cost technique. In either case, the defining characteristic of these methods is the recognition that the costs associated with load growth in the recent past or the relatively near future, which typically might be several years, are being driven by a specific class or subclass of customers.
 
@@ -20,17 +37,19 @@ higher than near-term incremental costs; for example, in determining how to appo
 
 A study with differential treatment typically looks at the costs the system will incur within a relatively short time horizon to serve new load or retain existing load. The costs that may differ between the legacy loads and resources and incremental loads and resources include the variable costs of existing generation resources and the costs of new supply resources, transmission projects and distribution upgrades.[^194] In each case, inequities or inefficiencies arise because costs do not scale proportionally to the drivers, such as load. If the utility has committed generation resources, with low variable costs, in excess of its requirements and has overbuilt most of its transmission and distribution circuits, incremental costs will tend to be below average costs.[^195] In contrast, in a period of tight supply, the near-term costs of running expensive generation and adding generation, transmission and distribution resources may be higher than embedded costs.
 
+##### Figure 43. US load growth by customer class since 1990
+
+190%<br>Residential<br>170% Commercial<br>Industrial<br>150%<br>130%<br>110%<br>90%<br>1990 1995 2000 2005 2010 2015<br>Class sales as percentage of 1990<br>
+
+Data source: U.S. Energy Information Administration. _Form EIA-861M Sales and Revenue: 1990-Current_
+
 [^193]: The term “incremental cost of service study” in this case is not used in the same sense as a marginal cost of service study, where the marginal impact of load patterns is measured .
 
 [^195]: Surplus capacity does not always imply that incremental costs are below average costs . If the utility can save money by selling surplus generation resources or shutting them down, the incremental cost of retaining or increasing load may be as high as the embedded costs or nearly so .
 
 [^194]: In principle, there could be similar differences in the costs of some customer service elements, such as between an existing billing system that would be adequate indefinitely for the existing accounts and an expensive new system that would be required if the utility adds accounts .
 
-##### Figure 43. US load growth by customer class since 1990
-
-190%<br>Residential<br>170% Commercial<br>Industrial<br>150%<br>130%<br>110%<br>90%<br>1990 1995 2000 2005 2010 2015<br>Class sales as percentage of 1990<br>
-
-Data source: U.S. Energy Information Administration. _Form EIA-861M Sales and Revenue: 1990-Current_
+[PDF p. 176 | printed p. 174]
 
 In some cases, growth has profound impacts on system costs, and special consideration of differential growth rates may be important to the regulator. Load growth at certain hours may be beneficial, while load growth at other hours may be problematic, requiring new resources. Those facilities may be more expensive than the existing equivalents due to any of the following:
 
@@ -48,13 +67,15 @@ Most traditional embedded and marginal cost studies do not take differential gro
 
 Where incremental costs are much higher than embedded costs, the difference may be assigned to classes in proportion to their growth. If it is a subset of a class that is growing quickly, there may be a rationale for adopting separate tariffs or riders for new customers within that class or for an identifiable subgroup contributing to higher costs (e.g., large vacation homes or data centers). The correct answer in some cases is the creation of a new customer class with separate load and cost characteristics. Beyond cost allocation, the incremental costs may be reflected in rate design and connection fees. For
 
-[^196]: Undergrounding may also be required by the difficulty in finding room for overhead transmission through built-up areas .
-
 Figure 44. Estimated revenue and cost from serving additional electric vehicle load
 
 $20,000<br>Net revenue Carbon cost<br>$9,295<br>$18,000 Rate base Capacity cost<br>$16,000 Renewable portfolio Energy cost<br>standard cost<br>$14,000<br>$4,474<br>$12,000 $3,574<br>$10,000 $2,591<br>$8,000<br>$6,000<br>$4,000<br>$2,000<br>$0<br>Revenue Cost Revenue Cost Revenue Cost Revenue Cost<br>(utility (utility (utility (utility<br>bills) bills) bills) bills)<br>Tiered Flat Mixed flat and Time-of-use<br>rate rate time-of-use rate rate<br>Present value per vehicle (2014 dollars)<br>
 
 Source: Energy and Environmental Economics. (2014). _California Transportation Electrification Assessment — Phase 2: Grid Impacts_
+
+[^196]: Undergrounding may also be required by the difficulty in finding room for overhead transmission through built-up areas .
+
+[PDF p. 177 | printed p. 175]
 
 example, higher costs may also be allocated to the entire class but collected through a rate element (e.g., consumption over twice the monthly average) that aligns well with the customers causing the additional costs.
 
@@ -69,6 +90,8 @@ Table 37 on the next page shows an illustrative incremental cost study. In this 
 In this illustration, both classes had equal rates in the previous rate proceeding. But costs have risen for both nongrowth categories (inflation) and growth categories (new resources and new distribution capacity). After application of an incremental cost study, the slow-growing class is assigned a rate averaging
 
 [^197]: Those benefits are often reflected in rate design by development of a lower first energy block to ensure that each eligible customer gets an appropriate share of the benefit .
+
+[PDF p. 178 | printed p. 176]
 
 14 cents per kWh, while the fast-growing class is assigned an average of 17 cents per kWh. In the opposite situation, where incremental costs are lower than average costs, the growing class might be assigned lower costs.
 
@@ -115,13 +138,15 @@ The state of Vermont receives an allocation of low-cost power from the Niagara a
 
 - Apportioning the residual revenue requirement increase on a uniform basis to all customer classes.
 
-- 198 One of the authors of this manual, Jim Lazar, participated in this proceeding on behalf of an intervenor .
-
 were made available to the Burlington Electric Department for the purpose of benefiting residential customers .
 
-- 199 “In order to assure that at least 50 per centum of the project power shall be available for sale and distribution primarily for the benefit of the people as consumers, particularly domestic and rural consumers, to whom such power shall be made available at the lowest rates reasonably possible” (Niagara Redevelopment Act, Pub . L . No .85-159, 16 U .S .C . § 836[b][1]) . NYPA was required to provide a portion of the power to public bodies and co-ops in neighboring states (16 U .S .C . § 836[b][1]) . Thus, the resources
+[^198]: One of the authors of this manual, Jim Lazar, participated in this proceeding on behalf of an intervenor .
+
+[^199]: “In order to assure that at least 50 per centum of the project power shall be available for sale and distribution primarily for the benefit of the people as consumers, particularly domestic and rural consumers, to whom such power shall be made available at the lowest rates reasonably possible” (Niagara Redevelopment Act, Pub . L . No .85-159, 16 U .S .C . § 836[b][1]) . NYPA was required to provide a portion of the power to public bodies and co-ops in neighboring states (16 U .S .C . § 836[b][1]) . Thus, the resources
 
 [^200]: The Burlington Electric Department also uses that allocation to create an inclining block rate design consisting of a customer charge to cover billing, collection and other customer-specific costs; an initial block priced at the New York Power Authority cost plus average T&D costs; and a tail block that pays for other generation resources plus average T&D costs . See Burlington Electric Department (2019) .
+
+[PDF p. 179 | printed p. 177]
 
 resources are equitably allocated to the customers for whom the New York Power Authority provides the power and that all customers share the cost of incremental resources needed to serve demand in excess of incremental usage.[^201]
 
@@ -141,12 +166,6 @@ Table 38. Bonneville Power Administration rate summary, October 2017 to Septembe
 
 Source: Bonneville Power Administration. _Current Power Rates_
 
-[^201]: This same concept has been the foundation of inclining block rates in Washington state and Indonesia .
-
-[^202]: The average rates subsume a variety of fixed and variable charges .
-
-[^203]: Nova Scotia Power was not part of an energy market and had limited connections to its only neighboring utility (NB Power, which is also not part of an energy market), and its marginal generation resources are coal
-
 ###### Nova Scotia Power Load Retention and Economic Development Rates
 
 In 2011, falling global demand for paper resulted in the bankruptcy and shutdown of two paper mills that were Nova Scotia Power’s largest customers, which accounted for about 20% of its sales and 12% of its revenues. The mills had been major employers, both directly and as purchasers of wood harvested from forests in the province. A buyer emerged for the larger of those facilities, contingent on a variety of supportive policies from the provincial and federal governments, including favorable tax treatment and rates.
@@ -159,15 +178,19 @@ The determination of Nova Scotia Power’s hourly marginal costs proved to be mo
 
 The creation of bitcoin cryptocurrency units requires energy-intensive mathematical computations called mining. To limit the cost of their operations, bitcoin “miners” have sought locations with low-priced electricity. Those operations
 
-> plants with long commitment horizons (Rudkevich, Hornby and Luckow, 2014) .
+[^201]: This same concept has been the foundation of inclining block rates in Washington state and Indonesia .
+
+[^202]: The average rates subsume a variety of fixed and variable charges .
+
+[^203]: Nova Scotia Power was not part of an energy market and had limited connections to its only neighboring utility (NB Power, which is also not part of an energy market), and its marginal generation resources are coal plants with long commitment horizons (Rudkevich, Hornby and Luckow, 2014) .
 
 [^204]: The Nova Scotia Power system will operate differently after 2020, when it is expected to have access to large amounts of Newfoundland hydro energy and operate under stricter carbon emissions standards . Any new load retention tariff would need to reflect those changes .
+
+[PDF p. 180 | printed p. 178]
 
 typically require very large amounts of power but have few on-site employees and little local economic benefit. One of these locations is Chelan County in Washington state, where the local public utility district owns two very large dams on the Columbia River and has industrial rates about one-fourth of the national average.[^205]
 
 Chelan County Public Utility District’s existing low-cost resource is fully obligated to a combination of local retail use and long-term contract sales. The contract sales prices are above the average retail rates, bringing significant revenue to fund public infrastructure in the county, including a worldclass parks network. When the district received applications for service from bitcoin miners, it decided that this highdensity load growth would not be in the public interest,
-
-[^205]: The Chelan County Public Utility District rate for primary industrial customers up to 5 MWs with an 80% load factor is 1 .91 cents per kWh (Chelan County Public Utility District, n .d .) . The average U .S . industrial
 
 declared a moratorium on new connections and developed a tariff designed to ensure that any growth of this type of load would not adversely affect other consumers or the local economy (Chelan County Public Utility District, 2018). This tariff is geographically differentiated, to recognize areas where transmission and distribution capacity are available, and includes:
 
@@ -177,4 +200,6 @@ declared a moratorium on new connections and developed a tariff designed to ensu
 
 - Severe penalties for excess usage that could threaten system reliability.
 
-price was 6 .88 cents per kWh in 2017 (U .S . Energy Information Administration, 2018, Table 5 .c) .
+[^205]: The Chelan County Public Utility District rate for primary industrial customers up to 5 MWs with an 80% load factor is 1 .91 cents per kWh (Chelan County Public Utility District, n .d .) . The average U .S . industrial price was 6 .88 cents per kWh in 2017 (U .S . Energy Information Administration, 2018, Table 5 .c) .
+
+[PDF pp. 181-276 not transcribed: Chapter 17 to Glossary and back cover, in 17_future_embedded.md to glossary.md of this folder]

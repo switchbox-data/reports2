@@ -1,3 +1,20 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 184-189 (printed pp. 182-187), Works Cited in Part III; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 184-189 (printed pp. 182-187) of the manual, Works Cited in Part III; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on._
+
+[PDF pp. 1-183 not transcribed: front matter to Chapter 17, in 00_front_matter.md to 17_future_embedded.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 184 | printed p. 182]
+
 ## Works Cited in Part III
 
 Arkansas Public Service Commission . (2013, December 30) . Docket No . 13-028-U, Order No . 21 in general rate case for Entergy Arkansas . Retrieved from http://www .apscservices .info/pdf/13/13-028-U_431_1 .pdf
@@ -29,6 +46,8 @@ Chelan County Public Utility District . (2018, November 5) . _Cryptocurrency rat
 Chernick, P . (2010, August 20) . Rebuttal testimony on behalf of the Office of the People’s Counsel . Maryland Public Service Commission Case No . 9230 .
 
 Chernick, P ., and Meyer, M . (1982) . Capacity/energy classifications and allocations for generation and transmission plant . _Award Papers in Public Utility Economics and Regulation_ . East Lansing, MI: Michigan State University, Institute for Public Utilities .
+
+[PDF p. 185 | printed p. 183]
 
 Colorado Public Utilities Commission . (2018, June 15) . Proceeding No . 17AL-0477E, Decision No . C18-0445 in rate case for Black Hills/Colorado Electric Utility Co . Retrieved from https://www .dora .state .co .us/pls/efi/EFI_Search_UI .Show_ Decision?p_session_id=&p_dec=25270
 
@@ -62,6 +81,8 @@ Green Mountain Power . (2016, April 1) . _Electric service extensions and reloca
 
 Hammer, N . (2018, May 30) . Direct testimony on behalf of MidAmerican Energy Co . Iowa Utilities Board Docket No . RPU2018-0003 . Retrieved from https://efs .iowa .gov/efs/ShowDocketSummary .do?docketNumber=RPU-2018-0003
 
+[PDF p. 186 | printed p. 184]
+
 Henry, T . (2012, October 31) . _Luminant coal units get permission to mothball this winter_ . National Public Radio . Retrieved from https://stateimpact .npr .org/texas/2012/10/31/luminant-coal-units-get-go-ahead-to-mothball-thiswinter/
 
 Illinois Commerce Commission . (2008, September 10) . Docket No . 07-0566, order in rate case for Commonwealth Edison Co . Retrieved from https://www .icc .illinois .gov/docket/files .aspx?no=07-0566&docId=128596
@@ -93,6 +114,8 @@ Meyer, M . (1981, December 17) . Clarifying NARUC demand allocation methods . _P
 Michigan Public Service Commission . (2017, July 31) . Case No . U-18124, order in natural gas rate case for Consumers Energy Co . Retrieved from https://mi-psc .force .com/sfc/servlet .shepherd/version/ download/068t0000001UUAgAAO
 
 Midcontinent Independent System Operator . (2018) . _Planning year 2019-2020 loss of load expectation study report_ . Carmel, IN: Author . Retrieved from https://cdn .misoenergy .org/2019%20LOLE%20Study%20Report285051 .pdf
+
+[PDF p. 187 | printed p. 185]
 
 Minnesota Power . (2013, May 28) . _Minnesota Power construction guide: Home edition_ . Retrieved from https://mnpower . com/Content/Documents/CustomerService/ConstructionCenter/residential-construction-guide-with-toc .pdf
 
@@ -126,6 +149,8 @@ NV Energy . (n .d .) . _IS-2 interruptible irrigation service_ [Webpage] . Retri
 
 Otter Tail Power Co . (2017, July 21) . _Tariff schedules applicable to electric service of Otter Tail Power Company_ . Retrieved from https://www .otpco .com/media/1300/mn_indexandgeneralrulesandregulations .pdf
 
+[PDF p. 188 | printed p. 186]
+
 Parmesano, H ., Rankin, W ., Nieto, A ., and Irastorza, V . (2004) . _Classification and allocation methods for generation and transmission in cost-of-service studies._ Los Angeles, CA: National Economic Research Associates . Retrieved from https://www .nera .com/content/dam/nera/publications/archive1/final%20report%20to%20PUBMH-NERA-20040401-1 .pdf
 
 Patton, D ., LeeVanSchaick, P ., and Chen, J . (2017) . _2016 assessment of the ISO New England electricity markets._ Fairfax, VA: Potomac Economics . Retrieved from https://www .iso-ne .com/static-assets/documents/2017/08/isone-2016-som-report-full-report-final .pdf
@@ -152,6 +177,8 @@ Seelye, W . (2016, November 23) . Direct testimony on behalf of Kentucky Utiliti
 
 Sterzinger, G . (1981, July 2) . The customer charge and problems of double allocation of costs . _Public Utilities Fortnightly._
 
+[PDF p. 189 | printed p. 187]
+
 Steward, J . (2014) . Direct testimony on behalf of Rocky Mountain Power . Utah Public Service Commission Docket No . 13-035-184 . Retrieved from https://pscdocs .utah .gov/electric/13docs/13035184/249702 ExJJJDirTestSteward1-3-2014 .pdf
 
 U .S . Energy Information Administration . (n .d .-a) . _Annual electric power industry report, Form EIA-861: 2001_ [Data file] . Retrieved from https://www .eia .gov/electricity/data/eia861
@@ -169,3 +196,5 @@ Washington Utilities and Transportation Commission . (1981) . Cause U-81-41, six
 Washington Utilities and Transportation Commission . (1993, August 16) . Docket No . UE-920499, ninth supplemental order on rate design issues .
 
 Xcel Energy . (2018, October 2-4) . _Leading the energy future_ [Presentation at the Wolfe Research Conference] . Retrieved from investors .xcelenergy .com/file/4025308/Index?KeyFile=1500113448
+
+[PDF pp. 190-276 not transcribed: Chapter 18 to Glossary and back cover, in 18_marginal_theory.md to glossary.md of this folder]

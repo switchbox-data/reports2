@@ -29,6 +29,284 @@ d. If Mr. Velez has not prepared the estimates requested in parts (a) through (c
 :::
 
 ::: {.response}
+```{python}
+#| include: false
+
+import pickle
+import re
+from pathlib import Path
+from types import SimpleNamespace
+
+import yaml
+
+
+def _load(name: str) -> SimpleNamespace:
+    path = Path(f"cache/{name}.pkl")
+    if not path.exists():
+        raise FileNotFoundError(f"Missing {path}: render the notebook that writes it first")
+    return SimpleNamespace(**pickle.loads(path.read_bytes()))
+
+
+c1 = _load("ciec_1_vars")  # ciec_requests/ciec_request_1.qmd
+c3 = _load("ciec_3_vars")  # ciec_requests/ciec_request_3.qmd
+c6 = _load("ciec_6_vars")  # ciec_requests/ciec_request_6.qmd
+r = _load("representative_home_vars")
+op = _load("overpayment_report_variables")
+fc = _load("incremental_fair_default_report_variables")
+mc = _load("marginal_costs_vars")
+m = _load("delivery_mc_vars")
+a = _load("report_variables")
+c11 = _load("ciec_11_vars")  # notebooks/eversource_hourly_class_loads.qmd
+c13 = _load("ciec_13_vars")  # notebooks/overpayment.qmd
+eia = _load("ciec_11_eia_vars")  # notebooks/validate_resstock_vs_eia_loads.qmd
+
+
+def dollar(x, accuracy=0):
+    return f"${x:,.{accuracy}f}"
+
+
+def million(x, digits=1):
+    return f"${x / 1e6:,.{digits}f} million"
+
+
+def pct(x, accuracy=0):
+    return f"{x * 100:,.{accuracy}f}%"
+
+
+def num(x, accuracy=0):
+    return f"{x:,.{accuracy}f}"
+
+
+def cents(x, accuracy=3):
+    return f"{x * 100:,.{accuracy}f}¢"
+
+
+# Filed Rate 1 component rates (Exhibit CLP-RATES-3), as in expert_testimony.qmd.
+FILED_DIST_EC = 0.12196
+FILED_TX = 0.05050
+FILED_TOTAL_DEL = 0.16335
+FILED_RIDERS = FILED_TOTAL_DEL - FILED_DIST_EC - FILED_TX
+hp_winter_dist_ec = r.fair_hp_winter_rate_dist - FILED_RIDERS
+hp_winter_tx = r.fair_hp_winter_rate_tx
+hp_winter_total = r.fair_hp_winter_rate_dist + r.fair_hp_winter_rate_tx
+dist_cut = 1 - hp_winter_dist_ec / FILED_DIST_EC
+tx_cut = 1 - hp_winter_tx / FILED_TX
+
+# Representative fossil-heated home (testimony Section III).
+pre_dist = r.all_fossil_annual_distribution_before
+pre_tx = r.all_fossil_annual_transmission_before
+pre_td = pre_dist + pre_tx
+pre_mc = r.all_fossil_annual_mc_delivery_before
+embedded_gap = pre_td - pre_mc
+inc_td = r.all_fossil_annual_delivery_charges_delta
+inc_mc = r.all_fossil_annual_mc_dist_delta + r.all_fossil_annual_mc_tx_delta
+overpay = r.all_fossil_annual_total_overcharge
+td_to_mc_multiple = inc_td / inc_mc
+embedded_after_rate1 = (pre_td + inc_td) - (pre_mc + inc_mc)
+embedded_after_rate_hp = embedded_gap + op.overpay_mean_fair_seasonal_rate_all_fossil
+
+# Nov-Mar T&D bill of the representative home, before (Rate 1) and after (Rate HP).
+winter_bill_before = r.all_fossil_kwh_winter_before * FILED_TOTAL_DEL
+winter_bill_after_hp = r.all_fossil_kwh_winter_after * hp_winter_total
+winter_kwh_ratio = r.all_fossil_kwh_winter_after / r.all_fossil_kwh_winter_before
+breakeven_winter_ratio = FILED_TOTAL_DEL / hp_winter_total
+
+# ISO-NE wholesale transmission charges (not yet ingested; PTO AC RNS presentation 2026-07-16,
+# Eversource transmission rates page, ISO-NE April 2026 RNL cost report Table 2-1).
+RNS_KW_YR = 177.62722
+LNS_CLP_KW_YR = 27.6944
+RNL_OTHER_KW_MO = 0.857
+rnl_winter_cost_per_kw = (RNS_KW_YR + LNS_CLP_KW_YR) / 12 * 5 + RNL_OTHER_KW_MO * 5
+rns_winter_cost_per_kw = RNS_KW_YR / 12 * 5
+
+# Incremental transmission revenue from the representative home under Rate 1 and Rate HP.
+tx_inc_rev_rate1 = r.all_fossil_annual_kwh_delta * FILED_TX
+tx_inc_rev_rate_hp = (
+    r.all_fossil_kwh_summer_delta * FILED_TX
+    + r.all_fossil_kwh_winter_after * hp_winter_tx
+    - r.all_fossil_kwh_winter_before * FILED_TX
+)
+tx_overpay = tx_inc_rev_rate1 - r.all_fossil_annual_mc_tx_delta
+breakeven_kw_rate1 = tx_inc_rev_rate1 / rnl_winter_cost_per_kw
+breakeven_kw_rate_hp = tx_inc_rev_rate_hp / rnl_winter_cost_per_kw
+
+# Exhibit CLP-MCOS-1 Table 1, Rate 1 (Velez Direct p. 14 n. 8).
+MCOS_CUSTOMER_MO = 28.98
+MCOS_LOCAL_FACILITIES_MO = 24.51
+mcos_connection_yr = 12 * (MCOS_CUSTOMER_MO + MCOS_LOCAL_FACILITIES_MO)
+customer_charge_yr = 12 * fc.original_fixed_charge
+
+# Exhibit CLP-RATES-2 Rate Year billed residential sales, as in notebooks/incremental_fair_default.qmd.
+CLASS_BILLED_MWH = 8_716_958.14
+rate_year_kwh_per_customer = CLASS_BILLED_MWH * 1000 / fc.class_customers
+
+# Rate Year sales (MWh): company total from Exhibit CLP-RATES-2.12; residential classes from CLP-RATES-2.4.
+RDM_TOTAL_MWH = 20_485_894
+RATE5_MWH = 1_593_008.20
+RATE7_MWH = 9_126.89
+residential_mwh = CLASS_BILLED_MWH + RATE5_MWH + RATE7_MWH
+nonres_kwh_share = 1 - residential_mwh / RDM_TOTAL_MWH
+
+# CIEC-11: Company 2025 class-average loads vs ResStock, and ResStock vs EIA-861 (2018).
+c11_r1 = {row["month"]: row for row in c11.monthly_rate_1}
+c11_r5 = {row["month"]: row for row in c11.monthly_rate_5}
+eia_cust, eia_kwh = eia.customers[0], eia.kwh[0]
+eia_kwh_per_customer = eia_kwh["eia_residential_kwh"] / eia_cust["eia_residential_customers"]
+resstock_kwh_per_customer = eia_kwh["resstock_total_kwh"] / eia_cust["resstock_customers"]
+c11_r1_winter_gap = sum(c11_r1[mo]["delta_kwh"] for mo in ["Nov", "Dec", "Jan", "Feb", "Mar"])
+c11_r5_winter_pct = sum(c11_r5[mo]["delta_kwh"] for mo in ["Nov", "Dec", "Jan", "Feb", "Mar"]) / sum(
+    c11_r5[mo]["resstock_kwh"] for mo in ["Nov", "Dec", "Jan", "Feb", "Mar"]
+)
+
+# CIEC-1 enrollment bounds and the existing-customer shortfall (the only shortfall).
+floor_existing = int(c1.floor_enrolled[0][1])
+ceiling_existing = int(c1.ceiling_enrolled[0][1])
+floor_new_total = int(c1.floor_enrolled[-1][1]) - floor_existing
+ceiling_new_total = int(c1.ceiling_enrolled[-1][1]) - ceiling_existing
+
+
+def shortfall(customers: int) -> dict[str, float]:
+    """Existing customers only, rounded as in ciec_1.group_revenue."""
+    dist = float(round(customers * c1.dec_dist))
+    tx = float(round(customers * c1.dec_tx))
+    return {"dist": dist, "tx": tx, "total": dist + tx}
+
+
+short_floor = shortfall(floor_existing)
+short_ceiling = shortfall(ceiling_existing)
+floor_2027, floor_2031 = c1.floor_revenue[0], c1.floor_revenue[-1]
+ceiling_2027, ceiling_2031 = c1.ceiling_revenue[0], c1.ceiling_revenue[-1]
+
+# Back-of-the-envelope placeholders for analyses that do not exist yet.
+# key: (value, formula, owner, what replaces it)
+EST = {
+    "winter_peak_mc": (
+        2.5 * (mc.target_mc_kw_yr + 73.0),
+        "incremental coincident winter kW per home (~2.5, guess) x (distribution $21.22 + transmission ~$73)/kW-yr",
+        "Alex Lee",
+        "winter probability-of-peak 'reach' run on the representative home",
+    ),
+    "backup_kwh": (
+        300.0,
+        "~5% of incremental heating kWh served by electric resistance backup",
+        "Alex Lee",
+        "hourly decomposition of the representative home into compressor and backup load",
+    ),
+    "winter_peak_add_mw": (
+        ceiling_new_total * 2.5 / 1000,
+        "ceiling of new 2027-2031 adopters x ~2.5 kW incremental coincident winter kW",
+        "Alex Lee",
+        "new-adopter winter coincident load from ResStock upgrade 02",
+    ),
+    "rnl_share_shift": (
+        2.5 * rnl_winter_cost_per_kw,
+        "2.5 kW of added load per new heat pump home at each Nov-Mar monthly network peak "
+        "x (RNS + CL&P LNS) / 12 x 5 months + other RNL charges",
+        "Alex Lee",
+        "ResStock heat pump homes' added load at CL&P's Nov-Mar monthly transmission peak hours",
+    ),
+    "rate1_increase_ceiling_rescaled": (
+        c3.ceiling_per_kwh["total"] * eia_cust["resstock_customers"] / c1.rate_year_customers,
+        "CIEC-3(c) ceiling per kWh x ResStock households / Rate Year customers "
+        "(non-heat-pump kWh in ciec_request_3 used unscaled ResStock weights)",
+        "Alex Lee",
+        "ciec_request_3 rerun with weights scaled to the Rate Year customer count",
+    ),
+    "bill_impact_ceiling_rescaled": (
+        c6.ceiling_mean * eia_cust["resstock_customers"] / c1.rate_year_customers,
+        "CIEC-6(c) ceiling mean bill impact x ResStock households / Rate Year customers",
+        "Alex Lee",
+        "ciec_request_6 rerun with weights scaled to the Rate Year customer count",
+    ),
+    "ev_winter_discount": (
+        3000 * 5 / 12 * (FILED_TOTAL_DEL - (r.fair_hp_winter_rate_dist + r.fair_hp_winter_rate_tx)),
+        "~3,000 kWh/yr of EV charging x 5/12 in Nov-Mar x (Rate 1 minus Rate HP winter delivery rate)",
+        "Alex Lee",
+        "EV charging share of winter kWh for heat pump homes, if any data exists",
+    ),
+}
+
+_src = Path("ciec_responses.qmd").read_text(encoding="utf-8")
+_front = yaml.safe_load(_src.split("\n---\n", 1)[0].removeprefix("---\n"))
+DRAFT = bool(_front["interrogatory_responses"].get("draft", True))
+_body = re.sub(r"```\{python\}.*?```", "", _src, flags=re.S)
+_markers = re.findall(r"\[(?:EST|DISCUSSION FOR JPV|TK|RESEARCH|ANALYSIS|COUNSEL|UNVERIFIED IDEA|NOT INGESTED)\b", _body)
+if not DRAFT and (_markers or re.search(r"\best\(", _body)):
+    raise RuntimeError(f"draft: false, but the file still has {len(_markers)} open markers or estimates")
+
+
+def est(key: str, fmt=dollar) -> str:
+    """An estimate, tagged so it cannot be mistaken for a computed value."""
+    if not DRAFT:
+        raise RuntimeError(f"Estimate {key} used in a filing copy")
+    return f"≈{fmt(EST[key][0])} [EST]"
+```
+
+a. Estimates are provided below and in CIEC-1 Attachment 1 (Excel, formulas intact) **[TK: Alex Lee: confirm the attachment file name and that it matches the CIEC-1 workbook on Drive]**. The amounts must be read in two parts, because the two groups of customers on Rate HP affect the Company's revenue in completely different ways:
+
+   - _New heat pump customers_ install a heat pump after Rate HP takes effect. As a group, they keep paying their bill from before the heat pump, plus the incremental marginal cost the heat pump causes, so the Company collects more from them than before they installed. They create no shortfall and have no effect on anyone else's rates or bills. ("As a group": Rate HP is calibrated on the average new adopter, so individual customers pay somewhat more or less; see CIEC-13(b).)
+   - _Existing heat pump customers_ installed before Rate HP and are auto-enrolled. Their bills fall below the Rate 1 revenue the Company planned to collect from them. This is the only source of any shortfall. Mr. Velez recommends recovering it within the residential class, by setting Rate 1 in this rate case to recover the residential revenue requirement net of Rate HP revenue (CIEC-2(c)).
+   - **[DISCUSSION FOR JPV]** The Company's Rate Year sales forecast already adds winter (Oct–Apr) kWh for heat pumps it expects to install through its C&LM program through 2027.[^1a-clm-forecast] Those forecast adopters are "new" by date, but their heat pump kWh is already in the sales used to set Rate 1, so moving them to Rate HP would lower collections below plan, just like existing customers. The precise line is therefore "heat pump load already in the sales used to set rates" versus "load that is not", not installation date alone. CIEC-12(a) asks exactly this. Proposed fix: in this rate case, move both existing heat pump load and the forecast C&LM heat pump load into Rate HP's billing determinants and recalibrate Rate 1. That cleanly makes "new" mean "beyond the forecast". **[ANALYSIS: Alex Lee: forecast C&LM heat pump kWh in the Rate Year sales (CLF-SC-001 Attachment 1), and the resulting shortfall at Rate HP's winter rates]**
+
+     [^1a-clm-forecast]: [CL&P Response to CLF-SC-001](https://pub.switch.box/clp_Docket260510Responses_2026b), at 1 ("Adjustments to the sales forecast are made for heat pumps during the heating period for the months of October through April.") [@clp_Docket260510Responses_2026b]; [CL&P Response to CLF-SC-002](https://pub.switch.box/clp_Docket260510Responses_2026b), at 1 (adjustments are "based off the 2025-2027 Energy Efficiency Plan").
+
+   - Existing heat pump customer: pays **`{python} dollar(c1.dec_total, 2)`** less per year on Rate HP than on Rate 1, made up of `{python} dollar(c1.dec_dist, 2)` distribution and `{python} dollar(c1.dec_tx, 2)` transmission.[^1a-existing-load]
+
+     [^1a-existing-load]: Weighted average of the `{python} num(c1.n_bldg)` buildings in NREL's ResStock 2024.2 building stock model that are assigned to the Company's territory and already heat with a heat pump: `{python} num(c1.annual_kwh)` kWh a year, `{python} num(c1.winter_kwh)` of them in November through March. NREL, _End-Use Load Profiles for the U.S. Building Stock_ (2024), https://doi.org/10.25984/1876417. _See_ CIEC-1 Attachment 1.
+
+   - New heat pump customer: pays **`{python} dollar(c1.new_dec_total, 2)`** less per year than they would pay on Rate 1 after installing (`{python} dollar(c1.new_dec_dist, 2)` distribution, `{python} dollar(c1.new_dec_tx, 2)` transmission). The comparison is to a Rate 1 bill on load the Company never had, so it is lower bills for new customers, not a shortfall.
+   - Existing customers, shortfall per year (the same in each of the five years, because the group does not grow): **`{python} million(short_floor['total'])`** at the floor (`{python} num(floor_existing)` customers; `{python} million(short_floor['dist'])` distribution, `{python} million(short_floor['tx'])` transmission) to **`{python} million(short_ceiling['total'])`** at the ceiling (`{python} num(ceiling_existing)` customers; `{python} million(short_ceiling['dist'])` distribution, `{python} million(short_ceiling['tx'])` transmission).
+   - Total Rate HP bill reduction relative to Rate 1, both groups, with the split shown:
+     - Floor, 2027: `{python} million(floor_2027['total'])` (`{python} million(floor_2027['distribution'])` distribution, `{python} million(floor_2027['transmission'])` transmission), of which the existing-customer shortfall is `{python} million(short_floor['total'])` and lower bills for new customers are `{python} million(floor_2027['total'] - short_floor['total'])`.
+     - Floor, 2031: `{python} million(floor_2031['total'])`, of which the shortfall is still `{python} million(short_floor['total'])` and lower bills for new customers are `{python} million(floor_2031['total'] - short_floor['total'])`.
+     - Ceiling, 2027: `{python} million(ceiling_2027['total'])` (`{python} million(ceiling_2027['distribution'])` distribution, `{python} million(ceiling_2027['transmission'])` transmission), of which the shortfall is `{python} million(short_ceiling['total'])` and lower bills for new customers are `{python} million(ceiling_2027['total'] - short_ceiling['total'])`.
+     - Ceiling, 2031: `{python} million(ceiling_2031['total'])`, of which the shortfall is still `{python} million(short_ceiling['total'])` and lower bills for new customers are `{python} million(ceiling_2031['total'] - short_ceiling['total'])`.
+     - Every year, distribution and transmission, both bounds: CIEC-1 Attachment 1.
+   - Rates applied: in November through March, distribution energy falls from `{python} cents(FILED_DIST_EC)` to `{python} cents(hp_winter_dist_ec)`/kWh and transmission from `{python} cents(FILED_TX)` to `{python} cents(hp_winter_tx)`/kWh. Summer rates, riders, generation and the customer charge are those of Rate 1.[^1a-rates]
+
+     [^1a-rates]: Proposed Rate 1: Joint Direct Testimony of Edward Davis and Kimberly R. Parsons on behalf of The Connecticut Light and Power Company d/b/a Eversource Energy ("Davis-Parsons Direct"), Exhibit CLP-RATES-3 at 243–244 (July 14, 2026) [@clp_Docket260510Exhibit_2026h] **[TK: no public copy to link yet]**. Rate HP: [Direct Testimony of Juan-Pablo Velez on behalf of Conservation Law Foundation and Sierra Club](https://pub.switch.box/velez_Docket260510Direct_2026) ("Velez Direct"), at 82:10–83:2 (Oct. 21, 2026) [@velez_Docket260510Direct_2026].
+
+   - Assumptions: rate years begin July 2027; 2026 installations count as existing; loads and rates are held constant; every identified customer enrolls and none opt out.
+   - **[TK: Alex Lee: (1) new-customer load uses every ResStock home without a heat pump (`{python} num(c1.n_bldg_new)` buildings, `{python} num(c1.annual_kwh_new)` kWh after the upgrade), including electric-resistance homes, while the testimony calibrated Rate HP on fossil-heated homes only (`{python} num(r.all_fossil_annual_kwh_after)` kWh); align or say so. (2) the existing-customer figures rest on `{python} num(c1.n_bldg)` buildings.]**
+
+b. Between **`{python} num(floor_existing)`** and **`{python} num(ceiling_existing)`** existing heat pump customers, or `{python} pct(floor_existing / c1.rate_year_customers, 2)` to `{python} pct(ceiling_existing / c1.rate_year_customers)` of the residential customers the Company filed for the Rate Year.[^1b-customers]
+
+   [^1b-customers]: `{python} num(c1.rate_year_customers)` customers, the Rate Year average bills rendered for Rates 1, 5 and 7. Davis-Parsons Direct, Exhibit CLP-RATES-2.10 [@clp_Docket260510Exhibit_2026g] **[TK: pinpoint and public copy; the CLP-RATES-2 extract has no page markers]**.
+
+   - The Company could not supply this number, so the estimate is a range built from the Company's own partial count and a survey share.[^1b-no-tracking]
+
+     [^1b-no-tracking]: [CL&P Response to CLF-SC-003](https://pub.switch.box/clp_Docket260510Responses_2026b), at 1 (the Company "does not track the heating sources of its customers") [@clp_Docket260510Responses_2026b].
+
+   - Floor: the Company's own count of heat pump customers, from its rebate records and its 2026 program forecast.[^1b-floor]
+
+     [^1b-floor]: The approximately 4,400 customers who have received heat pump rebates since 2023 indicating full displacement of the prior heating system, plus the 3,528 residential heat pump installations the Company's sales forecast expects through its Conservation and Load Management programs in 2026, which would be in place when Rate HP takes effect in July 2027: 4,400 + 3,528 = `{python} num(floor_existing)`. [CL&P Response to CLF-SC-003(a)](https://pub.switch.box/clp_Docket260510Responses_2026b), at 1 ("approximately 4,400 customers who have received heat pump rebates that indicate full displacement of other heat sources") [@clp_Docket260510Responses_2026b]; CL&P Response to CLF-SC-001, Attach. 1 **[TK: Attach. 1 is not in the library copy of this response set]**.
+
+   - Ceiling: the share of Eversource households that heat primarily with a heat pump, applied to the Rate Year customer count.[^1b-ceiling] Reaching the customers in this group who are not on an incentive list would require the attestation pathway.[^1b-attestation]
+
+     [^1b-ceiling]: 9% × `{python} num(c1.rate_year_customers)` = `{python} num(ceiling_existing)`. NMR Group, [_R2202 Residential Appliance Saturation Survey (RASS) — Detailed Tables_](https://pub.switch.box/nmr_R2202ResidentialAppliance_2025a), at 128 (Sep. 17, 2025) (Table 455, Primary Heating System by Utility: heat pump, 9% of Eversource households) [@nmr_R2202ResidentialAppliance_2025a].
+
+     [^1b-attestation]: [Velez Direct](https://pub.switch.box/velez_Docket260510Direct_2026) at 96:9–11 [@velez_Docket260510Direct_2026].
+
+   - Cross-checks, both inside the range: 4,999 Connecticut heat pump claims paid by the New England Heat Pump Accelerator, and 21,765 ducted air-source and ground-source installations in Energize CT's Eversource export.[^1b-crosscheck]
+
+     [^1b-crosscheck]: New England Heat Pump Accelerator, [_Instant Incentive Program Participation Dataset_](https://pub.switch.box/nehpa_InstantIncentiveProgram_2026), at sheet EXT Claims (Oct. 30, 2026) (Connecticut equipment claims with incentives paid through Sep. 30, 2026; the file includes United Illuminating and municipal utility territory, and one household can make several claims) [@nehpa_InstantIncentiveProgram_2026]; Eversource Connecticut, [_Heat Pump Installations_](https://pub.switch.box/clp_HeatPumpInstallations_2026), at sheet Export (downloaded Nov. 5, 2026) (Energize CT residential installations for Eversource Electric, 2017 through 2026 to date) [@clp_HeatPumpInstallations_2026].
+
+   - These customers are the _existing_ customers: their auto-enrollment is the only source of a shortfall (part (a)).
+
+c. Between **`{python} num(c1.floor_enrolled[1][1] - floor_existing)`** and **`{python} num(c1.ceiling_enrolled[-1][1] - c1.ceiling_enrolled[-2][1])`** new customers a year, or `{python} num(floor_new_total)` to `{python} num(ceiling_new_total)` over 2027–2031.
+
+   - Floor: the Company's forecast of heat pump installations through its Conservation and Load Management programs for 2027, held flat because the Company provided no forecast past 2027. It excludes installations outside the programs.[^1c-floor]
+
+     [^1c-floor]: 3,460 installations a year. CL&P Response to CLF-SC-001, Attach. 1 **[TK: Attach. 1 is not in the library copy of this response set]**; _see also_ [CL&P Response to CLF-SC-001](https://pub.switch.box/clp_Docket260510Responses_2026b), at 1 ("Other heat pumps not installed though the C&LM program are not captured in the attachment.") [@clp_Docket260510Responses_2026b].
+
+   - Ceiling: CL&P's share of ISO New England's forecast of Connecticut residential heat pump additions, `{python} ", ".join(num(b[1] - a[1]) for a, b in zip(c1.ceiling_enrolled, c1.ceiling_enrolled[1:]))` customers in 2027 through 2031.[^1c-ceiling]
+
+     [^1c-ceiling]: ISO New England forecasts 8, 9, 10, 12 and 14 thousand Connecticut housing units adding heat pumps for space heating in 2027 through 2031. ISO New England, [_Final 2026 Heat Pump Forecast_](https://pub.switch.box/isone_Final2026Heat_2026), at 8 (May 1, 2026) (Annual Incremental Increase in HP Stock, residential space heating) [@isone_Final2026Heat_2026]. Each year's additions are multiplied by 78.4%, Eversource's share of the households served by Eversource and United Illuminating: the survey's population frame counts 586,270 Eversource households and 477,106 Eversource households in environmental justice communities, out of 1,356,355 Eversource and United Illuminating households in total ((586,270 + 477,106) ÷ 1,356,355 = 78.4%). NMR Group, [_R2202 Residential Appliance Saturation Survey (RASS) Report_](https://pub.switch.box/nmr_R2202ResidentialAppliance_2025), at 17 (Sep. 17, 2025) (Table 6, Sample Size and Achieved Completes) [@nmr_R2202ResidentialAppliance_2025].
+
+   - Assumptions: every customer who installs a heat pump enrolls and stays enrolled; the year's installations join in the rate year that begins that July.
+   - These are _new_ customers: they pay their pre-heat-pump bill plus incremental marginal cost, so they create no shortfall (part (a), with the C&LM forecast caveat noted there).
+
+d. The estimates are provided in parts (a) through (c).
 :::
 
 ## CIEC-2
@@ -44,6 +322,79 @@ d. In developing his recommendations, did Mr. Velez consider how any revenue red
 :::
 
 ::: {.response}
+a. Confirmed, with a clarification. Rate HP by itself collects less from heat pump customers than Rate 1 would, so it is not revenue neutral on its own.[^2a-less] It is one of two residential rates. Mr. Velez recommends that Rate 1 be set in this rate case to recover the residential class's revenue requirement net of what Rate HP collects (CIEC-15(b)), so that the residential class as a whole recovers its revenue requirement.
+
+   [^2a-less]: [Direct Testimony of Juan-Pablo Velez on behalf of Conservation Law Foundation and Sierra Club](https://pub.switch.box/velez_Docket260510Direct_2026) ("Velez Direct"), at 95:2–4, 95:17–21 (Oct. 21, 2026) (Rate HP is designed so that "every heat pump customer pays less than they would under Rate 1") [@velez_Docket260510Direct_2026].
+
+   - Whether there is any reduction to recover depends on who enrolls, as set out in CIEC-1(a):
+     - _New heat pump customers:_ as a group, they pay more on Rate HP than before they installed. They reduce no one's revenue and require no recovery from anyone.
+     - _Existing heat pump customers:_ they pay `{python} dollar(c1.dec_total, 2)` a year less on Rate HP than on Rate 1 (average). This is the only revenue reduction: `{python} million(short_floor['total'])` to `{python} million(short_ceiling['total'])` a year at the floor and ceiling enrollment estimates.
+
+b. Other residential customers, and only for the existing heat pump customers' reduction.
+
+   - New heat pump customers: no one bears anything (part (a)).
+   - Existing heat pump customers' reduction: residential customers not on Rate HP, through Rate 1's distribution and transmission rates. The increase is in CIEC-3(c).
+   - Basis: the cross-subsidy the testimony identifies runs within the residential class, from heat pump customers to fossil fuel-heated residential customers (CIEC-16(a)).[^2b-within] Removing it returns the excess to the customers who were receiving it; it does not create a new cost for anyone else.
+
+     [^2b-within]: [Velez Direct](https://pub.switch.box/velez_Docket260510Direct_2026) at 5:10–13 (the cross-subsidy "flows from electric customers that heat with heat pumps to those that heat with fossil fuels") [@velez_Docket260510Direct_2026].
+
+   - Not non-residential customers: their share of the revenue requirement is set by the class cost allocation, which Rate HP does not change (CIEC-16(b)).
+   - Not the Company's shareholders: the overpayment is an allocation problem within the residential class, not evidence that the Company's revenue requirement is too high.
+
+c. No. Mr. Velez recommends that no portion be recovered from customers outside the residential class, and three steps to prevent it:
+
+   1. In this rate case, set Rate 1 and Rate HP using billing determinants that place existing heat pump customers' load on Rate HP, so the existing-customer reduction is built into residential rates rather than appearing later as a shortfall (CIEC-15(b); the resulting Rate 1 rates are in CIEC-3(c)).
+   2. Between rate cases, keep any difference caused by Rate HP within the residential class (part (d)).
+   3. Set Rate HP's winter Transmission Service Rate within the residential class's transmission revenue requirement, as the Company already does for its own residential rate designs (CIEC-7(d)).[^2c-tsr]
+
+      [^2c-tsr]: [CL&P Response to CLF-SC-032](https://pub.switch.box/clp_Docket260510Responses_2026a), at 1 (a winter transmission discount "would require an increase to the first block and non-winter second block rates, to achieve a design equivalent to meet total transmission revenue requirements for the class") [@clp_Docket260510Responses_2026a].
+
+   - The Company makes the same commitment for its own Rate 6.[^2c-rate6]
+
+     [^2c-rate6]: Joint Direct Testimony of Edward Davis and Kimberly R. Parsons on behalf of The Connecticut Light and Power Company d/b/a Eversource Energy ("Davis-Parsons Direct"), Exhibit CLP-RATES-1 at 37:18 (July 14, 2026) (Rate 6 "Ensures no incremental harm to remaining customer classes") [@clp_Docket260510Exhibit_2026f] **[TK: no public copy to link yet]**.
+
+d. Not in the testimony; the testimony does not address the reconciling mechanisms. Mr. Velez has considered them for this response.
+
+   - Decoupling: the Revenue Decoupling Mechanism reconciles the Company's actual distribution revenue to a single company-wide target, at a flat rate per kWh across all classes.[^2d-rdm] Any distribution under- or over-collection is therefore shared by all classes in proportion to their kWh, roughly `{python} pct(nonres_kwh_share)` to non-residential classes on the Rate Year forecast.[^2d-nonres-share]
+
+     [^2d-rdm]: Davis-Parsons Direct, Exhibit CLP-RATES-1 at 22:21 ("the rate will be set at a flat kWh rate across all rate classes") [@clp_Docket260510Exhibit_2026f].
+
+     [^2d-nonres-share]: One minus the residential share of Rate Year billed sales: Rate 1 (`{python} num(CLASS_BILLED_MWH)` MWh), Rate 5 (`{python} num(RATE5_MWH)` MWh) and Rate 7 (`{python} num(RATE7_MWH)` MWh), out of `{python} num(RDM_TOTAL_MWH)` MWh for the Company. Davis-Parsons Direct, Exhibits CLP-RATES-2.4 and CLP-RATES-2.12 [@clp_Docket260510Exhibit_2026g] **[TK: pinpoints and public copy; the CLP-RATES-2 extract has no page markers and omits CLP-RATES-2.12]**.
+
+   - Transmission: the Transmission Adjustment Clause is fully reconciling. Class transmission rates are set from each class's allocated share of transmission cost, but the reconciliation is computed for the Company as a whole.[^2d-tac] In the 2023 annual review, for example, the Authority found a single company-wide 2022 over-collection of \$4,603,708 and carried it into the TAC balance.[^2d-tac-2023] Mr. Velez has not found how the carried-forward balance is divided among classes.
+
+     [^2d-tac]: Davis-Parsons Direct, Exhibit CLP-RATES-3 at 409 (the clause recovers "the difference between the Company’s TAC revenue and the Company’s TAC costs from the prior period") [@clp_Docket260510Exhibit_2026h].
+
+     [^2d-tac-2023]: Docket No. 23-01-03, _PURA Annual Review of the Rate Adjustment Mechanisms of The Connecticut Light and Power Company_, [Decision](https://www.dpuc.state.ct.us/dockcurr.nsf/4b3c728dd1c0d642852586db0069aa70/2458b17f1ae4f1de85258a0d00503765/%24FILE/230103-081623.pdf), at 14–15 (Aug. 16, 2023) (the Company "over-collected 2022 TAC revenue in the amount of \$4,603,708," and "[t]he 2022 over-collection shall be reflected in the carry forward TAC balance") **[NOT INGESTED]**.
+
+   - Consequences, if the existing-customer reduction is built into rates in this case (part (c), step 1): no reconciliation shortfall arises from it. Between rate cases, the reconciling mechanisms would see only differences from what was built in:
+     - _New heat pump customers:_ as a group, they raise the Company's revenue above what it was before they installed (by about `{python} dollar(c13.mean_bill_delta)` a year each in T&D), producing a small over-collection credited to all classes.
+     - _Existing heat pump customers enrolled beyond the number built into rates:_ each lowers distribution revenue by `{python} dollar(c1.dec_dist, 2)` a year, and under the RDM as filed about `{python} pct(nonres_kwh_share)` of that would fall on non-residential classes.
+   - Mr. Velez therefore recommends that the Authority direct the Company to (1) report Rate HP customers' billed revenue against what they would have paid on Rate 1, as Massachusetts requires in its decoupling filings,[^2d-ma-report] and (2) recover any shortfall attributable to existing heat pump customers enrolled beyond the number built into rates from the residential class only, for example through a residential-only adjustment or the RDM Rider's provision excluding revenue the Authority approves for exclusion.[^2d-rdm-exclusion]
+
+     [^2d-ma-report]: D.P.U. 25-08-A, Order on Seasonal Heat Pump Rates, at 41 (June 1, 2026) (directing the companies to report "the billed revenues recorded from heat pump customers in their annual revenue decoupling filings and to compare those revenues to the amounts that would have been billed if those customers had not enrolled in the heat pump rates") [@madpu_Docket2508Order_2026] **[TK: case caption; no public copy to link yet]**.
+
+     [^2d-rdm-exclusion]: Davis-Parsons Direct, Exhibit CLP-RATES-3 at 404 (excluding revenue "specifically identified and approved for exclusion by PURA") [@clp_Docket260510Exhibit_2026h].
+
+   - The Company's Rate 6 raises the same question. Its worksheet prices Rate 6 on Rate 1's billing determinants and applies a winter discount to the second block, with no line recovering the discount elsewhere.[^2d-rate6-worksheet] So any revenue Rate 6 forgoes relative to Rate 1 between rate cases would also flow through the RDM.
+
+     [^2d-rate6-worksheet]: Davis-Parsons Direct, Exhibit CLP-RATES-6 at 2:19–27 [@clp_Docket260510Exhibit_2026i].
+
+   - In 2023 the Authority said it was inclined to make the RDM reflect cost causation among classes, but did not plan to keep each class's over- or under-collection within that class, because of rate shock.[^2d-rdm-2023]
+
+     [^2d-rdm-2023]: Docket No. 23-01-03 Decision at 30–31 (inclined to make the RDM "better reflect the underlying cost causation principles relied upon to allocate base distribution costs amongst customers classes," but not planning "to explore an approach that would maintain any over- or under-collection of base distribution revenues within a given customer class") **[NOT INGESTED]**.
+
+   - In December 2025 the Authority kept the kWh allocator, after reviewing Company analyses that assigned each class's over- and under-recoveries back to that class, and that split them between residential and commercial and industrial customers.[^2d-rdm-2025]
+
+     [^2d-rdm-2025]: Docket No. 24-12-05, _PURA Procedural Review of the Annual Rate Adjustment Mechanisms of The Connecticut Light and Power Company and The United Illuminating Company_, [Decision](https://www.dpuc.state.ct.us/dockcurr.nsf/4b3c728dd1c0d642852586db0069aa70/27c546791b13210c85258d5c00529872/%24FILE/241205-121025.pdf), at 22 (Dec. 10, 2025) (the class-by-class analysis "indicated significant potential swings to the volumetric rate for certain rate classes that would constitute extreme rate fluctuation"; the residential versus commercial and industrial split "flattened the effects but failed to support an equitable allocator for the RDM revenue requirement"; "at this time, the current allocation methodology used for the RDM is appropriate") **[NOT INGESTED]**.
+
+   - The adjustment recommended here is different and narrow: not class-by-class tracking of all revenue variances, but one identifiable amount, attributable to one rate, assigned to the class that rate serves. It cannot produce the swings the Authority was concerned about, because it is bounded by the number of existing heat pump customers enrolled beyond the number built into rates. The statute leaves the choice of decoupling method to the Authority.[^2d-statute]
+
+     [^2d-statute]: [Conn. Gen. Stat. § 16-19tt(b)](https://www.cga.ct.gov/current/pub/chap_277.htm#sec_16-19tt) ("The authority shall have the discretion to determine the decoupling mechanism and methodology used in decoupling orders made pursuant to this subsection…").
+
+> **[DISCUSSION FOR JPV]** The December 2025 decision (24-12-05 Decision at 22) is adverse to recommendation (2): the Authority looked at a residential versus commercial and industrial split of the RDM and kept the company-wide kWh allocator. CIEC will likely cite it. I've distinguished it above (one bounded amount from one rate, not all variances), but this makes step 1 of part (c), building the existing-customer reduction into this case's rates, the load-bearing remedy, and recommendation (2) a fallback. Do you want to keep (2), soften it to "the Authority could," or drop it and rely on step 1 plus reporting? **[COUNSEL: whether to cite an adverse decision we distinguish, or leave it for CIEC to raise]**
+
+> **[DISCUSSION FOR JPV]** The counterfactual problem, which CIEC-6(b) is probably aimed at. Today, when heat pump load grows faster than the rate case forecast, the extra Rate 1 revenue (including the overpayment) is credited back to _all_ classes through the RDM; the Authority itself said beneficial electrification "will result in increased kWh sales and a net RDM credit to customers," and that changing the RDM's allocation "will impact the magnitude of the benefits of beneficial electrification conferred to specific customers and customer class but does not impact the overall or average benefits provided to ratepayers" (23-01-03 Decision at 30, 31 n.19) [NOT INGESTED]. So between rate cases, non-residential customers currently receive about `{python} pct(nonres_kwh_share)` of heat pump customers' overpayment on load beyond the forecast. Rate HP shrinks that credit. Compared with no heat pumps, non-residential customers are no worse off; compared with heat pump adoption on Rate 1, they forgo part of a credit. Options: (1) say so plainly and call that credit what it is, a share of the cross-subsidy that has been flowing across classes, which Rate HP stops; (2) say nothing beyond "relative to no adoption." Option 1 is honest and, I think, persuasive to the Authority, but CIEC will quote it. The Company's own C&LM forecast already puts expected heat pump load in Rate Year sales (CIEC-1(a)), which limits how much "beyond the forecast" there is. **[ANALYSIS: Alex Lee: RDM credit to non-residential classes per year from new heat pump adoption beyond the Company's forecast, Rate 1 vs Rate HP]**
 :::
 
 ## CIEC-3
@@ -58,6 +409,35 @@ c. If any revenue reduction resulting from Rate HP were recovered solely from th
 :::
 
 ::: {.response}
+a. Because offsetting the winter reductions with higher summer rates for Rate HP customers would leave the overpayment in place.
+
+   - The overpayment is the amount by which a heat pump customer's bill exceeds their pre-heat-pump bill plus incremental marginal cost.[^3a-define] A design that collects the same annual revenue from heat pump customers as Rate 1 collects the same overpayment, `{python} dollar(overpay)` a year on average, whatever its seasonal shape. It only moves the overpayment between seasons.[^3a-shifts]
+
+     [^3a-define]: [Direct Testimony of Juan-Pablo Velez on behalf of Conservation Law Foundation and Sierra Club](https://pub.switch.box/velez_Docket260510Direct_2026) ("Velez Direct"), at 24:8–10 (Oct. 21, 2026) [@velez_Docket260510Direct_2026].
+
+     [^3a-shifts]: [Velez Direct](https://pub.switch.box/velez_Docket260510Direct_2026) at 101:7–10 (such a design "merely shifts the overpayment between seasons") [@velez_Docket260510Direct_2026].
+
+   - Footnote 75 does not propose such a design. It illustrates the Authority's authority to set a schedule-specific transmission rate without affecting wholesale obligations.[^3a-n75]
+
+     [^3a-n75]: [Velez Direct](https://pub.switch.box/velez_Docket260510Direct_2026) at 83 n.75 [@velez_Docket260510Direct_2026].
+
+   - A different design would offset the winter reductions with higher summer rates for _all_ residential customers on Rate 1. That is a choice about how to recover the existing-customer reduction within the residential class (part (b)), and summer is when marginal T&D costs occur.[^3a-summer] **[TK: JPV: do you want to offer this as acceptable? It changes Rate HP's summer rate too, since Rate HP's summer rates equal Rate 1's]**
+
+     [^3a-summer]: [Velez Direct](https://pub.switch.box/velez_Docket260510Direct_2026) at 16:4–5 (distribution and transmission marginal costs "are concentrated entirely in the summer") [@velez_Docket260510Direct_2026].
+
+b. No. Mr. Velez recommends it (CIEC-2(c)).
+
+   - _New heat pump customers_ cause no reduction to recover.
+   - _Existing heat pump customers_ cause the only reduction, which would be recovered from residential customers on Rate 1.
+
+c. Estimates of the increase in Rate 1 rates, from recovering the existing-customer reduction from residential customers not on Rate HP.[^3c-method] Workpapers: `ciec_requests/ciec_request_3.qmd`, provided as CIEC-3 Attachment 1 **[TK: Alex Lee: export to Excel]**.
+
+   [^3c-method]: The existing-customer reduction (CIEC-1(a)) divided by the Rate Year kWh of residential customers without heat pumps, `{python} num(c3.nonhp_kwh / 1e6)` million kWh in the model. The percentages compare the increase with Rate 1's proposed `{python} cents(FILED_TOTAL_DEL)` per kWh delivery rate.
+
+   - The increase depends only on how many existing heat pump customers enroll; new heat pump customers add nothing to it.
+   - Floor, `{python} num(c3.floor_existing)` existing heat pump customers (CIEC-1(b)): `{python} cents(c3.floor_per_kwh['dist'])` per kWh distribution and `{python} cents(c3.floor_per_kwh['tx'])` per kWh transmission, `{python} cents(c3.floor_per_kwh['total'])` in total, or `{python} pct(c3.floor_per_kwh['pct_of_td'], 1)` of Rate 1's delivery rate.
+   - Ceiling, `{python} num(c3.ceiling_existing)` existing heat pump customers (CIEC-1(b)): `{python} cents(c3.ceiling_per_kwh['dist'])` distribution and `{python} cents(c3.ceiling_per_kwh['tx'])` transmission, `{python} cents(c3.ceiling_per_kwh['total'])` in total, or `{python} pct(c3.ceiling_per_kwh['pct_of_td'], 1)`.
+   - **[ANALYSIS: Alex Lee: the non-heat-pump kWh above uses unscaled ResStock weights (`{python} num(c3.nonhp_customers)` non-heat-pump customers, from `{python} num(eia_cust['resstock_customers'])` ResStock households rather than the `{python} num(c1.rate_year_customers)` Rate Year customers), which overstates the per-kWh increase. Rescaled, the ceiling would be `{python} est("rate1_increase_ceiling_rescaled", cents)`. Rerun `ciec_request_3.qmd` with scaled weights before filing.]**
 :::
 
 ## CIEC-4
@@ -72,6 +452,51 @@ c. Please confirm that this difference represents the customer’s contribution 
 :::
 
 ::: {.response}
+a. Confirmed, with one clarification about what the `{python} dollar(pre_mc)` covers.
+
+   - Before installing a heat pump, the average fossil fuel-heated customer pays `{python} dollar(pre_dist)` a year for distribution and `{python} dollar(pre_tx)` for transmission, `{python} dollar(pre_td)` in total, under proposed Rate 1. The distribution figure includes the riders billed with the Distribution Service Rate.[^4a-bill]
+
+     [^4a-bill]: [Direct Testimony of Juan-Pablo Velez on behalf of Conservation Law Foundation and Sierra Club](https://pub.switch.box/velez_Docket260510Direct_2026) ("Velez Direct"), at 9:3–6 (Oct. 21, 2026) (distribution "collected by the Distribution Service Rate and its associated riders (ESI, RDM, SBC, etc.) in Rate 1") [@velez_Docket260510Direct_2026].
+
+   - That customer causes `{python} dollar(pre_mc)` a year in marginal T&D costs: `{python} dollar(r.all_fossil_annual_mc_dist_before)` upstream distribution and `{python} dollar(r.all_fossil_annual_mc_tx_before)` bulk transmission.[^4a-mc]
+
+     [^4a-mc]: [Velez Direct](https://pub.switch.box/velez_Docket260510Direct_2026) at 18:3–6 [@velez_Docket260510Direct_2026].
+
+   - Clarification: the `{python} dollar(pre_mc)` counts only the capacity costs that usage can trigger. It leaves out the Company's marginal customer-related and local facilities costs, which are incurred when a customer connects and do not change with that customer's later usage. Together those come to `{python} dollar(mcos_connection_yr)` a year, against a customer charge of `{python} dollar(customer_charge_yr)` a year.[^4a-connection]
+
+     [^4a-connection]: 12 × (`{python} dollar(MCOS_CUSTOMER_MO, 2)` customer-related + `{python} dollar(MCOS_LOCAL_FACILITIES_MO, 2)` local facilities) per month for Rate 1, from the Company's marginal cost of service study, against 12 × the proposed `{python} dollar(fc.original_fixed_charge, 2)` monthly customer charge. [Velez Direct](https://pub.switch.box/velez_Docket260510Direct_2026) at 14 n.8 [@velez_Docket260510Direct_2026]; Joint Direct Testimony of Edward Davis and Kimberly R. Parsons on behalf of The Connecticut Light and Power Company d/b/a Eversource Energy ("Davis-Parsons Direct"), Exhibit CLP-RATES-3 at 243 (July 14, 2026) [@clp_Docket260510Exhibit_2026h] **[TK: no public copy to link yet]**.
+
+b. Measured against marginal cost alone, the customer does pay `{python} dollar(embedded_gap)` a year more than the marginal T&D costs it causes. The testimony does not call that an overpayment, for three reasons.
+
+   - The testimony defines the overpayment as a change: a customer's _incremental_ T&D charges after installing a heat pump, minus the _incremental_ marginal T&D cost the heat pump causes.[^4b-define] The `{python} dollar(embedded_gap)` is a level, measured before any heat pump is installed, so it is outside that definition.
+
+     [^4b-define]: [Velez Direct](https://pub.switch.box/velez_Docket260510Direct_2026) at 24:8–10 [@velez_Docket260510Direct_2026].
+
+   - Nearly every residential customer pays more than the marginal T&D costs it causes. The residential revenue requirement is set on embedded costs; the existing infrastructure must be paid for, but those are sunk costs, not costs caused by usage today.[^4b-sunk] Someone has to pay them.
+
+     [^4b-sunk]: [Velez Direct](https://pub.switch.box/velez_Docket260510Direct_2026) at 13:23–14:2 (existing "infrastructure does need to be paid for, those are _sunk_ costs tied to old investments, not _marginal_ costs") [@velez_Docket260510Direct_2026].
+
+   - The testimony takes the Company's allocation of those embedded costs among residential customers as given, including each customer's pre-heat-pump share. It asks a narrower question: what should change when that customer installs a heat pump?
+   - Under Rate 1, the answer is that the customer's payment toward embedded costs roughly doubles, from `{python} dollar(embedded_gap)` to `{python} dollar(embedded_after_rate1)` a year, while the heat pump adds only `{python} dollar(inc_mc, 2)` a year in marginal T&D cost.[^4b-doubles] That increase is the `{python} dollar(overpay)` overpayment.
+
+     [^4b-doubles]: After installing: (`{python} dollar(pre_td)` + `{python} dollar(inc_td)` in added T&D charges) − (`{python} dollar(pre_mc)` + `{python} dollar(inc_mc, 2)` in added marginal T&D cost) = `{python} dollar(embedded_after_rate1)`. [Velez Direct](https://pub.switch.box/velez_Docket260510Direct_2026) at 20:5–8, 23:3–5 [@velez_Docket260510Direct_2026].
+
+   - The customer's usage changed; the costs it causes barely did. The increase is a transfer to other residential customers, which is what the testimony calls a cross-subsidy.[^4b-cross]
+
+     [^4b-cross]: [Velez Direct](https://pub.switch.box/velez_Docket260510Direct_2026) at 27:11–13 [@velez_Docket260510Direct_2026].
+
+   - Under Rate HP, the customer's payment toward embedded costs stays at about its pre-heat-pump level, `{python} dollar(embedded_after_rate_hp)` a year on average (part (c) and CIEC-17).
+   - Whether any customer's share of embedded costs should depend on kWh at all is a broader question about Rate 1's design. The testimony discusses one answer, a Rate 1 customer charge of `{python} dollar(fc.fixed_charge, 2)` a month (CIEC-15), and does not recommend it.
+   - **[COUNSEL / NRDC (mchhabra): JPV flagged this question as "the best retort to the incremental approach." Confirm the framing before filing.]**
+
+c. Confirmed, with two qualifications.
+
+   - Most of the difference is the customer's contribution to the embedded costs of existing distribution and transmission facilities.
+   - Part of it pays for customer-related and local facilities costs: the customer charge covers `{python} dollar(customer_charge_yr)` of the `{python} dollar(mcos_connection_yr)` a year the Company's marginal cost study assigns to those costs (part (a)).
+   - The transmission portion recovers the Company's wholesale transmission charges, which are themselves the embedded costs of the regional and local transmission network, passed to retail customers through the Transmission Adjustment Clause.[^4c-tac]
+
+     [^4c-tac]: [Velez Direct](https://pub.switch.box/velez_Docket260510Direct_2026) at 83:5–8 [@velez_Docket260510Direct_2026].
+
 :::
 
 ## CIEC-5
@@ -86,6 +511,37 @@ c. Does Mr. Velez contend that the incremental load of commercial and industrial
 :::
 
 ::: {.response}
+a. The same way they are recovered now. The testimony proposes no change to how the residential class's share of embedded T&D costs is set, and no change to any other class's share. Within the residential class, the recovery works as follows:
+
+   - New heat pump customers: keep paying the embedded-cost contribution they paid before installing, about `{python} dollar(embedded_gap)` a year for the average fossil fuel-heated home (CIEC-4), plus the incremental marginal cost their heat pump causes. Rate HP is calibrated to produce exactly that bill, on average.[^5a-calibrated] No embedded cost moves to anyone else.
+
+     [^5a-calibrated]: [Direct Testimony of Juan-Pablo Velez on behalf of Conservation Law Foundation and Sierra Club](https://pub.switch.box/velez_Docket260510Direct_2026) ("Velez Direct"), at 85:2–7 (Oct. 21, 2026) [@velez_Docket260510Direct_2026].
+
+   - Existing heat pump customers: pay the same Rate HP rates. Under Rate 1 they pay about `{python} dollar(overpay)` a year more toward embedded costs than they would without the heat pump (the overpayment); on Rate HP they stop paying that excess. For the average existing heat pump customer, the Rate HP bill is `{python} dollar(c1.dec_total, 2)` a year lower than the Rate 1 bill (CIEC-1(a)).
+   - Residential customers not on Rate HP: pay the same embedded-cost share as before, plus the existing customers' excess, which is recovered on Rate 1 when rates are set. That is the only change, and it unwinds the cross-subsidy the testimony describes. The increase is `{python} cents(c3.floor_per_kwh['total'])` to `{python} cents(c3.ceiling_per_kwh['total'])` per kWh (CIEC-3(c)).
+   - Non-residential customers: no change. Their share of embedded costs is set by the class cost allocation, which Rate HP does not touch (CIEC-2(c) and CIEC-16(b)).
+
+b. It depends on whether the incremental usage was already paying embedded costs when rates were set.
+
+   - New heat pump customers: their heat pump usage was never part of the sales used to set Rate 1, so it was never counted on to contribute to embedded costs. Rate 1 already recovers the full residential revenue requirement without it. Pricing that usage near marginal cost takes nothing away from anyone. (See the caveat on the Company's C&LM forecast in CIEC-1(a) and CIEC-12(a).)
+   - Existing heat pump customers: their heat pump usage is in the sales used to set rates. The embedded costs it stops contributing to are the shortfall in CIEC-1(a), recovered from residential customers on Rate 1 (part (a)).
+
+c. No. The testimony takes no position on how commercial and industrial load should be priced.
+
+   - The testimony addresses one problem: a group of residential customers whose usage rises structurally, mostly in winter, under volumetric rates designed for the class average. Whether incremental commercial or industrial load is overcharged would depend on those classes' rate designs and load shapes, which the testimony did not study.
+   - The testimony does not propose to redesign rates for all customers. **[COUNSEL: JPV's sketch for this part reads "We are proposing a wholesale redesign"; the intended word is "not."]**
+   - The Company itself has proposed pricing incremental large commercial and industrial load this way. Its proposed Economic Development Rate rider would discount the distribution charges on new or expanded load of Rate 57 (manufacturing) and Rate 58 customers, with demand generally above one megawatt.[^5c-edr] The discount is anchored to marginal cost, and it is limited to incremental load.[^5c-edr-floor]
+
+     [^5c-edr]: Joint Direct Testimony of Edward Davis and Kimberly R. Parsons on behalf of The Connecticut Light and Power Company d/b/a Eversource Energy ("Davis-Parsons Direct"), Exhibit CLP-RATES-1 at 24:15–25:1 (July 14, 2026) [@clp_Docket260510Exhibit_2026f] **[TK: no public copy to link yet]**.
+
+     [^5c-edr-floor]: _Id._ at 28:5–6 (the discount is "anchored to the Company's marginal cost of service, which serves to support a minimum, marginal-cost-based charge"), 25:6–7 ("the EDR is limited to incremental (i.e., new or expanded) load only, and discounts shall not be available to existing load") [@clp_Docket260510Exhibit_2026f].
+
+   - The Company's rationale applies equally to new heat pump load.[^5c-edr-rationale]
+
+     [^5c-edr-rationale]: _Id._ at 30:10–12 ("Incremental sales and revenue may contribute to lowering the rates for the recovery of costs through several reconciling mechanisms that would accrue to all customers, including EDR participants") [@clp_Docket260510Exhibit_2026f].
+
+   - The two proposals rest on the same principle: incremental load should pay at least the incremental cost it causes. They differ in one respect: the Economic Development Rate excludes existing load, while Rate HP enrolls existing heat pump customers, which is the source of the shortfall in CIEC-1(a).
+   - **[UNVERIFIED IDEA]** CIEC may be testing for an undue-discrimination argument (marginal-cost pricing for one residential subgroup but not for commercial and industrial expansion load), or laying groundwork to support the Economic Development Rate, which its manufacturing members would be eligible for. Either way, the Company's own proposal answers the first.
 :::
 
 ## CIEC-6
@@ -100,6 +556,42 @@ c. Please provide Mr. Velez’s estimate of the bill impact of Rate HP on (i) re
 :::
 
 ::: {.response}
+a. The statement concerns _new_ heat pump customers, who "would still be paying their full incremental cost of service."[^6a-new] The supporting analysis is the overpayment analysis in Sections III and IV of the testimony and Exhibit JPV-2, Sections 2–4:
+
+   [^6a-new]: [Direct Testimony of Juan-Pablo Velez on behalf of Conservation Law Foundation and Sierra Club](https://pub.switch.box/velez_Docket260510Direct_2026) ("Velez Direct"), at 27:6–8 (Oct. 21, 2026) ("customers newly installing heat pumps would still be paying their full incremental cost of service, still satisfying cost causation, without negatively affecting the bills of non-heat-pump customers") [@velez_Docket260510Direct_2026].
+
+   - A fossil fuel-heated customer who installs a heat pump keeps paying their pre-heat-pump bill, which is what Rate 1 was set to collect from them, and on Rate HP adds the incremental marginal T&D cost of their new load.[^6a-calibrated] As a group, new heat pump customers' T&D payments rise by about `{python} dollar(c13.mean_bill_delta)` a year each (CIEC-13(b)).
+
+     [^6a-calibrated]: [Velez Direct](https://pub.switch.box/velez_Docket260510Direct_2026) at 85:2–7 [@velez_Docket260510Direct_2026].
+
+   - Rates set in this case recover the revenue requirement from sales that do not include this new load (CIEC-12(a)). So other customers' rates need no increase to make up for anything new heat pump customers pay, and their bills are unaffected.
+   - The Company's own standard is the same: a new customer's rate should cover the incremental cost of serving that customer, so that none of that customer's cost of service falls on other customers.[^6a-company-standard]
+
+     [^6a-company-standard]: [CL&P Response to CLF-003(b)](https://pub.switch.box/clp_Docket260510Responses_2026), at 2 ("A Rate 6 customer pays to cover the incremental cost of serving that customer, such that no portion of that customer’s cost of service is redistributed to non-adopting customers.") [@clp_Docket260510Responses_2026]; _see also_ [Velez Direct](https://pub.switch.box/velez_Docket260510Direct_2026) at 26:20–27:2 [@velez_Docket260510Direct_2026].
+
+   - The statement does not cover _existing_ heat pump customers, whose enrollment does lower revenue below what Rate 1 was set to collect. Their effect on other residential customers is in part (c).
+
+b. The Company recovers its authorized revenue requirement either way; the question is who pays (CIEC-2(d)).
+
+   - _New heat pump customers_ raise the Company's revenue between rate cases, as a group, so the reconciling mechanisms see an over-collection from them, not a shortfall.
+   - _Existing heat pump customers_ lower it. Mr. Velez recommends building that reduction into Rate 1 in this rate case, and recovering any later difference from the residential class only (CIEC-2(c) and (d)). With those steps, non-residential customers' bills are unaffected.
+   - Without them, an existing-customer shortfall between rate cases would flow through the Revenue Decoupling Mechanism, a flat rate per kWh across all classes, and about `{python} pct(nonres_kwh_share)` of it would fall on non-residential customers (CIEC-2(d)).[^6b-rdm]
+
+     [^6b-rdm]: Joint Direct Testimony of Edward Davis and Kimberly R. Parsons on behalf of The Connecticut Light and Power Company d/b/a Eversource Energy ("Davis-Parsons Direct"), Exhibit CLP-RATES-1 at 22:21 (July 14, 2026) ("the rate will be set at a flat kWh rate across all rate classes") [@clp_Docket260510Exhibit_2026f] **[TK: no public copy to link yet]**.
+
+   - See the discussion in CIEC-2(d) on the RDM credit that non-residential customers receive today from heat pump load growth.
+
+c. Estimates. Workpapers: `ciec_requests/ciec_request_6.qmd`, provided as CIEC-6 Attachment 1 **[TK: Alex Lee: export to Excel]**.
+
+   - (i) Residential customers not on Rate HP:
+     - _From new heat pump customers:_ no bill impact.
+     - _From existing heat pump customers:_ an increase of `{python} cents(c6.floor_per_kwh)` to `{python} cents(c6.ceiling_per_kwh)` per kWh (CIEC-3(c)), or `{python} dollar(c6.floor_mean)` to `{python} dollar(c6.ceiling_mean)` a year for the average customer (median `{python} dollar(c6.floor_median)` to `{python} dollar(c6.ceiling_median)`), at the floor and ceiling enrollment estimates.
+     - **[ANALYSIS: Alex Lee: same weight-scale issue as CIEC-3(c); rescaled, the ceiling average would be `{python} est("bill_impact_ceiling_rescaled")`. Rerun `ciec_request_6.qmd` before filing.]**
+   - (ii) Non-residential customers, including Rates 39 and 57: `{python} dollar(c6.nonres_bill_impact)`, with the steps recommended in CIEC-2(c). Rate HP changes no non-residential rate and no class's share of the revenue requirement.
+   - If the existing-customer reduction were instead left to the RDM (contrary to Mr. Velez's recommendation), non-residential customers would pay about `{python} pct(nonres_kwh_share)` of it: `{python} million(nonres_kwh_share * short_floor['dist'])` to `{python} million(nonres_kwh_share * short_ceiling['dist'])` a year of the distribution part, at a flat rate per kWh.[^6c-share] **[TK: Alex Lee: confirm the share from Exhibit CLP-RATES-2.12 and 2.4]**
+
+     [^6c-share]: The non-residential share of Rate Year billed sales, as derived in CIEC-2(d), times the existing-customer distribution shortfall in CIEC-1(a).
+
 :::
 
 ## CIEC-7
@@ -115,6 +607,104 @@ d. Please explain how the 75% reduction in the winter Transmission Service Rate 
 :::
 
 ::: {.response}
+> **[DISCUSSION FOR JPV]** Read this before the bullets. You asked for both sides; here they are, then what the facts settle.
+>
+> _How it was chosen._ The transmission method mirrors the distribution method: an annual \$/kW cost spread over hours by probability of peak, as the Company did for distribution in OCC-733. It was not chosen after comparing it with the wholesale allocation. Part (a) says so plainly.
+>
+> _Side A: heat pumps cause transmission cost through the allocation formula._ CL&P pays Regional Network Service (RNS) and Local Network Service (LNS) on its load at each month's network peak, including November through March (part (b)). Every kW a heat pump adds at a winter monthly peak raises CL&P's RNS and LNS bill: about `{python} dollar(rnl_winter_cost_per_kw)` a year per kW present at all five winter monthly peaks, gross. The Company's own distribution planning guide counts "Monthly Regional and Local Network Services (RNS/LNS) Peak Reductions" as an avoided cost of batteries (CLF-SC-023 Attachment 1, in an older extract without page markers). From Connecticut's point of view this is real money.
+>
+> _Side B: the formula is not cost causation._ The regional pot is fixed by the transmission owners' revenue requirements; more Connecticut load shifts shares and lowers the RNS rate for everyone (2025 load growth lowered it by \$18/kW-year). AESC itself calls the share shift "a transfer within the region, rather than an avoided cost," and keeps it out of the \$69. LNS cannot leave Connecticut at all. FERC accepts monthly-peak (12CP) allocators partly because they "reduce yearly volatility," not as proof of causation, and the RAP manual rates 12CP's accuracy for cost causation "Low to medium." So a share shift is a cost to CL&P's customers, but not a cost the heat pump causes the region to incur.
+>
+> _A complication for both._ The \$69 comes from ISO-NE's 2050 study, whose investment is driven by future _winter_ peaks, but our method spreads it over summer-peaking 2022–2025 history. CIEC has not raised this yet.
+>
+> _What the facts settle._ (1) Under Rate 1, the representative home pays `{python} dollar(tx_inc_rev_rate1)` more in transmission after installing. Even on Side A's measure, that exceeds the added RNS and LNS cost unless the home adds more than about `{python} f"{breakeven_kw_rate1:.1f}"` kW at every winter monthly peak. Even if the full \$69 (inflated) were assigned to winter, the Rate 1 overpayment would remain (CIEC-9(c)). So the Rate 1 transmission overpayment survives either view, if per-home coincident load is moderate. (2) Rate HP is different: by design it collects only `{python} dollar(tx_inc_rev_rate_hp)` of incremental transmission revenue, which covers Side A's cost only below about `{python} f"{breakeven_kw_rate_hp:.2f}"` kW. If the Authority accepts Side A, the Rate HP winter TSR is too low. The Company's own floor for a winter transmission discount is "no less than the transmission service cost (i.e., the RNS plus LNS…)" (CL&P Response to CLF-SC-032 at 1). (3) The industrial firewall holds under both views: CL&P allocates transmission cost to classes by each class's monthly coincident peak (CLF-SC-032), so any added cost from residential winter load is allocated to the residential class, and the RNS and LNS rates per kW that commercial and industrial load pays go down slightly, not up.
+>
+> _Options._ (i) Keep the method and argue Side B, conceding the formula's effect on CL&P's bill; (ii) re-derive the Rate HP winter TSR to recover Side A's share-shift cost on incremental winter load (a higher winter TSR, still well below Rate 1); (iii) offer (ii) as a fallback if the Authority prefers Side A. Option (iii) fits a sharp intervenor best. **[ANALYSIS: Alex Lee: ResStock heat pump homes' added load at CL&P's (or Connecticut's) monthly peak hours, November–March, from the EIA/ISO-NE zone loads in `data/eia/hourly_loads/`; then the winter TSR that recovers RNS + LNS on that load]**
+
+a. Mr. Velez estimated the marginal cost of transmission, the cost that additional load causes. The allocation method determines how existing costs are shared. He used a forward-looking cost, and spread it over hours the same way the Company spread distribution marginal cost, so that the two schedules would be consistent.
+
+   - The Company computed no marginal cost of transmission.[^7a-no-mc]
+
+     [^7a-no-mc]: [CL&P Response to CLF-SC-026](https://pub.switch.box/clp_Docket260510Responses_2026a), at 1 ("The Marginal cost of transmission was not computed for this rate design.") [@clp_Docket260510Responses_2026a].
+
+   - Annual cost: the avoided Pool Transmission Facility cost of \$69/kW-year (2024 dollars) from the 2024 Avoided Energy Supply Components study, inflated to 2026 dollars. It is the cost of deferring regional transmission investment by one year through a one-year reduction in peak load.[^7a-aesc]
+
+     [^7a-aesc]: [Direct Testimony of Juan-Pablo Velez on behalf of Conservation Law Foundation and Sierra Club](https://pub.switch.box/velez_Docket260510Direct_2026) ("Velez Direct"), at 15:6–9 (Oct. 21, 2026) [@velez_Docket260510Direct_2026]; Synapse Energy Economics, _Avoided Energy Supply Components (AESC) in New England: 2024 Report_, at 17 (May 24, 2024) [@synapse_AvoidedEnergySupply_2024] **[TK: AESC is not extracted, so this pinpoint is unverified; no public copy to link yet]**.
+
+   - Hourly shape: the probability-of-peak method the Company's witness described for distribution in OCC-733, applied to New England system load for 2022–2025.[^7a-shape] The Company built that method on the sum of its distribution substation loads for the same years;[^7a-substation] Mr. Velez used regional load instead because pool transmission is planned to the regional peak **[TK: JPV: confirm this was the reason, or say it was chosen to mirror the distribution method]**. AESC directs that the value be applied to a measure's effect on the regional annual peak, whenever it occurs.[^7a-aesc-peak]
+
+     [^7a-shape]: [Velez Direct](https://pub.switch.box/velez_Docket260510Direct_2026) at 15:9–16:2 [@velez_Docket260510Direct_2026].
+
+     [^7a-substation]: [CL&P Response to CLF-SC-033](https://pub.switch.box/clp_Docket260510Responses_2026a), at 1 ("The sum of historical hourly Substation Loads from January 2022, to December 2025 across all the distribution substations provided by the Company were grouped by hour type…") [@clp_Docket260510Responses_2026a].
+
+     [^7a-aesc-peak]: AESC 2024 at 283–284 (the value applies "to a measure's impact on the regional annual system peak, regardless of when the peak occurs") [@synapse_AvoidedEnergySupply_2024] **[TK: pinpoint unverified; AESC is not extracted]**.
+
+   - Why not the wholesale allocation: RNS and LNS charges divide a fixed, already-incurred revenue requirement among network customers in proportion to their monthly peak loads (part (b)). A change in one customer's share is not a change in the cost of the transmission system. AESC excludes it from avoided transmission cost for that reason.[^7a-aesc-transfer]
+
+     [^7a-aesc-transfer]: AESC 2024 at 285–286 (from a regional perspective, shifting existing RNS costs "would cause a transfer within the region, rather than an avoided cost") [@synapse_AvoidedEnergySupply_2024] **[TK: pinpoint unverified; AESC is not extracted]**.
+
+   - Mr. Velez acknowledges that from CL&P's perspective a share shift does change what the Company pays. Its size relative to the transmission overpayment is discussed in part (c).
+   - The investment behind the \$69 is driven by forecast winter peaks in 2050, while the hourly shape reflects today's summer-peaking system. As winter peaks approach, the hourly shape should be updated when Rate HP is recalibrated (CIEC-9(c)).
+
+> **[COUNSEL]** The title printed inside the Figure 6 chart image reads "CT Eversource (PJM zone)"; the caption and text say CT Eversource and New England load (Velez Direct at 16, 16:1). CIEC may ask. Consider an errata to the figure.
+
+b. Mr. Velez's understanding is that both regional and local network charges depend on the Company's load at the time of a monthly peak, in every month, including November through March:
+
+   - RNS: each month, each network customer pays the RNS rate times its load at the hour of its Local Network's monthly peak, divided by 12. The RNS rate is the region's total Pool Transmission Facility revenue requirement divided by the 12-month average of the Local Networks' summed monthly peaks. CL&P is in the Northeast Utilities (now Eversource) Local Network.[^7b-rns]
+
+     [^7b-rns]: ISO New England, [_Open Access Transmission Tariff, Section II_](https://www.iso-ne.com/static-assets/documents/regulatory/tariff/sect_2/oatt/sect_ii.pdf), at Sections II.21.1–II.21.2, Schedule 9 and Attachment E ("the Local Network of the Northeast Utilities companies") (Sep. 1, 2026) [@isone_OpenAccessTransmission_2026] **[TK: the OATT is not extracted, so these pinpoints are unverified]**.
+
+   - LNS: billed on load at the Eversource companies' monthly transmission system peak, with a Connecticut-specific rate equal to Connecticut's local revenue requirement divided by Connecticut load.[^7b-lns]
+
+     [^7b-lns]: ISO New England, _Open Access Transmission Tariff_, Schedule 21-ES, at Sections 1.2 and 14.2 **[NOT INGESTED: inbox `isone_oatt_schedule_21_es.pdf`]**.
+
+   - The Company describes the same structure: its transmission costs are set on monthly peak demand at rates based on the 12-month average peak,[^7b-031] and it allocates them to retail classes by each class's monthly coincident peak, recovered through an average annual rate per kWh for Rates 1 and 5.[^7b-032]
+
+     [^7b-031]: [CL&P Response to CLF-SC-031](https://pub.switch.box/clp_Docket260510Responses_2026a), at 1 (transmission costs are "determined on a monthly peak demand basis, at rates determined on a 12-month average peak demand") [@clp_Docket260510Responses_2026a].
+
+     [^7b-032]: [CL&P Response to CLF-SC-032](https://pub.switch.box/clp_Docket260510Responses_2026a), at 1 (allocated "on the basis of the class's monthly coincident peak demand" and recovered through "an average annual transmission rate per kWh, for all hours under Residential Rate 1 and Rate 5") [@clp_Docket260510Responses_2026a].
+
+   - Three consequences. (1) More Connecticut load at a monthly peak raises CL&P's share of a fixed regional total and lowers the RNS rate per kW for everyone.[^7b-rns-rate] (2) LNS is recovered from Connecticut load whatever its timing; more load lowers the rate per kW. (3) Within CL&P, more residential load at winter monthly peaks raises the residential class's allocated share and lowers every other class's.
+
+     [^7b-rns-rate]: The 2025 load change lowered the RNS rate by \$18.00/kW-year. Participating Transmission Owners Administrative Committee, RNS rate presentation, at 9 (July 16, 2026) **[NOT INGESTED]**.
+
+   - Today, Connecticut's monthly network peaks are much lower in winter than in summer: for example, 6,500 MW in June 2025 against 4,702 MW in January 2026.[^7b-peaks]
+
+     [^7b-peaks]: ISO New England, _Monthly Regional Network Load Cost Report_, at Table 7-1 (Apr. 2026) **[NOT INGESTED]**.
+
+c. No. Mr. Velez has not estimated heat pump adoption's effect on the Company's November–March monthly peaks or on its allocated transmission costs, because the testimony measures marginal cost (part (a)), not shares of the regional charge. The Company's own forecasts do not yet include heat pump load at the winter peak.[^7c-forecast]
+
+   [^7c-forecast]: [CL&P Response to CLF-SC-001(c)](https://pub.switch.box/clp_Docket260510Responses_2026b), at 2 ("Heat pump adjustments are not currently applied to our forecasted summer peak or winter peak demand (MW).") [@clp_Docket260510Responses_2026b].
+
+   - Scale: each kW a heat pump home adds at all five November–March monthly peaks would raise CL&P's RNS and LNS charges by about `{python} dollar(rnl_winter_cost_per_kw)` a year, gross, at current rates. Part of the RNS increase is offset by the lower RNS rate other networks pay.[^7c-scale]
+
+     [^7c-scale]: (`{python} dollar(RNS_KW_YR, 2)`/kW-year RNS + `{python} dollar(LNS_CLP_KW_YR, 2)`/kW-year CL&P LNS) ÷ 12 × 5 months, plus `{python} dollar(RNL_OTHER_KW_MO, 3)`/kW-month of other network load charges × 5 months. RNS: Participating Transmission Owners Administrative Committee, RNS rate presentation (July 16, 2026) **[NOT INGESTED]**. LNS: Eversource, transmission rates web page **[NOT INGESTED]**. Other charges: ISO New England, _Monthly Regional Network Load Cost Report_, at Table 2-1 (Apr. 2026) **[NOT INGESTED]**.
+
+   - At an assumed 2.5 kW per home that is `{python} est("rnl_share_shift")` a year **[EST]** **[ANALYSIS: Alex Lee: see the discussion block above]**.
+   - Under Rate 1, the representative home pays `{python} dollar(tx_inc_rev_rate1)` a year more in transmission after installing a heat pump.[^7c-rate1-tx] That exceeds the gross share-shift cost unless the home adds more than about `{python} f"{breakeven_kw_rate1:.1f}"` kW at every winter monthly peak.
+
+     [^7c-rate1-tx]: [Velez Direct](https://pub.switch.box/velez_Docket260510Direct_2026) at 12:7 [@velez_Docket260510Direct_2026].
+
+   - For comparison, ISO-NE forecasts Connecticut heat pumps adding 35 MW to the 2026 winter peak and 224 MW by 2030, against Connecticut monthly network peaks of about 3,800–4,800 MW in November–March.[^7c-isone]
+
+     [^7c-isone]: ISO New England, [_Final 2026 Heat Pump Forecast_](https://pub.switch.box/isone_Final2026Heat_2026), at 24 (May 1, 2026) (Winter 50/50 Peak Demand by Load Zone, CT) [@isone_Final2026Heat_2026]; ISO New England, _Monthly Regional Network Load Cost Report_, at Table 7-1 (Apr. 2026) **[NOT INGESTED]**.
+
+   - **[TK: decide on the discussion block's options; if (ii) or (iii), add the re-derived winter TSR here]**
+
+d. Rate HP would lower the transmission revenue the Company collects from Rate HP customers in November through March. Its effect differs for new and existing heat pump customers:
+
+   - _New heat pump customers:_ as a group, they keep paying their pre-heat-pump transmission bill plus the incremental transmission marginal cost (`{python} dollar(tx_inc_rev_rate_hp)` a year for the average home), so their transmission payments do not fall below what the Company collected from them before they installed. If their winter load raises CL&P's monthly peaks, CL&P's RNS and LNS charges rise (part (c)), and Rate HP does not collect that increase from them.
+   - _Existing heat pump customers:_ their transmission payments fall by `{python} dollar(c1.dec_tx, 2)` a year each, for a total of `{python} million(short_floor['tx'])` to `{python} million(short_ceiling['tx'])` a year at the floor and ceiling enrollment estimates (CIEC-1(a)).
+   - Recovery: the Company's transmission costs are fully reconciled through the Transmission Adjustment Clause, so the Company recovers them whatever Rate HP collects. The question is from which class.
+   - Mr. Velez recommends that any difference be recovered from the residential class's transmission rate, as the Company does now: transmission cost is allocated to each class by its monthly coincident peak, and a winter discount would be made up from the same class's other rates.[^7d-within-class] Any added cost from residential winter load is allocated to the residential class by the same rule.
+
+     [^7d-within-class]: CL&P Response to CLF-SC-032, at 1 (a winter discount for Rate 6 "would require an increase to the first block and non-winter second block rates, to achieve a design equivalent to meet total transmission revenue requirements for the class") [@clp_Docket260510Responses_2026a].
+
+   - Class rates are set from class allocations, but the TAC reconciliation is computed for the Company as a whole, and Mr. Velez has not found how the carried-forward balance is divided among classes (CIEC-2(d)). So Mr. Velez recommends that the Authority (1) build existing heat pump customers' Rate HP transmission revenue into this case's residential transmission rates, and (2) assign any later Rate HP difference to the residential class's transmission rate, not to the system-wide true-up (CIEC-2(c), step 3).
+   - The Transmission Adjustment Clause adjusts on a fully reconciling basis.[^7d-tac]
+
+     [^7d-tac]: Joint Direct Testimony of Edward Davis and Kimberly R. Parsons on behalf of The Connecticut Light and Power Company d/b/a Eversource Energy ("Davis-Parsons Direct"), Exhibit CLP-RATES-3 at 409 (July 14, 2026) [@clp_Docket260510Exhibit_2026h] **[TK: no public copy to link yet]**.
+
 :::
 
 ## CIEC-8
@@ -130,6 +720,91 @@ d. For each Massachusetts heat pump rate Mr. Velez describes, please explain his
 :::
 
 ::: {.response}
+a. Mr. Velez's understanding is that the difference reflects embedded-cost allocation, not marginal cost. He does not contend that it reflects marginal transmission cost.
+
+   - The Company allocates its wholesale transmission expense to retail classes by each class's monthly coincident peak, and recovers each class's allocation through an average annual rate per kWh.[^8a-032]
+
+     [^8a-032]: [CL&P Response to CLF-SC-032](https://pub.switch.box/clp_Docket260510Responses_2026a), at 1 (allocated "on the basis of the class's monthly coincident peak demand" and recovered through "an average annual transmission rate per kWh, for all hours under Residential Rate 1 and Rate 5") [@clp_Docket260510Responses_2026a].
+
+   - Rate 5 is a separate class with its own revenue requirement; Rates 1 and 7 form another.[^8a-classes]
+
+     [^8a-classes]: [CL&P Response to CLF-SC-006](https://pub.switch.box/clp_Docket260510Responses_2026b), at 1 ("in the filed allocated cost of service study, the cost to serve for Rate 5 Residential Space Heating customers has been provided, and the cost to serve for Rate 1 and Rate 7 includes all heating sources") [@clp_Docket260510Responses_2026b]; [CL&P Response to CLF-SC-035](https://pub.switch.box/clp_Docket260510Responses_2026a), at 1 ("Rate 7 is included in the cost allocation and overall revenue requirement along with Rate 1") [@clp_Docket260510Responses_2026a].
+
+   - So the 4.901¢ and 5.050¢ rates are each class's allocated share of the Company's embedded transmission expense divided by that class's kWh. Mr. Velez has not seen the calculation of the Rate 5 figure, which would be in the Company's Transmission Adjustment Clause filing **[RESEARCH: the TAC workbook (Exhibit G) computes one company-wide rate and takes the class rates from Docket 26-01-03, Order No. 3 Compliance Filing (Feb. 17, 2026), Exhibit 4, p. 3, and the April 22, 2026 Interim Decision; neither obtained]**.
+   - The Company computed no marginal cost of transmission.[^8a-no-mc]
+
+     [^8a-no-mc]: CL&P Response to CLF-SC-026, at 1 ("The Marginal cost of transmission was not computed for this rate design.") [@clp_Docket260510Responses_2026a].
+
+   - The testimony cites the Rate 5 rate for one point only: the Authority already sets a different Transmission Service Rate for a specific residential schedule, so it can set a seasonal one for Rate HP.[^8a-rate5]
+
+     [^8a-rate5]: [Direct Testimony of Juan-Pablo Velez on behalf of Conservation Law Foundation and Sierra Club](https://pub.switch.box/velez_Docket260510Direct_2026) ("Velez Direct"), at 83:11–84:2 (Oct. 21, 2026) [@velez_Docket260510Direct_2026].
+
+b. A winter transmission revenue requirement. The Massachusetts winter transmission charges recover the residential class's transmission revenue requirement over heat pump-adjusted winter sales; they were not set at an estimate of marginal transmission cost.
+
+   - The DPU directed National Grid and Unitil to spread the winter transmission revenue requirement over adjusted winter sales.[^8b-directed]
+
+     [^8b-directed]: D.P.U. 25-08-A, Order on Seasonal Heat Pump Rates, at 21 (June 1, 2026) (directing the companies to "recover the winter transmission revenue requirement over the adjusted winter sales") [@madpu_Docket2508Order_2026] **[TK: case caption; no public copy to link yet]**; _see also_ [Velez Direct](https://pub.switch.box/velez_Docket260510Direct_2026) at 84 n.76 [@velez_Docket260510Direct_2026].
+
+   - The DPU explained that "cost-based" meant revenue neutral, recovering embedded capital costs.[^8b-cost-based]
+
+     [^8b-cost-based]: D.P.U. 25-08-A Order at 19 n.4 ("'cost-based' means that the winter transmission charges were structured to be revenue neutral, recovering the capital costs embedded in the transmission service revenue requirement through adjusted winter sales") [@madpu_Docket2508Order_2026].
+
+   - NSTAR Electric's winter transmission price was calculated the same way, with the residential class's revenue target held constant.[^8b-nstar]
+
+     [^8b-nstar]: D.P.U. 25-55, _Petition of NSTAR Electric Company, d/b/a Eversource Energy for Approval of Residential Seasonal Heat Pump Rates_, [Order](https://pub.switch.box/madpu_Docket2555Order_2025), at 8 (July 29, 2025) (the winter transmission price "was then calculated to collect the winter transmission revenue requirement over the adjusted winter period sales") [@madpu_Docket2555Order_2025]; [Direct Testimony of Richard D. Chin](https://pub.switch.box/chin_Docket2555Direct_2025) ("Chin Direct"), Exhibit ES-HP-1, D.P.U. 25-55, at 13:4 (Apr. 17, 2025) ("the revenue target for Rate R-1/R-2 … held constant") [@chin_Docket2555Direct_2025].
+
+   - The rationale for the seasonal split was cost causation in a summer-peaking system.[^8b-rationale]
+
+     [^8b-rationale]: Chin Direct, Exhibit ES-HP-1, at 14:12–13 (transmission costs "are generally set in relation to system peak demand which typically happens in the summer") [@chin_Docket2555Direct_2025]; D.P.U. 25-08-A Order at 19 (base distribution and transmission costs are "well-suited to seasonal heat pump rate designs that reflect the timing and manner in which demand-related costs are incurred in a system that is currently summer peaking") [@madpu_Docket2508Order_2026].
+
+   - The testimony cites Massachusetts for the precedent of a commission directing winter transmission reductions in heat pump rates, not for the method.[^8b-precedent] Rate HP's method differs: it lowers the winter rate until a heat pump customer's added transmission payment equals the added marginal cost, rather than spreading the class revenue requirement over assumed heat pump usage.
+
+     [^8b-precedent]: Velez Direct at 84:3–12 [@velez_Docket260510Direct_2026].
+
+c. Mr. Velez is not aware of any jurisdiction that has set a heat pump rate's retail transmission charge at an estimate of marginal transmission cost.
+
+   - Rate HP does not do so either. Its winter Transmission Service Rate is set so that a new heat pump customer keeps paying their pre-heat-pump transmission bill, which contributes to embedded transmission costs, plus the incremental marginal cost.[^8c-calibrated] Only the increment is priced at marginal cost.
+
+     [^8c-calibrated]: Velez Direct at 85:2–7 [@velez_Docket260510Direct_2026].
+
+   - A search on November 7, 2026 of heat pump and seasonal rates in Massachusetts, Maine, Rhode Island, New Hampshire, New York, Maryland, Connecticut, Minnesota, Colorado, Illinois, Michigan, Vermont, California, Québec and Ontario found none. The closest are:
+     - Massachusetts: revenue-requirement based (part (b)).
+     - Maine: Central Maine Power's A-Seasonal pilot collected all transmission and distribution kWh charges in May through October and none in November through April, a seasonal reallocation of the revenue requirement.[^8c-cmp] Maine's industrial customer group urged that heat pump rates put transmission and distribution costs on summer residential usage.[^8c-iecg]
+
+       [^8c-cmp]: Me. P.U.C. Docket No. 2026-00248, Central Maine Power Company, [Request to Reinstate A-Seasonal (Heat Pump) Rate](https://pub.switch.box/cmp_Docket202600248Request_2026), at 1 (Aug. 25, 2026) ("All transmission and distribution kWh charges associated with the annual revenue requirement would be collected…") [@cmp_Docket202600248Request_2026].
+
+       [^8c-iecg]: Me. P.U.C. Docket No. 2021-00325, [Revised Stipulation](https://pub.switch.box/cmp_Docket202100325Revised_2022), at 6 (Sept. 22, 2022) (heat pump rates should "allocate both transmission and distribution costs to summer residential electricity consumption") [@cmp_Docket202100325Revised_2022].
+
+     - California: the Public Utilities Commission has encouraged utilities to propose an hourly marginal-cost-based transmission rate at FERC; none is in effect.[^8c-cpuc]
+
+       [^8c-cpuc]: Cal. P.U.C. Decision D.25-08-049 **[NOT INGESTED: inbox `cpuc_decision_demand_flexibility_rate_guidelines_578182496.pdf`; pinpoint and date TK]**.
+
+   - The Company did not compute marginal transmission cost for its own Rate 6.[^8c-no-mc]
+
+     [^8c-no-mc]: CL&P Response to CLF-SC-026, at 1 [@clp_Docket260510Responses_2026a].
+
+d. Each Massachusetts rate is designed within the residential class; any actual shortfall from it flows into reconciling mechanisms, some of which allocate across all classes.
+
+   - Design: each company sets the heat pump rates to recover the residential (R-1/R-2) class's target revenue on assumed heat pump usage.[^8d-design] The DPU found the rates revenue neutral to other customers.[^8d-neutral]
+
+     [^8d-design]: Chin Direct, Exhibit ES-HP-1, at 13:4 [@chin_Docket2555Direct_2025]; D.P.U. 23-150, National Grid, [Exhibit HP-1, Residential Heat-Pump Rate Implementation Plan](https://pub.switch.box/meco_Docket23150Exhibit_2024) ("National Grid Exhibit HP-1"), at 4 (Dec. 30, 2024) [@meco_Docket23150Exhibit_2024].
+
+     [^8d-neutral]: D.P.U. 25-08-A Order at 20 (the rates are "designed to be revenue neutral and will not increase costs to other customers beyond the cost to serve those customers") [@madpu_Docket2508Order_2026].
+
+   - Actual shortfalls, base distribution: if heat pump usage is below the assumption, revenue falls short, and National Grid's tariff sends the shortfall to its Revenue Decoupling Mechanism.[^8d-rdm] National Grid's and Unitil's decoupling adjustments allocate a total-company shortfall across classes by fixed allocators, about 39% of it to non-residential classes.[^8d-allocators] Mr. Velez has not confirmed NSTAR Electric's allocation. **[TK: M.D.P.U. 1608 was superseded October 1, 2026 by M.D.P.U. 1635; confirm National Grid's current allocators before filing]**
+
+     [^8d-rdm]: National Grid Exhibit HP-1 at 4 (the shortfall "will be included in the Company's Revenue Decoupling Mechanism") [@meco_Docket23150Exhibit_2024].
+
+     [^8d-allocators]: National Grid, Revenue Decoupling Adjustment Provision, M.D.P.U. No. 1608, at 1, 3 **[NOT INGESTED]**; Unitil, Schedule RDAC, M.D.P.U. No. 500, at Sheets 5–6 **[NOT INGESTED]**.
+
+   - Actual shortfalls, transmission: National Grid's transmission adjustment is calculated separately for each rate class **[TK: confirm from `meco_mdpu_1592_tsca_20250331.pdf` in the inbox]**.
+   - The DPU expected decoupling to absorb shortfalls,[^8d-expected] and directed the companies to report heat pump customers' billed revenue against what they would have paid on the standard rate.[^8d-report]
+
+     [^8d-expected]: D.P.U. 23-150, _Petition of Massachusetts Electric Company and Nantucket Electric Company, each d/b/a National Grid, pursuant to G.L. c. 164, § 94 and 220 CMR 5.00, for Approval of a General Increase in Base Distribution Rates for Electric Service, a Performance-Based Ratemaking Plan, and a Capital Recovery Mechanism_, [Order](https://pub.switch.box/madpu_Docket23150Order_2024), at 512 n.230 (Sept. 30, 2024) ("the Department expects there to be a reduced chance of significant revenue shortfalls … through the revenue decoupling mechanism") [@madpu_Docket23150Order_2024].
+
+     [^8d-report]: D.P.U. 25-08-A Order at 1, 41 (directing the companies to report "the billed revenues recorded from heat pump customers in their annual revenue decoupling filings and to compare those revenues to the amounts that would have been billed if those customers had not enrolled in the heat pump rates") [@madpu_Docket2508Order_2026].
+
+   - So Mr. Velez cannot say that no portion is recovered from non-residential customers in Massachusetts. For Connecticut he recommends that any Rate HP difference be reconciled within the residential class (CIEC-2(d) and CIEC-7(d)).
 :::
 
 ## CIEC-9
@@ -144,6 +819,70 @@ c. Please describe the specific process and timing Mr. Velez recommends for reca
 :::
 
 ::: {.response}
+a. Footnote 63 does not refer to specific winter peak hours on the Company's system. It contrasts a static marginal cost, applied equally to every kWh, with a dynamic one that varies by hour, and uses a winter peak hour as a generic example.[^9a-n63] On the Company's system today, there are no winter peak hours, and Rate HP's winter rate reflects that.
+
+   [^9a-n63]: [Direct Testimony of Juan-Pablo Velez on behalf of Conservation Law Foundation and Sierra Club](https://pub.switch.box/velez_Docket260510Direct_2026) ("Velez Direct"), at 59 n.63 (Oct. 21, 2026) [@velez_Docket260510Direct_2026].
+
+   - The hourly upstream distribution marginal costs come from the Company's own probability-of-peak allocation.[^9a-pop]
+
+     [^9a-pop]: CL&P Response to OCC-863 **[NOT INGESTED]**; [Velez Direct](https://pub.switch.box/velez_Docket260510Direct_2026) at 14:14–21 [@velez_Docket260510Direct_2026].
+
+   - In that allocation, `{python} pct(m.pct_dist_mc_peak_hours_summer)` of the hours carrying a meaningful marginal distribution cost fall in April through October.[^9a-summer]
+
+     [^9a-summer]: Velez Direct at 16:4–5 [@velez_Docket260510Direct_2026].
+
+   - For the average fossil fuel-heated home, the marginal T&D cost of all November-through-March usage is `{python} dollar(r.all_fossil_seasonal_mc_delivery_winter_before, 2)` a year before installing a heat pump and `{python} dollar(r.all_fossil_seasonal_mc_delivery_winter_after, 2)` after.[^9a-winter-mc]
+
+     [^9a-winter-mc]: Velez Direct at 20:5–7 [@velez_Docket260510Direct_2026].
+
+   - Rate HP's winter rate is set so the average customer's T&D bill equals the pre-heat-pump bill plus incremental marginal cost.[^9a-calibrated] Because winter usage carries almost no marginal cost, the winter rate falls until the added winter kWh add almost nothing to the bill.
+
+     [^9a-calibrated]: Velez Direct at 85:2–7 [@velez_Docket260510Direct_2026].
+
+   - The winter rate is not zero because it still collects the customer's pre-heat-pump winter contribution to embedded costs (CIEC-17).
+   - If winter peak hours appear in a future probability-of-peak analysis, recalibration would raise the winter rate (part (c)).
+
+b. No. The Company's distribution system as a whole is not close to becoming winter peaking; individual feeders and substations would become winter peaking first, and that would require feeder- and substation-level data that has not yet been produced.
+
+   - System: the Company says the system remains summer peaking, and it does not use a heat pump forecast for substation capacity projects.[^9b-summer-peaking]
+
+     [^9b-summer-peaking]: [CL&P Response to CLF-SC-020](https://pub.switch.box/clp_Docket260510Responses_2026b), at 1 ("The Company currently does not use a heat pump forecast to inform its substation capacity projects as the system remains summer peaking.") [@clp_Docket260510Responses_2026b].
+
+   - The Company has no completed winter peak forecast. Its unreleased forecast reaches only a preliminary substation level, and feeder- and transformer-level forecasts are not expected until 2028.[^9b-021] Its heat pump forecasts have not been released.[^9b-022]
+
+     [^9b-021]: [CL&P Response to CLF-SC-021](https://pub.switch.box/clp_Docket260510Responses_2026c), at 1 ("Under the current unreleased forecast only a preliminary substation level could be created. Feeder and transformer level forecasts will be available for the 2028 forecast.") [@clp_Docket260510Responses_2026c].
+
+     [^9b-022]: [CL&P Response to CLF-SC-022](https://pub.switch.box/clp_Docket260510Responses_2026c), at 2 ("Currently, the Company's heat pump forecasts have not been released.") [@clp_Docket260510Responses_2026c].
+
+   - What we requested: for every feeder and substation transformer, summer and winter ratings, summer and winter peaks with their dates and hours, and forecast peaks (CLF-SC-012 to CLF-SC-019).
+   - What the Company said: the data is Critical Energy Infrastructure Information, and it will produce it once CLF-SC signs a non-disclosure agreement and the Company finishes new cybersecurity document controls.[^9b-ndas] **[COUNSEL: current NDA status; date signed or expected]**
+
+     [^9b-ndas]: [CL&P Response to CLF-SC-012](https://pub.switch.box/clp_Docket260510Responses_2026b), at 1–2 [@clp_Docket260510Responses_2026b]; CL&P Response to CLF-SC-013, at 2 (production will follow "once an executed NDA is obtained from CLF-SC") [@clp_Docket260510Responses_2026b]; _see also_ CL&P Responses to CLF-SC-014 to CLF-SC-019 (same).
+
+   - What the data would show: each feeder's and substation's winter headroom, and the number of additional heat pump customers at which its winter peak would exceed its rating.
+   - What we have now: annual peak loading for 918 feeders, without the season of the peak. The median feeder peaks at 49% of its rating, and 2 exceed their rating.[^9b-feeders]
+
+     [^9b-feeders]: Velez Direct at 21:5–8, 22:1–3 [@velez_Docket260510Direct_2026].
+
+   - We will supplement this response within **[COUNSEL: number]** days of receiving the data.
+
+c. Recalibrate Rate HP in each rate case, using an updated marginal cost study whose probability-of-peak analysis includes heat pump load.[^9c-recalibrate] Mr. Velez would support a requirement to recalibrate; he would not support automatic expiry.
+
+   [^9c-recalibrate]: Velez Direct at 7:9–12 [@velez_Docket260510Direct_2026].
+
+   - Each recalibration repeats the calculation in the testimony: find the winter rates at which the average new heat pump customer's T&D bill equals the pre-heat-pump bill plus incremental marginal cost.[^9c-calibrated]
+
+     [^9c-calibrated]: Velez Direct at 85:2–7 [@velez_Docket260510Direct_2026].
+
+   - The probability-of-peak analysis should use substation and feeder loads that reflect actual heat pump adoption. The Authority could require it more often than each rate case if adoption accelerates.
+   - Recalibration already does what an expiry trigger would try to do. As feeders and substations become winter peaking, the analysis moves peak hours and marginal cost into winter, heat pump customers' incremental marginal cost rises, and the winter rate rises with it.
+   - Rate HP would no longer be needed only when heat pump customers' incremental marginal cost reached their incremental Rate 1 charges: about `{python} num(td_to_mc_multiple)` times today's `{python} dollar(inc_mc, 2)` a year.[^9c-multiple]
+
+     [^9c-multiple]: The representative home's incremental Rate 1 T&D charges, `{python} dollar(inc_td)`, divided by its incremental marginal cost, `{python} dollar(inc_mc, 2)`. Velez Direct at 23:3–5 [@velez_Docket260510Direct_2026].
+
+   - Rough scale: if all marginal T&D capacity cost were assigned to winter peak hours instead of summer, the representative home's incremental marginal cost would be about `{python} est("winter_peak_mc")` a year, and its overpayment under Rate 1 would still be about `{python} dollar(overpay - (EST["winter_peak_mc"][0] - inc_mc))` [EST]. **[ANALYSIS: Alex Lee: winter probability-of-peak "reach" run (Google Doc comment 18)]**
+   - An expiry triggered by "winter loads begin[ning] to drive distribution capacity investment" would end the rate when the first feeders turned winter peaking, while heat pump customers as a group were still overpaying by most of the `{python} dollar(overpay)`.
+   - Mr. Velez would support a reporting requirement, for example the Company reporting heat pump customers' billed revenue against the Rate 1 revenue they would have paid, as Massachusetts requires in decoupling filings (CIEC-8(d)).
 :::
 
 ## CIEC-10
@@ -158,6 +897,35 @@ c. Please provide the hourly calculation underlying the $10 per year estimate in
 :::
 
 ::: {.response}
+a. The modeled heat pumps are ResStock's cold-climate air-source heat pumps with electric resistance backup.[^10a-n4] The backup load was not reported separately in the testimony's analysis; it will be provided as CIEC-10 Attachment 1 **[ANALYSIS: Alex Lee: weighted hourly backup kWh and total heat pump kWh for the fossil fuel-heated sample after the upgrade, from ResStock's end-use columns; the hours of highest total and backup load. Low priority (Google Doc comment 19)]**.
+
+   [^10a-n4]: [Direct Testimony of Juan-Pablo Velez on behalf of Conservation Law Foundation and Sierra Club](https://pub.switch.box/velez_Docket260510Direct_2026) ("Velez Direct"), at 10 n.4 (Oct. 21, 2026) [@velez_Docket260510Direct_2026].
+
+   - Rough scale until then: `{python} est("backup_kwh", num)` kWh a year of backup, out of `{python} num(r.all_fossil_annual_kwh_after - r.all_fossil_annual_kwh_before)` kWh of incremental usage.
+   - Whatever its size, the backup load falls in November through March, when the hours carry almost no marginal T&D cost under the Company's probability-of-peak allocation (CIEC-9(a)). It is included in the `{python} dollar(inc_mc, 2)`.
+
+b. The `{python} dollar(inc_mc, 2)` reflects heat pump and backup load in the modeled weather year, priced at the hourly marginal costs from the Company's probability-of-peak analysis. It does not model a winter colder than that.
+
+   - Load: ResStock's AMY2018 release, which simulates each home in the actual weather of 2018 **[RESEARCH: how severe winter 2017–18 was in Connecticut relative to the Company's planning conditions; check NOAA heating degree days and the early-January 2018 cold snap]**.
+   - Distribution marginal cost: the Company's probability-of-peak analysis, built from hourly substation loads for January 2022 through December 2025 and simulated 500 times with kernel density estimation.[^10b-pop] Winter hours in that history, cold ones included, received almost no probability of being the peak.
+
+     [^10b-pop]: [CL&P Response to CLF-SC-033](https://pub.switch.box/clp_Docket260510Responses_2026a), at 1–2 (reprinting the Company's response to OCC-733; "the model simulated hourly load distributions 500 times using a truncated version of Gaussian Kernel density estimation (KDE)" at 2) [@clp_Docket260510Responses_2026a].
+
+   - Transmission marginal cost: the same method applied to ISO New England system load for 2022 through 2025.[^10b-tx]
+
+     [^10b-tx]: [Velez Direct](https://pub.switch.box/velez_Docket260510Direct_2026) at 15:6–16:2 [@velez_Docket260510Direct_2026].
+
+   - The Company plans capacity for an extreme summer: only its 90/10 peak forecast informs capacity projects, and its peak model uses summer weather variables.[^10b-9010]
+
+     [^10b-9010]: [CL&P Response to CLF-SC-022](https://pub.switch.box/clp_Docket260510Responses_2026c), at 4 ("Only the 90/10 scenario is used to inform the Company's capacity projects."), 2 ("two different weather variables in forecasting summer peak demand, a three-day weighted temperature-humidity index and cooling degree days") [@clp_Docket260510Responses_2026c].
+
+   - A colder winter would raise heat pump and backup load in winter hours. That would add marginal cost only where winter load approached a feeder's or substation's rating. The median feeder peaks at 49% of its rating today.[^10b-feeders]
+
+     [^10b-feeders]: Velez Direct at 21:7–8 [@velez_Docket260510Direct_2026]. The seasonal data that would show winter headroom is withheld pending an NDA (CIEC-9(b)).
+
+   - Concession: the `{python} dollar(inc_mc, 2)` is an expected value under the Company's planning data, not a design-day estimate. For the overpayment to disappear, incremental marginal cost would have to be about `{python} num(td_to_mc_multiple)` times larger (CIEC-9(c)).
+
+c. Provided as CIEC-10 Attachment 1: the representative home's hourly load before and after the heat pump, the hourly distribution and transmission marginal costs, and their product summed to `{python} dollar(inc_mc, 2)` **[TK: Alex Lee: confirm the representative-home workbook (Exhibit JPV-3) holds these columns and sums to the testimony figure (Google Doc comment 22)]**.
 :::
 
 ## CIEC-11
@@ -172,6 +940,40 @@ c. Please provide all CAIRO model input and output files used in Velez Direct Te
 :::
 
 ::: {.response}
+a. ResStock's simulated loads were compared against two benchmarks, and the number of modeled households was calibrated to the Company's filed customer count. The loads themselves were not adjusted.
+
+   - Calibration: ResStock assigns `{python} num(eia_cust['resstock_customers'])` households to the Company's territory. The weights were scaled to the `{python} num(c1.rate_year_customers)` residential customers the Company filed for the Rate Year.[^11a-customers] The scaling is uniform, so it changes totals, not per-customer bills or shares.
+
+     [^11a-customers]: Joint Direct Testimony of Edward Davis and Kimberly R. Parsons on behalf of The Connecticut Light and Power Company d/b/a Eversource Energy ("Davis-Parsons Direct"), Exhibit CLP-RATES-2.10 (July 14, 2026) [@clp_Docket260510Exhibit_2026g] **[TK: no public copy to link yet; sheet pinpoint]**; Exhibit JPV-2, Section 1.
+
+   - Check 1, EIA-861 (2018, matching ResStock's weather year): the ResStock average Eversource home uses `{python} num(resstock_kwh_per_customer)` kWh a year, against `{python} num(eia_kwh_per_customer)` kWh per residential customer in EIA-861, `{python} pct(eia_kwh['kwh_pct_diff'] / 100, 1)`.[^11a-eia]
+
+     [^11a-eia]: U.S. Energy Information Administration, [_Form EIA-861 Annual Electric Power Industry Report_](https://www.eia.gov/electricity/data/eia861/), 2018 data, The Connecticut Light and Power Company, residential sales divided by residential customers [@eia_EIA861AnnualElectric_2026].
+
+   - Check 2, the Company's 2025 class-average hourly loads for Rates 1 and 5 **[TK: Alex Lee: which discovery response provided this workbook?]**, compared hour by hour with the weighted-average ResStock home of the matching heating type (part (b)).
+   - The Company could not provide loads by heating type: it does not track customers' heating source and, apart from small samples, has no interval meters.[^11a-no-data] So no check of heat pump homes' loads against measured heat pump loads was possible.
+
+     [^11a-no-data]: [CL&P Response to CLF-SC-003](https://pub.switch.box/clp_Docket260510Responses_2026b), at 1 ("the Company does not track the heating sources of its customers") [@clp_Docket260510Responses_2026b]; CL&P Response to CLF-SC-008, at 1 ("The Company does not employ AMI meters and does not have the data requested.") [@clp_Docket260510Responses_2026b].
+
+b. Comparison of modeled and actual average usage before heat pump installation. Monthly figures are in CIEC-11 Attachment 1 **[TK: Alex Lee: export the two monthly tables from `notebooks/eversource_hourly_class_loads.qmd` to Excel]**.
+
+   - Company average, all residential customers: `{python} num(rate_year_kwh_per_customer)` kWh a year in the Rate Year forecast.[^11b-rate-year] ResStock average, all Eversource homes: `{python} num(resstock_kwh_per_customer)` kWh in 2018 weather.
+
+     [^11b-rate-year]: `{python} num(CLASS_BILLED_MWH)` MWh of Rate Year billed residential sales divided by `{python} num(fc.class_customers)` customers. Davis-Parsons Direct, Exhibit CLP-RATES-2 [@clp_Docket260510Exhibit_2026g] **[TK: sheet pinpoints]**.
+
+   - Fossil fuel-heated homes against Rate 1: the Company's average Rate 1 customer used `{python} num(c11_r1['Annual']['company_kwh'])` kWh in 2025; the ResStock homes heated with gas, delivered fuels or other fuels use `{python} num(c11_r1['Annual']['resstock_kwh'])` kWh. The Company figure is `{python} pct(c11_r1['Annual']['pct_diff'], 1)` higher.
+   - By month, the Rate 1 gap is largest in July (`{python} pct(c11_r1['Jul']['pct_diff'])`), June (`{python} pct(c11_r1['Jun']['pct_diff'])`) and December through February (`{python} pct(min(c11_r1[mo]['pct_diff'] for mo in ['Dec', 'Jan', 'Feb']))` to `{python} pct(max(c11_r1[mo]['pct_diff'] for mo in ['Dec', 'Jan', 'Feb']))`), and within ±`{python} pct(max(abs(c11_r1[mo]['pct_diff']) for mo in ['Mar', 'Apr', 'Aug', 'Sep', 'Oct']))` in March, April and August through October.
+   - Electric-heated homes against Rate 5 (Residential Electric Heating Service): the Company's average Rate 5 customer used `{python} num(c11_r5['Annual']['company_kwh'])` kWh in 2025; the ResStock homes heated with electric resistance or heat pumps use `{python} num(c11_r5['Annual']['resstock_kwh'])` kWh, so the Company figure is `{python} pct(-c11_r5['Annual']['pct_diff'], 1)` lower. In November through March it is `{python} pct(-c11_r5_winter_pct)` lower.
+   - Caveats on both comparisons: the Company's figures are 2025 weather and ResStock's are 2018; Rate 1 also serves some electric-heated and heat pump customers, and Rate 5 does not serve every electric-heated home.
+
+> **[DISCUSSION FOR JPV]** The Rate 5 gap is the one CIEC could use. If ResStock overstates electric heating load by 20–30% in winter, it may overstate the incremental kWh after a heat pump retrofit, and the overpayment scales roughly with incremental kWh (each one is billed at about 16¢ against almost no marginal cost). Two things may cut the other way: Rate 5 customers may be a different population from ResStock's electric-heated homes (**[UNVERIFIED IDEA]** for example, more resistance-heated apartments on Rate 5, and some electric-heated houses on Rate 1), and 2025 may have been milder than 2018. Before filing, it is worth (1) weather-normalizing the comparison with heating degree days for 2018 and 2025, and (2) checking whether the Rate 1 gap (ResStock lower) and the Rate 5 gap (ResStock higher) partly offset in the pre/post comparison. The Rate 1 gap barely matters for the overpayment, which is a difference. **[ANALYSIS: Alex Lee: weather-normalized version of the Rate 5 comparison]**
+
+c. All CAIRO inputs and outputs for the runs in the testimony are in batch `ct_20261015_a` and will be provided **[TK: Alex Lee: choose the format (S3 links, zip, or both) and confirm which paths are shareable (Google Doc comment 25)]**:
+
+   - Per-run outputs (bills, bill alignment results, customer metadata, final tariffs): `s3://data.sb/switchbox/cairo/outputs/hp_rates/ct/ct_eversource/ct_20261015_a/`.
+   - Combined tables across runs: `s3://data.sb/switchbox/cairo/outputs/hp_rates/ct/all_utilities/ct_20261015_a/`.
+   - Building loads and metadata: ResStock release `res_2024_amy2018_2_sb`, Eversource buildings, baseline and upgrade 2.
+   - Tariffs, marginal cost inputs and run configuration: the `rate-design-platform` repository **[TK: Alex Lee: tagged commit or path]**.
 :::
 
 ## CIEC-12
@@ -187,6 +989,42 @@ d. Please explain how the “pre-heat-pump T&D bill” referenced at page 85, li
 :::
 
 ::: {.response}
+a. Yes. Existing heat pump customers' load is on the system and in the sales used to set rates in this proceeding. Enrolling them in Rate HP lowers revenue below what Rate 1 was set to collect from them. This is why, throughout these responses:
+
+   - _New heat pump customers_ (installing after Rate HP takes effect) create no shortfall: their heat pump load is not in the sales used to set rates, and as a group they pay more after installing than before.
+   - _Existing heat pump customers_ (installed before) create the only shortfall: their heat pump load is in those sales, and Rate HP collects less from them than Rate 1.
+   - One refinement: the Company's Rate Year sales forecast already includes heat pumps it expects to install through its Conservation and Load Management programs.[^12a-forecast] For this purpose, load forecast in this way behaves like existing customers' load: the precise dividing line is heat pump load already in the sales used to set rates versus load that is not **[TK: JPV: settle with the CIEC-1(a) discussion]**.
+
+     [^12a-forecast]: [CL&P Response to CLF-SC-001](https://pub.switch.box/clp_Docket260510Responses_2026b), at 1 (heat pump adjustments to the sales forecast "are based on the CT C&LM programs forecast") [@clp_Docket260510Responses_2026b]; CL&P Response to CLF-SC-002, at 1 ("Heat pump or electrification adjustments are made to the Company’s sales forecast for the heating months (October-April) based off the 2025-2027 Energy Efficiency Plan.") [@clp_Docket260510Responses_2026b].
+
+   - Rate HP charges new and existing heat pump customers the same rates, because they receive the same service at the same marginal cost.[^12a-same-service] What differs is only the effect on the Company's revenue of moving each group to that rate.
+
+     [^12a-same-service]: [Direct Testimony of Juan-Pablo Velez on behalf of Conservation Law Foundation and Sierra Club](https://pub.switch.box/velez_Docket260510Direct_2026) ("Velez Direct"), at 58:8–10 (Oct. 21, 2026) [@velez_Docket260510Direct_2026].
+
+b. None. Enrolling existing heat pump customers adds no load and reduces no cost. It lowers what they pay, which the testimony shows is more than the costs they cause.[^12b-overcharged]
+
+   [^12b-overcharged]: [Velez Direct](https://pub.switch.box/velez_Docket260510Direct_2026) at 5:14–16 [@velez_Docket260510Direct_2026].
+
+   - The purpose is to stop an existing overcharge: on Rate 1 they pay about `{python} dollar(overpay)` a year more than their pre-heat-pump bill plus incremental marginal cost, and that excess lowers other residential customers' rates.[^12b-existing]
+
+     [^12b-existing]: Velez Direct at 96:3–8 [@velez_Docket260510Direct_2026].
+
+   - The Company's Rate 6 makes the opposite choice: by limiting eligibility by installation date it avoids the revenue effect but leaves existing heat pump customers overpaying.[^12b-rate6]
+
+     [^12b-rate6]: _Id._ [@velez_Docket260510Direct_2026].
+
+c. `{python} dollar(c1.dec_total, 2)` a year per existing heat pump customer (`{python} dollar(c1.dec_dist, 2)` distribution, `{python} dollar(c1.dec_tx, 2)` transmission), or `{python} million(short_floor['total'])` to `{python} million(short_ceiling['total'])` a year at the floor (`{python} num(floor_existing)`) and ceiling (`{python} num(ceiling_existing)`) enrollment estimates (CIEC-1(a)).
+
+   - Of that, distribution: `{python} million(short_floor['dist'])` to `{python} million(short_ceiling['dist'])`; transmission: `{python} million(short_floor['tx'])` to `{python} million(short_ceiling['tx'])`.
+   - The per-customer figure rests on the `{python} num(c1.n_bldg)` ResStock buildings that already have heat pumps **[TK: Alex Lee: confirm the sample is adequate, or bootstrap a range (Google Doc comment on CIEC-1)]**.
+   - None of this is attributable to new heat pump customers.
+
+d. Rate HP does not need a customer-specific pre-heat-pump bill. The rate is set once, from the average fossil fuel-heated home's bill before and after installation,[^12d-calibrated] and the same rate then applies to every enrolled customer, new or existing.
+
+   [^12d-calibrated]: Velez Direct at 85:2–7 [@velez_Docket260510Direct_2026]; Exhibit JPV-2, Section 5.
+
+   - The phrase at 85:5–7 describes how the rate is calibrated, not a calculation made for each customer's bill.
+   - For an existing heat pump customer, the relevant comparison is what a fossil fuel-heated home like theirs would have paid before installing. Their own history may not show it (they may have installed years ago, or moved into a home with a heat pump), and Rate HP does not use it.
 :::
 
 ## CIEC-13
@@ -202,6 +1040,78 @@ d. Under Rate HP, would winter usage from end uses other than space heating, suc
 :::
 
 ::: {.response}
+a. Mr. Velez proposes verifying that a heat pump is installed and used for heating. He does not propose a test of whether it is the primary heating source; Rate HP is for customers who use a heat pump for heating.[^13a-who]
+
+   [^13a-who]: [Direct Testimony of Juan-Pablo Velez on behalf of Conservation Law Foundation and Sierra Club](https://pub.switch.box/velez_Docket260510Direct_2026) ("Velez Direct"), at 6:13–14 (Oct. 21, 2026) [@velez_Docket260510Direct_2026].
+
+   - New installations through Energize CT or the New England Heat Pump Accelerator: the program's incentive records identify the customer, who is auto-enrolled at installation.[^13a-new]
+
+     [^13a-new]: [Velez Direct](https://pub.switch.box/velez_Docket260510Direct_2026) at 93:1–4 [@velez_Docket260510Direct_2026].
+
+   - Self-funded installations: an attestation and certification form submitted by the installer or the customer.[^13a-self]
+
+     [^13a-self]: Velez Direct at 93:4–6 [@velez_Docket260510Direct_2026].
+
+   - Existing heat pump customers: auto-enrollment from past incentive records, and attestation for the rest.[^13a-existing]
+
+     [^13a-existing]: Velez Direct at 93:7–12, 96:9–11 [@velez_Docket260510Direct_2026].
+
+   - The Company cannot identify heat pump customers from its own data: it does not track heating source and has no interval meters.[^13a-no-data]
+
+     [^13a-no-data]: [CL&P Response to CLF-SC-003](https://pub.switch.box/clp_Docket260510Responses_2026b), at 1 [@clp_Docket260510Responses_2026b]; CL&P Response to CLF-SC-008, at 1 [@clp_Docket260510Responses_2026b].
+
+   - Mr. Velez would support documentary proof with audit rights for customers outside the incentive programs, as Eversource's Massachusetts affiliate requires, with the right to audit and to remove customers whose documents cannot be confirmed.[^13a-nstar] National Grid's Massachusetts tariff is similar; Unitil accepts a customer's affirmation of ownership.[^13a-ng-unitil]
+
+     [^13a-nstar]: D.P.U. 25-55, NSTAR Electric Company d/b/a Eversource Energy, [Exhibit ES-HP-5, Residential Heat Pump Rate Implementation Plan](https://pub.switch.box/nstarelectric_Docket2555Residential_2025), at 5 (Apr. 17, 2025) (proof may be "photos of equipment serial numbers; proof of payment or receipt of equipment purchase; or invoice or receipt from contractor installation") [@nstarelectric_Docket2555Residential_2025].
+
+     [^13a-ng-unitil]: National Grid, Residential Heat Pump Rate Provision, M.D.P.U. No. 1634, at 2 **[NOT INGESTED: inbox `meco_mdpu_1634_r1_provision_2026.pdf`]**; Unitil, Residential Heat Pump Rate Schedule, M.D.P.U. No. 496, at Sheet 3 **[NOT INGESTED: inbox `unitil_fge_hp_res_schedule_mdpu_496.pdf`]**.
+
+> **[COUNSEL]** Velez Direct at 94:10–16 (1) attributes Massachusetts's approval of the heat pump rates to D.P.U. 25-08; they were approved in D.P.U. 23-80 (Unitil), 23-150 (National Grid) and 25-55 (NSTAR Electric), and 25-08 is the later statewide inquiry; and (2) says Massachusetts uses "an attestation process" for prior installations, which describes Unitil only; Eversource and National Grid require documents. Consider an errata.
+
+b. Yes. Rate HP is available to any customer using a heat pump for heating, including one that supplements a fossil fuel system.
+
+   - Massachusetts does the same: all three rates cover heat pumps that supplement another heat source or heat part of the home,[^13b-ma-def] and the DPU has repeatedly declined the Attorney General's request to limit eligibility to heat pumps sized for the whole home.[^13b-ma-ag]
+
+     [^13b-ma-def]: D.P.U. 25-55, _Petition of NSTAR Electric Company, d/b/a Eversource Energy for Approval of Residential Seasonal Heat Pump Rates_, [Order](https://pub.switch.box/madpu_Docket2555Order_2025), at 5 n.8 (July 29, 2025) (quoting the NSTAR Electric tariff: devices "used to heat or supplement another heat source for their home or part of their home") [@madpu_Docket2555Order_2025].
+
+     [^13b-ma-ag]: D.P.U. 25-55 Order at 22 ("Therefore, we decline to accept the Attorney General’s recommendation at this time.") [@madpu_Docket2555Order_2025]; D.P.U. 23-80/D.P.U. 23-81, _Petition of Fitchburg Gas and Electric Light Company d/b/a Unitil (Electric Division), pursuant to G.L. c. 164, § 94 and 220 CMR 5.00, for Approval of a General Increase in Base Distribution Rates for Electric Service and a Performance-Based Ratemaking Plan_, [Order](https://pub.switch.box/madpu_Docket2380Order_2024), at 407 (June 28, 2024) ("we decline to limit the rate offering only to customers with heat-pump capacity sized to heat their entire home, as suggested by the Attorney General") [@madpu_Docket2380Order_2024].
+
+   - Rate HP is calibrated on the average fossil fuel-heated home converting to a heat pump with electric backup. Individual customers' bills move around that average: across the modeled homes, the annual T&D bill rises on average by `{python} dollar(c13.mean_bill_delta, 2)`, close to their `{python} dollar(c13.mean_delta_mc, 2)` average incremental marginal cost, but `{python} pct(c13.pct_bill_decrease)` of homes would see it fall after installing, and `{python} pct(c13.pct_bill_increase_100)` would see it rise by more than \$100.
+   - A customer whose winter usage rises less than average (for example, a heat pump heating part of the home) would pay less on Rate HP than before installing. That is a revenue reduction attributable to that new customer, and it is offset, within the group, by customers whose usage rises more than average.
+   - New heat pump customers as a group create no shortfall only if their mix of usage increases resembles the calibration population. The Company's recalibration in each rate case and the reporting proposed in CIEC-9(c) would show whether it does.
+
+> **[DISCUSSION FOR JPV]** This part is where the "new customers create no shortfall" line is most exposed, and CIEC will see it. Facts: under Rate HP, `{python} pct(c13.pct_bill_decrease)` of modeled new adopters pay less T&D than before installing (`{python} pct(c13.pct_bill_decrease_100)` by more than \$100), and the group pays `{python} dollar(c13.mean_bill_delta)` more each. Why: the winter rate is about one-quarter of Rate 1, so a home whose November–March usage rises less than `{python} f"{breakeven_winter_ratio:.1f}"`-fold pays less in winter than before, and only April–October load at full rates makes it up (CIEC-14(a)). The group claim holds by construction; the individual claim does not, and Velez Direct at 95:14–16 makes exactly this argument against a rate open to all customers. Options: (1) say it as above, with "as a group" everywhere (already added to the formulation in CIEC-1(a)); (2) propose that supplemental heat pumps qualify only through the incentive programs, which record whether the system is full or partial displacement (the Company counts "approximately 4,400 customers who have received heat pump rebates that indicate full displacement of other heat sources," CL&P Response to CLF-SC-003, at 1); (3) calibrate Rate HP on the expected adopter mix rather than full conversions. Massachusetts accepted partial-home customers and relied on decoupling to catch shortfalls (D.P.U. 23-150 Order at 512 n.230), which there spreads them across classes (CIEC-8(d)). Option 2 or 3 would be stronger for this intervenor. **[ANALYSIS: Alex Lee: the same share for natural gas vs. delivered fuel homes is already computed (`notebooks/overpayment.qmd`); if option 3, a partial-displacement scenario]**
+
+c. Electric resistance: no, unless the customer also installs a heat pump; ground-source heat pumps: yes.
+
+   - Electric resistance heat does not qualify on its own. Electric resistance customers who install a heat pump qualify, whatever heating system they had before.[^13c-resistance]
+
+     [^13c-resistance]: Velez Direct at 81:15–16 [@velez_Docket260510Direct_2026].
+
+   - Rate HP was calibrated on fossil fuel-heated homes converting to heat pumps. An electric resistance home's usage falls when it installs a heat pump, so it does not cause the overpayment Rate HP corrects.
+   - Ground-source heat pumps qualify. They lower winter usage relative to air-source heat pumps, so a customer converting from fossil fuel with one would add less winter load (part (b) applies). Massachusetts interprets its definition to include them.[^13c-gshp]
+
+     [^13c-gshp]: D.P.U. 25-55 Order at 5 n.8 [@madpu_Docket2555Order_2025].
+
+   - Rate 5 (Residential Electric Heating Service) remains available to electric resistance customers; Rate HP does not replace it. Massachusetts likewise kept its electric space heating rates open alongside its heat pump rates.[^13c-r3]
+
+     [^13c-r3]: D.P.U. 25-55 Order at 22–23 ("the Department rejects the Company’s proposal to close Rate R-3 and Rate R-4 to new customers at this time") [@madpu_Docket2555Order_2025].
+
+> **[DISCUSSION FOR JPV]** The testimony makes electric resistance customers who install heat pumps eligible (81:15–16), but the new/existing split assumes new customers are fossil conversions. A new customer converting from electric resistance (many on Rate 5) would pay far less on Rate HP than before: winter usage falls and the winter rate falls about 76%. That is a revenue reduction from a _new_ customer, which the CIEC-1 figures do not include and the "new customers create no shortfall" line does not cover. Options: (1) limit new enrollment to customers converting from fossil fuel heat (incentive records show the prior system); (2) keep them eligible and count them with existing customers in the shortfall estimate; (3) leave Rate 5 as their rate and make Rate 5 customers ineligible. Option 1 or 3 keeps the bright line intact. Which do you want before we answer? **[ANALYSIS: Alex Lee: if option 2, the revenue change for a Rate 5 home converting to a heat pump, using the Rate 5 ResStock homes in `notebooks/eversource_hourly_class_loads.qmd`]**
+
+d. Yes. Rate HP applies to all of the customer's usage in November through March, including electric vehicle charging, as in Massachusetts.[^13d-ma]
+
+   [^13d-ma]: Commonwealth of Massachusetts, _Residential Electric Seasonal Heat Pump Rates_, Mass.gov ("The lower rates apply to all the electricity you use, not just the electricity used by your heat pump") **[NOT INGESTED: inbox `mass_gov_residential_electric_seasonal_heat_pump_rates_capture_20261107.md`; URL and access date TK]**.
+
+   - Rough scale: `{python} est("ev_winter_discount")` a year for a Rate HP customer who also charges an electric vehicle at home.
+   - Whether the CIEC-1 figures include this: they apply Rate HP to ResStock's whole-home load **[TK: Alex Lee: does ResStock 2024.2 model EV charging in the Eversource sample? If not, the CIEC-1 figures exclude it]**.
+   - Cost causation: winter EV charging, like winter heat pump load, falls in hours with almost no marginal T&D cost (CIEC-9(a)), so at Rate 1's winter rate it would also overpay its incremental cost. The issue is that Rate HP lowers it for heat pump customers only.
+   - Charging at peak (summer afternoons) is billed at unchanged Rate 1 rates.
+   - Billing heat pump load alone would require a separate meter or circuit-level data the Company does not collect.[^13d-meter]
+
+     [^13d-meter]: CL&P Response to CLF-SC-008, at 1 [@clp_Docket260510Responses_2026b]; Velez Direct at 81:1–4 [@velez_Docket260510Direct_2026].
+
+   - For the industrial firewall: under the new/existing split, a new heat pump customer's EV discount is part of that customer's bill change, and part (b) applies; an existing customer's is part of the existing-customer shortfall, recovered as described in CIEC-2.
 :::
 
 ## CIEC-14
@@ -216,6 +1126,55 @@ c. Please provide the resulting Rate HP winter rates in cents per kWh for each c
 :::
 
 ::: {.response}
+a. The derivation is in Exhibit JPV-2, Section 5, and Exhibit JPV-4 **[TK: Alex Lee: confirm JPV-4 has the winter-rate solve with formulas intact; if not, provide it as CIEC-14 Attachment 1 (Google Doc comment 28)]**.
+
+   - Method: for each component, the winter (November–March) rate at which the average fossil fuel-heated customer's post-heat-pump bill equals their pre-heat-pump bill plus the incremental marginal cost of that component.[^14a-method]
+
+     [^14a-method]: [Direct Testimony of Juan-Pablo Velez on behalf of Conservation Law Foundation and Sierra Club](https://pub.switch.box/velez_Docket260510Direct_2026) ("Velez Direct"), at 85:2–7 (Oct. 21, 2026) [@velez_Docket260510Direct_2026].
+
+   - Formula: winter rate = (bill before + incremental marginal cost − Rate 1 rate × April–October kWh after) ÷ November–March kWh after. The summer rate is held at Rate 1, so the whole correction falls on winter kWh.[^14a-formula]
+
+     [^14a-formula]: Exhibit JPV-2, Section 5.
+
+   - Inputs, average fossil fuel-heated home: `{python} num(r.all_fossil_annual_kwh_before)` kWh a year before and `{python} num(r.all_fossil_annual_kwh_after)` after; November–March usage of `{python} num(r.all_fossil_kwh_winter_before)` kWh before and `{python} num(r.all_fossil_kwh_winter_after)` after; April–October usage of `{python} num(r.all_fossil_kwh_summer_before)` before and `{python} num(r.all_fossil_kwh_summer_after)` after; incremental marginal cost of `{python} dollar(r.all_fossil_annual_mc_dist_delta, 2)` (distribution) and `{python} dollar(r.all_fossil_annual_mc_tx_delta, 2)` (transmission).
+   - Results: `{python} cents(hp_winter_dist_ec)` per kWh for the Distribution Energy Charge, down `{python} pct(dist_cut)` from `{python} cents(FILED_DIST_EC)`, and `{python} cents(hp_winter_tx)` for the Transmission Service Rate, down `{python} pct(tx_cut)` from `{python} cents(FILED_TX)`.
+   - Why the cut is deeper than the rise in winter usage: November–March usage rises `{python} f"{winter_kwh_ratio:.1f}"`-fold, but the rate falls about `{python} f"{breakeven_winter_ratio:.1f}"`-fold. The extra `{python} num(r.all_fossil_kwh_summer_delta)` kWh in April–October (heating in April and October, more cooling in summer) is billed at the unchanged Rate 1 rates, about `{python} dollar(r.all_fossil_kwh_summer_delta * FILED_TOTAL_DEL)` a year. The winter rate also has to give that back.
+   - Result for the average home: its November–March T&D bill falls from `{python} dollar(winter_bill_before)` to `{python} dollar(winter_bill_after_hp)`, its April–October bill rises by about the same amount, and its annual T&D bill rises by about the `{python} dollar(inc_mc)` of incremental marginal cost.
+
+> **[COUNSEL]** Velez Direct at 85:14–19 says winter usage "roughly quadruples" and that the rate drops "by roughly the same factor." With winter defined as November–March, usage rises about `{python} f"{winter_kwh_ratio:.1f}"`-fold; the rate falls further because of April–October load billed at Rate 1. The rates in Table 4 are unaffected, but the explanation needs an errata or a correction on the stand. (For comparison, National Grid's Massachusetts heat pump rate assumes winter usage 2.8 times the residential average, National Grid Exhibit HP-1 at 4.)
+
+b. The reductions apply to two charges only, in November through March:
+
+   - The Distribution Energy Charge (`{python} cents(FILED_DIST_EC)` under proposed Rate 1).
+   - The Transmission Service Rate (`{python} cents(FILED_TX)`), set through the Transmission Adjustment Clause.[^14b-tsr]
+
+     [^14b-tsr]: [Velez Direct](https://pub.switch.box/velez_Docket260510Direct_2026) at 83:5–8 [@velez_Docket260510Direct_2026].
+
+   - They do not apply to the customer charge, generation, or the volumetric riders: the Competitive Transition Assessment, the Systems Benefits Charge, the Conservation Adjustment Mechanism, the Renewable Energy charge and the FMCC Delivery Charge. These net to `{python} cents(FILED_RIDERS)` per kWh and stay at Rate 1 levels.[^14b-riders]
+
+     [^14b-riders]: Velez Direct at 83:1–2, 83 n.74 [@velez_Docket260510Direct_2026].
+
+   - Mechanically, the distribution winter rate was solved including the riders, and the riders were then subtracted, so the whole distribution reduction lands on the Distribution Energy Charge.[^14b-mechanics]
+
+     [^14b-mechanics]: Exhibit JPV-2, Section 5.
+
+   - Decoupling is not inside the Distribution Energy Charge: Rate 1 bills a separate decoupling charge per kWh, shown as its own line on the bill.[^14b-rdm] Storm costs are partly inside it: base distribution rates include a reserve funding level for catastrophic storms, with costs above it recovered through a separate storm charge.[^14b-storm] The tariff does not say how much of the 12.196¢ that reserve represents.
+
+     [^14b-rdm]: Joint Direct Testimony of Edward Davis and Kimberly R. Parsons on behalf of The Connecticut Light and Power Company d/b/a Eversource Energy ("Davis-Parsons Direct"), Exhibit CLP-RATES-3 at 244 (Rate 1, "REVENUE DECOUPLING MECHANISM"), 404 (the RDM charge appears "as a line item under the Local Delivery Detail category") (July 14, 2026) [@clp_Docket260510Exhibit_2026h] **[TK: no public copy to link yet]**.
+
+     [^14b-storm]: _Id._ at 427 (base distribution rates include "annual recovery for catastrophic storm costs") [@clp_Docket260510Exhibit_2026h].
+
+c. Rate HP rates, winter (November–March), against proposed Rate 1:
+
+   - Distribution Energy Charge: `{python} cents(hp_winter_dist_ec)` per kWh (Rate 1: `{python} cents(FILED_DIST_EC)`).
+   - Transmission Service Rate: `{python} cents(hp_winter_tx)` (Rate 1: `{python} cents(FILED_TX)`).
+   - Riders, net: `{python} cents(FILED_RIDERS)`, unchanged.
+   - Total delivery volumetric rate: `{python} cents(hp_winter_total)` (Rate 1: `{python} cents(FILED_TOTAL_DEL)`), down `{python} pct(1 - hp_winter_total / FILED_TOTAL_DEL)`.
+   - Summer (April–October) rates, the customer charge of `{python} dollar(fc.original_fixed_charge, 2)` a month, and generation: identical to Rate 1.[^14c-same]
+
+     [^14c-same]: Velez Direct at 82:10–83:2 [@velez_Docket260510Direct_2026].
+
+   - These are computed at the Company's filed Rate 1 values and would be recomputed from the rates the Authority approves (CIEC-9(c)).
 :::
 
 ## CIEC-15
@@ -230,6 +1189,40 @@ c. If Mr. Velez contends that no such rate is feasible, please explain why.
 :::
 
 ::: {.response}
+a. Exhibit JPV-2, Section 6 gives the full derivation.[^15a-n85] An Excel version is provided as CIEC-15 Attachment 1 **[TK: Alex Lee: does a workbook exist (Google Doc comment 31)? If not, build it from `notebooks/incremental_fair_default.qmd`]**. In brief:
+
+   [^15a-n85]: [Direct Testimony of Juan-Pablo Velez on behalf of Conservation Law Foundation and Sierra Club](https://pub.switch.box/velez_Docket260510Direct_2026) ("Velez Direct"), at 97 n.85 (Oct. 21, 2026) [@velez_Docket260510Direct_2026].
+
+   - Step 1: find the factor by which Rate 1's distribution and transmission volumetric rates would have to be scaled so that the representative home's increase in those charges after installing a heat pump equals its incremental marginal T&D cost, `{python} dollar(fc.retrofit_incremental_marginal_cost, 2)` a year. The factor is `{python} pct(fc.implied_lambda, 1)`: the rates would be cut by `{python} pct(fc.volumetric_rate_reduction)`.
+   - Step 2: hold the residential class's revenue constant. The two charges collect about `{python} dollar(fc.class_variable_revenue_per_customer)` per residential customer a year at filed rates, across `{python} num(fc.class_customers)` customers. Cutting them by `{python} pct(fc.volumetric_rate_reduction)` leaves `{python} million(fc.class_revenue_shift, 0)` a year to recover through the customer charge.
+   - Result: the customer charge rises by `{python} dollar(fc.fixed_charge_delta, 2)`, from `{python} dollar(fc.original_fixed_charge, 2)` to `{python} dollar(fc.fixed_charge, 2)` a month.
+
+b. Rate HP, with Rate 1 set in the same rate case to recover the residential revenue requirement net of Rate HP revenue, is such a design. The residential class recovers the same T&D revenue requirement with or without Rate HP.
+
+> **[COUNSEL]** The testimony does not say in so many words that Rate 1 is set to recover the remainder; it says Rate HP should be recalibrated in later rate cases (Velez Direct at 7:9–12) and describes a "tech-specific rate" as having a lever that "any rate that must be revenue neutral with respect to the residential class as a whole" lacks (98:10–12). This response, CIEC-1(a) and CIEC-2(c) state it as Mr. Velez's recommendation. The Company itself treats Rates 1 and 7 as one revenue class and Rate 5 as another (CL&P Response to CLF-SC-035, at 1; Davis-Parsons Direct, Exhibit CLP-RATES-2.1), so "the residential class" should read "Rate 1 and Rate 7" or "the residential classes" where precision matters. Rate HP is built on Rate 1, so it would sit in the Rate 1 and 7 revenue class. **[TK: JPV: how to treat Rate 5 heat pump customers who enroll in Rate HP; their move shifts revenue from the Rate 5 class to the Rate 1 and 7 class, and Rate 5 is not mentioned in the testimony's recovery recommendation]**
+
+   - Any rate that eliminates the overpayment must collect less from heat pump customers than Rate 1 does, because the overpayment is the amount Rate 1 collects above each customer's pre-heat-pump bill plus incremental marginal cost.
+   - New heat pump customers: collecting less from them than Rate 1 would requires nothing from anyone else. They still pay more than they did before installing, so no part of the residential revenue requirement goes unrecovered.
+   - Existing heat pump customers: collecting less from them than Rate 1 does creates the shortfall in CIEC-1(a). Recalibrating Rate 1 recovers it from the rest of the residential class.
+   - Resulting rates, November through March: Rate HP distribution energy charge `{python} cents(hp_winter_dist_ec)` per kWh and Transmission Service Rate `{python} cents(hp_winter_tx)` per kWh. Summer rates, riders, generation and the customer charge are those of Rate 1.[^15b-same]
+
+     [^15b-same]: [Velez Direct](https://pub.switch.box/velez_Docket260510Direct_2026) at 82:10–83:2 [@velez_Docket260510Direct_2026].
+
+   - Resulting Rate 1 rates, if existing heat pump customers are auto-enrolled: distribution energy charge `{python} cents(FILED_DIST_EC + c3.floor_per_kwh['dist'])` to `{python} cents(FILED_DIST_EC + c3.ceiling_per_kwh['dist'])` per kWh, and Transmission Service Rate `{python} cents(FILED_TX + c3.floor_per_kwh['tx'])` to `{python} cents(FILED_TX + c3.ceiling_per_kwh['tx'])` per kWh, at the floor and ceiling enrollment estimates (CIEC-3(c)). If only new heat pump customers enroll, Rate 1 is unchanged.
+   - The passage CIEC cites describes a single rate schedule, not the class:[^15b-passage] a default rate, or any rate that must recover the class's revenue on its own, cannot lower volumetric charges without raising something else. A heat pump rate can lower charges for its own customers because Rate 1 is set to recover the remainder.
+
+     [^15b-passage]: Velez Direct at 98:10–12 [@velez_Docket260510Direct_2026].
+
+   - A second design keeps a single schedule and is also revenue neutral for the class: the Rate 1 redesign in part (a), with volumetric T&D rates at `{python} pct(fc.implied_lambda, 1)` of filed levels and a `{python} dollar(fc.fixed_charge, 2)` monthly customer charge. The testimony does not recommend it because it would change every residential bill and would be regressive without income-graduated charges.[^15b-regressive]
+
+     [^15b-regressive]: Velez Direct at 97:14–16 [@velez_Docket260510Direct_2026].
+
+c. Not applicable: such a rate is feasible (part (b)).
+
+   - What is not feasible is a heat pump rate that eliminates the overpayment while collecting the same revenue from heat pump customers as Rate 1. Raising summer rates to make up for lower winter rates only moves the overpayment between seasons (CIEC-3(a)).[^15c-shift]
+
+     [^15c-shift]: Velez Direct at 101:7–10 [@velez_Docket260510Direct_2026].
+
 :::
 
 ## CIEC-16
@@ -243,6 +1236,40 @@ b. Please explain why any revenue reduction resulting from a remedy for a cross-
 :::
 
 ::: {.response}
+a. Confirmed. As rates are set, the cross-subsidy runs within the residential class, from customers who heat with heat pumps to those who heat with fossil fuels.[^16a-within]
+
+   [^16a-within]: [Direct Testimony of Juan-Pablo Velez on behalf of Conservation Law Foundation and Sierra Club](https://pub.switch.box/velez_Docket260510Direct_2026) ("Velez Direct"), at 5:12–13 (Oct. 21, 2026) (the cross-subsidy runs "from electric customers that heat with heat pumps to those that heat with fossil fuels") [@velez_Docket260510Direct_2026].
+
+   - One qualification, between rate cases: when heat pump load grows faster than the Company forecast, the extra Rate 1 revenue (including the overpayment on it) is returned to all classes through the Revenue Decoupling Mechanism, at a flat rate per kWh.[^16a-rdm] Part of the overpayment therefore reaches non-residential customers until the next rate case (CIEC-2(d)).
+
+     [^16a-rdm]: Joint Direct Testimony of Edward Davis and Kimberly R. Parsons on behalf of The Connecticut Light and Power Company d/b/a Eversource Energy ("Davis-Parsons Direct"), Exhibit CLP-RATES-1 at 22:21 (July 14, 2026) ("the rate will be set at a flat kWh rate across all rate classes") [@clp_Docket260510Exhibit_2026f] **[TK: no public copy to link yet]**.
+
+b. It should not be borne by customers outside the residential class.
+
+   - The remedy returns money to where it came from. The overpayment is collected from residential heat pump customers and lowers rates for residential fossil fuel-heated customers; ending it should raise those customers' rates, not anyone else's.
+   - The cross-subsidy is a problem of rate design within the class, not of the class's share of the revenue requirement. The class revenue allocation determines each class's share, and Rate HP leaves it unchanged; no other class's cost of service changes.
+   - Only one part of the remedy reduces revenue: _existing_ heat pump customers moving to Rate HP. _New_ heat pump customers reduce no one's revenue (CIEC-12(a)). So the only amount to which this question applies is the existing-customer reduction, `{python} million(short_floor['total'])` to `{python} million(short_ceiling['total'])` a year (CIEC-12(c)).
+   - Mr. Velez recommends recovering that amount within the residential class, in this rate case and between rate cases (CIEC-2(c) and (d)).
+   - Precedent goes both ways, and Mr. Velez has found no Authority decision on remedying a cross-subsidy within a class:
+     - Within the class: in UI's 2023 rate case, the Authority applied the residential classes' revenue reduction from a lower customer charge to residential usage rates.[^16b-ui]
+
+       [^16b-ui]: Docket No. 22-08-08, _Application of The United Illuminating Company to Amend Its Rate Schedule_, [Decision](https://www.dpuc.state.ct.us/dockcurr.nsf/4b3c728dd1c0d642852586db0069aa70/dd7c1a0c81056b1485258a16004f1d22/%24FILE/220808-082523.pdf), at 237, 242 (Aug. 25, 2023) ("the reduction to the class revenue requirement for Rates R and RT due to the reduction in the customer charge shall be applied to usage rates") **[NOT INGESTED]**.
+
+     - Across classes: the residential low-income discount rate's discounted revenue is recovered through the Systems Benefits Charge, which all classes pay, and the Authority left the class allocation to rate cases.[^16b-lidr]
+
+       [^16b-lidr]: Docket No. 17-12-03RE11, _PURA Investigation into Distribution System Planning of the Electric Distribution Companies – New Rate Designs and Rates Review_, [Decision](https://www.dpuc.state.ct.us/2nddockcurr.nsf/8e6fc37a54110e3e852576190052b64d/cd198950921e4b93852588e000512853/%24FILE/171203RE11-101922.pdf), at 29 ("All costs shall be reconciled through the SBC"), 30 ("With respect to the cost allocation methodology among rate classes through the SBC, the Authority concludes there is insufficient record evidence to date, and that cost allocation is more appropriately considered within the broader context of a rate case proceeding.") (Oct. 19, 2022) **[NOT INGESTED]**.
+
+     - The low-income discount is a public-policy program funded by all customers; Rate HP corrects a cost-of-service problem within one class, so the within-class treatment is the closer analogy.
+   - The Company applies the same principle to its own residential rate designs: Rate 6 ensures no harm to other classes, and a winter transmission discount would be made up within the class.[^16b-company] Massachusetts found its heat pump rates would not raise costs for other customers.[^16b-ma]
+
+     [^16b-company]: Davis-Parsons Direct, Exhibit CLP-RATES-1 at 37:18 (Rate 6 "Ensures no incremental harm to remaining customer classes") [@clp_Docket260510Exhibit_2026f]; [CL&P Response to CLF-SC-032](https://pub.switch.box/clp_Docket260510Responses_2026a), at 1 (a winter discount would be offset "to meet total transmission revenue requirements for the class") [@clp_Docket260510Responses_2026a].
+
+     [^16b-ma]: D.P.U. 25-08-A, Order on Seasonal Heat Pump Rates, at 20 (June 1, 2026) (the rates "will not increase costs to other customers beyond the cost to serve those customers") [@madpu_Docket2508Order_2026] **[TK: case caption; no public copy to link yet]**.
+
+   - The Authority has said it is inclined to make the decoupling mechanism better reflect cost causation across classes,[^16b-rdm-2023] though in 2025 it kept the company-wide kWh allocator for now (CIEC-2(d)).
+
+     [^16b-rdm-2023]: Docket No. 23-01-03, _PURA Annual Review of the Rate Adjustment Mechanisms of The Connecticut Light and Power Company_, [Decision](https://www.dpuc.state.ct.us/dockcurr.nsf/4b3c728dd1c0d642852586db0069aa70/2458b17f1ae4f1de85258a0d00503765/%24FILE/230103-081623.pdf), at 30 (Aug. 16, 2023) (the RDM should "better reflect the underlying cost causation principles relied upon to allocate base distribution costs amongst customers classes") **[NOT INGESTED]**.
+
 :::
 
 ## CIEC-17
@@ -256,6 +1283,47 @@ b. If Mr. Velez believes incremental heat pump load should make some contributio
 :::
 
 ::: {.response}
+a. "(Closer to)" means that Rate HP prices the average customer's incremental heat pump load at about its incremental marginal cost, not exactly at it, for each customer. Incremental heat pump load should not add to the customer's contribution to embedded T&D costs. The customer's pre-heat-pump contribution is kept.
+
+   - The phrase describes an objective the testimony shares with the Company.[^17a-objective] The Company sets the floor for its Rate 6 discount at the incremental cost of the converting customer's added load.[^17a-floor]
+
+     [^17a-objective]: [Direct Testimony of Juan-Pablo Velez on behalf of Conservation Law Foundation and Sierra Club](https://pub.switch.box/velez_Docket260510Direct_2026) ("Velez Direct"), at 100:12 (Oct. 21, 2026) ("I share the Company’s objective of pricing incremental heat pump loads at (closer to) marginal cost") [@velez_Docket260510Direct_2026].
+
+     [^17a-floor]: [CL&P Response to CLF-003(b)](https://pub.switch.box/clp_Docket260510Responses_2026), at 1–2 ("The discounted rate is set to cover the incremental cost of serving the additional load the converting customer adds, which establishes the floor") [@clp_Docket260510Responses_2026]; _see also_ [Velez Direct](https://pub.switch.box/velez_Docket260510Direct_2026) at 26:9–11 [@velez_Docket260510Direct_2026].
+
+   - "Closer to," because a single winter rate applies to all of a customer's winter usage, not only to the heat pump's share of it. Rate HP is calibrated so that the population-average T&D bill equals the pre-heat-pump bill plus incremental marginal cost.[^17a-calibrated] Individual customers still over- or underpay.[^17a-individual]
+
+     [^17a-calibrated]: Velez Direct at 85:2–7 [@velez_Docket260510Direct_2026].
+
+     [^17a-individual]: Velez Direct at 85:8–10 [@velez_Docket260510Direct_2026].
+
+   - Under Rate HP, the mean overpayment is `{python} dollar(op.overpay_mean_fair_seasonal_rate_all_fossil, 2)` a year, and `{python} pct(op.pct_within_200_seasonal)` of fossil fuel-heated homes that switch fall within \$200 of zero.[^17a-distribution]
+
+     [^17a-distribution]: Velez Direct at 86:13–14, 88:2 [@velez_Docket260510Direct_2026].
+
+   - Pricing incremental load exactly at marginal cost would take a per-customer threshold set at each customer's pre-heat-pump usage.[^17a-threshold] The Company does not have interval meters, so it would need new billing software or circuit-level monitors installed with each heat pump (CIEC-13(d)).[^17a-meters]
+
+     [^17a-threshold]: Velez Direct at 86:3–4 [@velez_Docket260510Direct_2026].
+
+     [^17a-meters]: [CL&P Response to CLF-SC-008](https://pub.switch.box/clp_Docket260510Responses_2026b), at 1 [@clp_Docket260510Responses_2026b]; Velez Direct at 81:1–4 [@velez_Docket260510Direct_2026].
+
+   - On embedded costs: Rate HP is designed to keep the revenue the Company collected from each customer's base load.[^17a-base-load] So heat pump customers keep contributing to embedded costs what they contributed before installing. Their incremental load adds nothing beyond its marginal cost, because embedded costs are sunk, and charging new load for them would be a charge for costs that load did not cause.[^17a-sunk]
+
+     [^17a-base-load]: Velez Direct at 81:18–21 [@velez_Docket260510Direct_2026].
+
+     [^17a-sunk]: Velez Direct at 13:23–14:2 [@velez_Docket260510Direct_2026].
+
+   - The Company's proposed Economic Development Rate uses the same principle for large commercial and industrial expansion load: a minimum charge anchored to marginal cost (CIEC-5(c)).
+
+b. Rate HP keeps the representative customer's pre-heat-pump contribution to embedded T&D costs, about `{python} dollar(embedded_gap)` a year,[^17b-pre] and adds about `{python} dollar(op.overpay_mean_fair_seasonal_rate_all_fossil)` from incremental load, on average, for a total of about `{python} dollar(embedded_after_rate_hp)` a year.[^17b-total]
+
+   [^17b-pre]: `{python} dollar(pre_td)` in pre-heat-pump T&D charges minus `{python} dollar(pre_mc)` in marginal T&D cost (CIEC-4(a)).
+
+   [^17b-total]: `{python} dollar(embedded_gap)` plus the mean overpayment under Rate HP, `{python} dollar(op.overpay_mean_fair_seasonal_rate_all_fossil, 2)`. Velez Direct at 86:13–14 [@velez_Docket260510Direct_2026].
+
+   - Under Rate 1, the same customer would contribute about `{python} dollar(embedded_after_rate1)` a year after installing (CIEC-4(b)).
+   - New heat pump customers: the `{python} dollar(embedded_gap)` is what they already paid before installing, so their contribution is unchanged.
+   - Existing heat pump customers: they take the same rates, so their contribution is set the same way, on average. Their bills fall `{python} dollar(c1.dec_total, 2)` a year below Rate 1 (CIEC-1(a)), and that difference is the shortfall recovered on Rate 1.
 :::
 
 ## CIEC-18
@@ -274,6 +1342,64 @@ g. Please state whether, to Mr. Velez’s knowledge, the RAP Cost Allocation Man
 :::
 
 ::: {.response}
+**[COUNSEL: objection: parts (b)–(g) ask Mr. Velez to survey every decision of every U.S. and Canadian regulator, and NARUC, that mentions a publicly available document; the request is unduly burdensome, and the decisions are equally available to CIEC. Draft language: "CLF-SC object to this request to the extent it requires Mr. Velez to conduct a comprehensive search of the decisions of all state, federal and Canadian regulators. Subject to and without waiving this objection, Mr. Velez responds as follows, based on his own knowledge and a reasonable search conducted on November 7, 2026."]**
+
+- The testimony relies on the Manual for one narrow proposition: differential treatment of new and existing loads should be grounded in cost.[^18-narrow] The same paragraph rests that proposition first on Bonbright, so the point does not depend on the Manual's standing (CIEC-19(a)).[^18-bonbright]
+
+  [^18-narrow]: [Direct Testimony of Juan-Pablo Velez on behalf of Conservation Law Foundation and Sierra Club](https://pub.switch.box/velez_Docket260510Direct_2026) ("Velez Direct"), at 58:11–19 (Oct. 21, 2026) [@velez_Docket260510Direct_2026].
+
+  [^18-bonbright]: _Id._ at 58:3–10 [@velez_Docket260510Direct_2026].
+
+- The search covered the Switchbox source library, web searches for commission decisions and testimony citing the Manual, and the Missouri, New York and Colorado dockets where it was found. It did not include Westlaw or Lexis, FERC eLibrary, Canadian boards other than Nova Scotia, or the Authority's docket database.
+
+a. "Widely referenced" means that the Manual is commonly cited in cost allocation and rate design proceedings, not that commissions have adopted it. Mr. Velez relied on his professional familiarity with its use. He did not rely on a citation count. Examples:
+
+   - Testimony in New York: the Utility Intervention Unit's witness in Central Hudson's rate case and its rate panel in National Grid's.[^18a-ny]
+
+     [^18a-ny]: N.Y. P.S.C. Cases 24-E-0461 and 24-G-0462, Direct Testimony of Madsen on behalf of the Utility Intervention Unit, at 14:17–21 (Nov. 22, 2024) **[NOT INGESTED; TK: witness's full name]**; N.Y. P.S.C. Cases 24-E-0322 and 24-G-0323, Direct Testimony of the Utility Intervention Unit Rate Panel, at 17:12–14 **[NOT INGESTED; TK: date]**.
+
+   - Missouri Commission Staff's class cost of service report in Ameren Missouri's rate case, as described by the Missouri Industrial Energy Consumers.[^18a-mo]
+
+     [^18a-mo]: Mo. P.S.C. Case No. ER-2021-0240, Post-Hearing Brief of the Missouri Industrial Energy Consumers ("MIEC Brief"), at 15 **[NOT INGESTED; TK: date]**.
+
+   - Intervenor testimony in Colorado (Proceeding 23AL-0243E), reproduced by the Colorado Commission (part (b)).
+   - NARUC's Commissioners' Desk Reference Manual.[^18a-naruc]
+
+     [^18a-naruc]: National Association of Regulatory Utility Commissioners, _Commissioners' Desk Reference Manual_, ch. 3, n.33 **[NOT INGESTED: naruc.org web page; TK: URL and date]**.
+
+   - **[TK: JPV: add any others you know from your own work; the list above is what the search confirmed]**
+
+b. Mr. Velez is aware of one: the Colorado Public Utilities Commission's decision in Public Service Company of Colorado's Phase II electric rate review.[^18b-co] Relevant pages provided as CIEC-18 Attachment 1.
+
+   [^18b-co]: Colo. P.U.C. Proceeding No. 23AL-0243E, Decision No. C24-0117 ("Decision No. C24-0117") (mailed Feb. 23, 2024) **[NOT INGESTED: inbox `co_puc_C24-0117_23AL-0243E_decision.pdf`; TK: caption]**.
+
+   - The Commission reproduces an example drawn from the Manual to illustrate how production costs would be allocated under an equivalent-peaker method.[^18b-co-17]
+
+     [^18b-co-17]: Decision No. C24-0117 at 17 (an example "drawn from the Regulatory Assistance Project's 'Electric Cost Allocation for a New Era'") **[NOT INGESTED]**.
+
+   - The Commission asks the company to explore making its coal replacement cost assumptions more consistent with the Manual's or with the company's South Dakota values.[^18b-co-20]
+
+     [^18b-co-20]: Decision No. C24-0117 at 20 ¶ 54 ("more consistent with the assumptions in either the Regulatory Assistance Project cost allocation report described in the Table above or with the values used by the Company in South Dakota") **[NOT INGESTED]**.
+
+   - Mr. Velez is not aware of any FERC or Canadian decision citing the Manual. The Missouri Commission's order in Ameren Missouri's rate case, where the Manual was contested, does not cite it.[^18b-mo]
+
+     [^18b-mo]: Mo. P.S.C. Case No. ER-2021-0240, Report and Order (Feb. 2, 2022) **[NOT INGESTED]**.
+
+c. None. In Decision C24-0117 the Manual illustrates a method and serves as a benchmark for the company's next filing; the Commission's determinations (adopting a different production allocator) do not rest on it.[^18c-co]
+
+   [^18c-co]: Decision No. C24-0117 at 19–20 **[NOT INGESTED]**.
+
+d. In Decision C24-0117 the Commission did not adopt the Manual's example method. It adopted a different allocator as a step in the right direction, found merit in the method the Manual illustrates, and asked for a broader analysis in a future case.[^18d-co]
+
+   [^18d-co]: Decision No. C24-0117 at 19–20 ¶¶ 53–54 (the adopted method is "a measured step in the right direction"; "[w]e also find merit in the Stratification methodology") **[NOT INGESTED]**.
+
+e. Mr. Velez is not aware of a decision rejecting the Manual by name. He is aware of commissions declining a method the Manual recommends without citing it: the New York Commission declined the Utility Intervention Unit's proposal of the basic customer method for classifying distribution costs in National Grid's 2025 rate order.[^18e-ny] Neither method is at issue in his testimony.
+
+   [^18e-ny]: N.Y. P.S.C. Cases 24-E-0322 and 24-G-0323, Order, at 32–33 (Aug. 14, 2025) **[NOT INGESTED: text capture only]**.
+
+f. None that Mr. Velez is aware of. The search did not include the Authority's docket database **[COUNSEL: decide whether to run a DocketBook search before filing]**.
+
+g. No. NARUC cites the Manual in its _Commissioners' Desk Reference Manual_ (part (a)), which is a citation, not an endorsement. Mr. Velez is not aware of any adoption, endorsement or approval by NARUC or a state commission.
 :::
 
 ## CIEC-19
@@ -289,4 +1415,43 @@ d. Please identify each proceeding in which Mr. Velez or Switchbox has cited the
 :::
 
 ::: {.response}
+**[COUNSEL: same burden objection as CIEC-18 for part (b), limited to materials Mr. Velez has reviewed]**
+
+a. Two places:
+
+   - Page 58, lines 11–19, and footnotes 60–61: when regulators treat new and existing loads differently, they should make sure the distinction is not arbitrary and rests on solid reasoning, and the Manual's examples of legitimate differential treatment involve new loads that impose different costs.[^19a-58] The testimony uses this to argue that Rate 6's cutoff by installation date is arbitrary, because heat pump customers on either side of it receive the same service at the same marginal cost.[^19a-cutoff]
+
+     [^19a-58]: [Direct Testimony of Juan-Pablo Velez on behalf of Conservation Law Foundation and Sierra Club](https://pub.switch.box/velez_Docket260510Direct_2026) ("Velez Direct"), at 58:11–19, 58 nn.60–61 (Oct. 21, 2026) [@velez_Docket260510Direct_2026]; Jim Lazar, Paul Chernick, William Marcus & Mark LeBel, [_Electric Cost Allocation for a New Era: A Manual_](https://www.raponline.org/knowledge-center/electric-cost-allocation-new-era/) ("RAP Manual"), at 173 (Jan. 2020) (regulators "should be careful to ensure adoption of such techniques is not arbitrary or discriminatory and is grounded in solid reasoning"), 175–178 [@lazar_ElectricCostAllocation_2020].
+
+     [^19a-cutoff]: Velez Direct at 58:8–10, 58:18–19 [@velez_Docket260510Direct_2026].
+
+   - Page 27, footnote 23: the Manual treats differences between heating and non-heating residential customers as a question of cross-subsidy within the residential class, and notes that cost-based seasonal rates can do the work of separate rate classes.[^19a-27]
+
+     [^19a-27]: Velez Direct at 27 n.23 [@velez_Docket260510Direct_2026]; RAP Manual at 62 (differences between heating and non-heating customers are "essentially a question of a potential intraclass cross-subsidy between types of residential customers," and "seasonally differentiated rates, if based appropriately on cost causation, can achieve the same distributional impact as separate rate classes") [@lazar_ElectricCostAllocation_2020]; _see also id._ at 72, 240 [@lazar_ElectricCostAllocation_2020].
+
+> **[DISCUSSION FOR JPV]** CIEC-12, 18 and 19 point at a tension CIEC may exploit. At 58:8–19 the testimony says treating pre- and post-2026 heat pump customers differently is arbitrary, because their costs are the same. These responses say, over and over, that new and existing customers have very different effects on revenue. Both are true, and they are consistent, but the response should say why: Rate HP charges new and existing heat pump customers the _same_ rate, because their costs are the same; the difference is only in what happens to the Company's revenue when each moves to that rate, because existing customers' load is already in the sales used to set Rate 1. Rate 6 excludes existing customers from the rate altogether, which keeps the revenue effect at zero but leaves them overpaying. Suggest adding one bullet to CIEC-12 making this explicit, and not saying more here. CIEC may also point to the Company's Economic Development Rate, which excludes existing load "consistent with prior regulatory determinations" (Exhibit CLP-RATES-1 at 25:6–7); the difference is that the EDR is a discount below class rates for load growth, while Rate HP corrects an overcharge on load that is already there. **[UNVERIFIED IDEA]** that this is what CIEC is setting up.
+
+b. Yes. Mr. Velez is aware of criticism from industrial customer and utility parties, all addressed to the Manual in general or to its recommended classification and allocation methods, none to the two propositions he cites:
+
+   - The Missouri Industrial Energy Consumers, in Ameren Missouri's rate case, argued that the NARUC manual is more authoritative and that the Manual should not be relied on as an objective foundation for setting rates.[^19b-miec]
+
+     [^19b-miec]: Mo. P.S.C. Case No. ER-2021-0240, Post-Hearing Brief of the Missouri Industrial Energy Consumers, at 15–17 (the NARUC manual is "much more authoritative," and the Manual "should not be relied upon as an objective evidentiary foundation for setting rates") **[NOT INGESTED; TK: date]**.
+
+   - Evergy Missouri West's witness called the Manual well written and a valid source, but policy-driven and not on equal footing with the NARUC manual.[^19b-lutz]
+
+     [^19b-lutz]: Mo. P.S.C. Case No. ER-2024-0189, Surrebuttal Testimony of Bradley D. Lutz on behalf of Evergy Missouri West (Oct. 21, 2024) (the Manual is "driving to an explicit policy purpose," though "well written" and "a valid source, but not a source on equal footing with the NARUC manual") **[NOT INGESTED; TK: printed page and lines (PDF pp. 11–12)]**.
+
+   - Central Hudson's Cost of Service Panel criticized a witness's reliance on the Manual's basic customer method.[^19b-chg]
+
+     [^19b-chg]: N.Y. P.S.C. Cases 24-E-0461 and 24-G-0462, Rebuttal Testimony of the Central Hudson Cost of Service Panel (Dec. 18, 2024) **[NOT INGESTED; not downloaded]**.
+
+   - **[TK: JPV: list only what you have actually reviewed; the question asks for materials "he has reviewed"]**
+
+c. Mr. Velez's understanding comes from the Manual itself. It does not describe a peer review. Its acknowledgments thank fourteen people, "many of whom are former state utility commissioners," "for providing helpful insights into early drafts." Five are RAP staff; the other nine are listed with their own organizations (one with none), and none identified as a utility or industrial customer representative. It states that responsibility for its contents lies entirely with the authors.[^19c-ack]
+
+   [^19c-ack]: RAP Manual at 8 ("responsibility for the information and views set out in this work lies entirely with the authors") [@lazar_ElectricCostAllocation_2020].
+
+d. In testimony, only this proceeding, where no decision has been issued.
+
+   - Switchbox also cites the Manual in its report on heat pump rates in New York (April 2026) **[TK: JPV: was that report filed in a proceeding (e.g., Case 24-E-0165)? If so, list it and its status]**.
 :::

@@ -168,7 +168,7 @@ The date on the card is the date the document **took its present form**, as prin
 - **Workbooks:** they print no date, so the filing date, or the date of the information-request response they are attached to.
 - **Studies and reports:** the publication date; for a report with a revision, the date of the revision cited.
 - **Papers:** the date of the published version (not the preprint's).
-- **Web pages:** the page's own published or last-updated date, if printed; `access_date` records when it was captured. If neither is printed, leave `date` empty (the citation key then ends in `nd`) and say so on the card.
+- **Web pages:** the page's own published or last-updated date, if printed; `access_date` records when it was captured. If none is printed, infer one from the page (a dated file it links to, a "last updated" in the markup, HTTP headers, the Wayback Machine's first capture) and say on the card how confident you are. If nothing supports an inference, use the access date. The snapshot shows the page as it was on that day, which is what a citation of a web page needs. Never leave `date` empty (the key would end in `nd`).
 
 Use `YYYY-MM-DD` when the day is printed, else `YYYY-MM` or `YYYY`. Never take a date from a filename or the Zotero "added" time.
 
@@ -210,4 +210,6 @@ A workbook is a source with a file but usually no readable prose: the item type 
 
 ## Web pages
 
-Web pages change, so the record is a snapshot: ingest captures the page with a headless browser (a PDF attached to the Zotero item, plus the HTML converted to markdown for the extract), saves it to the Wayback Machine, and stores the live URL as the `url` link attachment. The item type is `webpage` (or `blogPost` / `newspaperArticle` / `magazineArticle`), the site name goes in `container`, the organization that runs the site is the author, `access_date` is the capture date, and the `date` is the page's own date or empty. The citation URL is the short link, which forwards to the Wayback snapshot, so readers see the page as we cited it even after it changes or disappears. Only when the site blocks the Wayback Machine does the short link forward to the live page.
+Web pages change, so the record is a snapshot: ingest captures the page with a headless browser (a PDF attached to the Zotero item, plus the HTML converted to markdown for the extract), saves it to the Wayback Machine, and stores the live URL as the `url` link attachment. The item type is `webpage` (or `blogPost` / `newspaperArticle` / `magazineArticle`), the site name goes in `container`, the organization that runs the site is the author, `access_date` is the capture date, and the `date` is the page's own date, else an inferred date, else the access date (see "Which date to use"). The citation URL is the short link, which forwards to the Wayback snapshot, so readers see the page as we cited it even after it changes or disappears. Only when the site blocks the Wayback Machine does the short link forward to the live page.
+
+A page a snapshot cannot reproduce (a dashboard whose charts are drawn by script from an embedded service, such as a Power BI report) gets `use_wayback: false` on its card. Ingest then skips the Wayback save and the short link forwards to the live page; the PDF capture is still attached to the Zotero item. The cost is link rot, which we accept for these pages.

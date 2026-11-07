@@ -150,6 +150,9 @@ class SourceMetadata(BaseModel):
     folder_row: list[str] | None = None  # cells after the file column in the folder README's table
     front_matter: dict[str, Any] = Field(default_factory=dict)  # descriptive fields for the extract
     access_date: str | None = None  # web pages
+    # Web pages only: False skips the Wayback save and points the short link at the live page. For pages a
+    # snapshot cannot reproduce (script-rendered dashboards); the PDF capture is still attached to the item.
+    use_wayback: bool | None = None
     # Filled in by ingest as the public copies come into existence; not part of the approved card.
     documentcloud_url: str | None = None
     drive_url: str | None = None
@@ -160,6 +163,11 @@ class SourceMetadata(BaseModel):
     @property
     def is_web_page(self) -> bool:
         return self.item_type == "webpage"
+
+    @property
+    def wants_wayback(self) -> bool:
+        """Whether a web page gets a Wayback snapshot (the default); the card can opt out with ``use_wayback: false``."""
+        return self.use_wayback is not False
 
     @property
     def needs_pdf_copy(self) -> bool:

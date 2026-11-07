@@ -308,7 +308,11 @@ Table 16. Equivalent peaker method classification of nonfuel operations and main
 | **Coal**               | 2,390             | $33,490,000  | $14 .01             | $24,550,000  | $10 .27             | 73%                             |
 | **Combined cycle**     | 1,266             | $16,380,000  | $12 .94             | $11,650,000  | $9 .20              | 71%                             |
 
-Data source: Federal Energy Regulatory Commission Form 1 database records for Northern States Power Co.-Minnesota [PDF p. 120 | printed p. 118] costs; the data are 2017 numbers from FERC Form 1, Page 402, for Northern States Power Co.-Minnesota (Federal Energy Regulatory Commission, n.d.).
+Data source: Federal Energy Regulatory Commission Form 1 database records for Northern States Power Co.-Minnesota
+
+[PDF p. 120 | printed p. 118]
+
+costs; the data are 2017 numbers from FERC Form 1, Page 402, for Northern States Power Co.-Minnesota (Federal Energy Regulatory Commission, n.d.).
 
 Table 16 does not include the company’s wind resources, which average about $30 per kW-year in O&M, since MISO credits wind with unforced capacity value at only about 15% of rated capacity, or about 17% of the value of an installed MW of typical conventional generation. The demand-related portion of the wind capacity is thus less than $1 per kW-year, and the wind O&M is almost all energy-related.[^104]
 

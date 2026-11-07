@@ -110,7 +110,11 @@ Table 41. Illustrative example of allocating marginal distribution demand costs 
 
 *Lower marginal cost of large commercial/industrial reflects lower line losses on primary distribution loads. Note: Percentages may not add up to 100 because of rounding.
 
-Sources: Southern California Edison. (2017). _Errata to Phase 2 of 2018 General Rate Case: Marginal Cost and Sales Forecast Proposals; 2018 General Rate Case Phase 2 Workpapers_ ; additional calculations by the authors [PDF p. 194 | printed p. 192] basis and, except for the customer-related costs, is divided into time periods and provided for the year as a whole.
+Sources: Southern California Edison. (2017). _Errata to Phase 2 of 2018 General Rate Case: Marginal Cost and Sales Forecast Proposals; 2018 General Rate Case Phase 2 Workpapers_ ; additional calculations by the authors
+
+[PDF p. 194 | printed p. 192]
+
+basis and, except for the customer-related costs, is divided into time periods and provided for the year as a whole.
 
 For the energy-related costs, the allocation is relatively straightforward, multiplying energy use in each time period by the energy cost in each time period. For the generation capacity costs related to reliability at peak, the allocation typically has not been done using the coincident peak methods most commonly used in embedded cost analysis (and discussed in Section 9.3). Instead, marginal costs are typically allocated over a larger number of hours. This allocation has been done using (1) loss-of-energy expectation,
 

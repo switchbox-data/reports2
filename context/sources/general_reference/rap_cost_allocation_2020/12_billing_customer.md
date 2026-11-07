@@ -9,7 +9,7 @@ extraction_scope: "partial: PDF pp. 164-166 (printed pp. 162-164), Chapter 12; t
 citation_scheme: page
 ---
 
-_Extractor note (not source text): this file holds PDF pp. 164-166 (printed pp. 162-164) of the manual, Chapter 12; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's opening paragraph, which the first extraction dropped, is restored, and the paragraphs of section 12.1 are put back in the PDF's order (one of them had been split in two)._
+_Extractor note (not source text): this file holds PDF pp. 164-166 (printed pp. 162-164) of the manual, Chapter 12; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's opening paragraph, which the first extraction dropped, is restored, and the paragraphs of section 12.1 are put back in the PDF's order (one of them had been split in two), and footnote 172, which the first extraction split across the page's columns, is rejoined._
 
 [PDF pp. 1-163 not transcribed: front matter to Chapter 11, in 00_front_matter.md to 11_distribution_embedded.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
 

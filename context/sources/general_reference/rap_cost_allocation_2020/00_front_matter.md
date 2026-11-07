@@ -73,4 +73,6 @@ Taken together, the three authors have more than 120 years of experience in cost
 
 Mark LeBel, associate at the Regulatory Assistance Project, has more than a decade of experience working on the overlapping economics and law of energy and environmental policy in the United States . As a member of RAP’s U .S . team, he focuses on rate design and regulatory reform, including compensation for distributed energy resources, the evolution of the electricity system and beneficial electrification .
 
-[PDF pp. 12-276 not transcribed: Introduction to Glossary and back cover, in 00_introduction.md to glossary.md of this folder]
+[PDF pp. 12-15 not transcribed: list of figures and list of tables]
+
+[PDF pp. 16-276 not transcribed: Introduction to Glossary and back cover, in 00_introduction.md to glossary.md of this folder]

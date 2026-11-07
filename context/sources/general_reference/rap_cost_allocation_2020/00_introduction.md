@@ -149,11 +149,7 @@ In that spirit, we would like to highlight the following current best practices 
 
 - Treat as customer-related only those costs that actually vary with the number of customers, generally known as the **basic customer method** .
 
-- Apportion all shared generation, transmission and distribution assets and the associated operating expenses
-
-[PDF p. 21 | printed p. 19]
-
-- on measures of usage, both energy- and demand-based.
+- Apportion all shared generation, transmission and distribution assets and the associated operating expenses [PDF p. 21 | printed p. 19] on measures of usage, both energy- and demand-based.
 
 - Ensure broad sharing of overhead investments and **administrative and general (A&G) costs** , based on usage metrics.
 

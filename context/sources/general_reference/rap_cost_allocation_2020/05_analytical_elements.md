@@ -227,7 +227,11 @@ Figure 17. Summer peak day load from 10 residential customers on one line transf
 
 Customer coincident peak<br>Total load shape<br>Customer noncoincident peak<br>Hour of day<br>1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24<br>
 
-Source: Confidential load research sample [PDF p. 61 | printed p. 59] same time as the 4 p.m. coincident peak for the group, and the coincident peak is only 86% of the sum of the individual peaks on this day. Furthermore, although not shown in this figure, this coincident peak is only 64% of the sum of the annual noncoincident peaks for the individual customers. It is important to note that a group of 10 residential customers is often less diverse than the combined loads from multiple customer classes, which determine the need for substation and generation capacity upstream of the final line transformer.
+Source: Confidential load research sample
+
+[PDF p. 61 | printed p. 59]
+
+same time as the 4 p.m. coincident peak for the group, and the coincident peak is only 86% of the sum of the individual peaks on this day. Furthermore, although not shown in this figure, this coincident peak is only 64% of the sum of the annual noncoincident peaks for the individual customers. It is important to note that a group of 10 residential customers is often less diverse than the combined loads from multiple customer classes, which determine the need for substation and generation capacity upstream of the final line transformer.
 
 It is important to note that the load exceeds 50 kVA for only three hours and is below 40 kVA for 18 hours of this summer peak day. Referring back to Figure 16, under these circumstances, a 50-kVA transformer would likely be adequate to serve this load, because the overload is for only a short period. By contrast, the sum of the maximum noncoincident peak loads of the 10 customers is more than 90 kVA.
 

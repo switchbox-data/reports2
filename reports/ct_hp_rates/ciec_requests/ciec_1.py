@@ -560,6 +560,43 @@ def autoenrolled_reduction_table(
     )
 
 
+def autoenrolled_increases(
+    floor_customers: int,
+    ceiling_customers: int,
+    dec_dist: float,
+    dec_tx: float,
+    kwh: float,
+) -> list[dict[str, Any]]:
+    """Per-kWh charge that recovers only the auto-enrolled revenue reduction.
+
+    One row per :func:`enrollment_range` step. ``distribution`` and
+    ``transmission`` are dollars from :func:`group_revenue`.
+    ``distribution_per_kwh`` and ``transmission_per_kwh`` are those dollars
+    divided by ``kwh``. ``per_kwh`` is the T&D charge, in $/kWh. CIEC-3 stores
+    these rows. CIEC-6 pastes the three rates and multiplies ``per_kwh`` by
+    each home's annual kWh.
+    """
+    if kwh <= 0:
+        raise ValueError(f"kwh must be positive, got {kwh}")
+    rows: list[dict[str, Any]] = []
+    for label, customers in enrollment_range(floor_customers, ceiling_customers):
+        rev = group_revenue(customers, dec_dist, dec_tx)
+        dist = float(rev["distribution"])
+        tx = float(rev["transmission"])
+        rows.append(
+            {
+                "label": label,
+                "customers": customers,
+                "distribution": dist,
+                "transmission": tx,
+                "distribution_per_kwh": dist / kwh,
+                "transmission_per_kwh": tx / kwh,
+                "per_kwh": (dist + tx) / kwh,
+            }
+        )
+    return rows
+
+
 def autoenrolled_increase_table(
     floor_customers: int,
     ceiling_customers: int,
@@ -573,23 +610,21 @@ def autoenrolled_increase_table(
 ) -> str:
     """Per-kWh charge increase that recovers only the auto-enrolled revenue reduction.
 
-    Rows are :func:`enrollment_range`. Each row divides :func:`group_revenue` for
-    that customer count by ``kwh``. Distribution, transmission, and T&D are ¢/kWh.
-    The last two columns are the T&D increase as a share of ``td_rate`` and of
-    ``full_rate``. ``full_rate`` is distribution plus transmission plus generation.
+    Rows are :func:`autoenrolled_increases`. Distribution, transmission, and T&D
+    are ¢/kWh. The last two columns are the T&D increase as a share of
+    ``td_rate`` and of ``full_rate``. ``full_rate`` is distribution plus
+    transmission plus generation.
     """
-    if kwh <= 0:
-        raise ValueError(f"kwh must be positive, got {kwh}")
+    rows = autoenrolled_increases(floor_customers, ceiling_customers, dec_dist, dec_tx, kwh)
     if td_rate <= 0 or full_rate <= 0:
         raise ValueError(f"rates must be positive, got td_rate={td_rate} and full_rate={full_rate}")
 
-    def line(label: str, customers: int) -> str:
-        rev = group_revenue(customers, dec_dist, dec_tx)
-        dist = rev["distribution"] / kwh
-        tx = rev["transmission"] / kwh
-        td = dist + tx
+    def line(row: Mapping[str, Any]) -> str:
+        dist = float(row["distribution"]) / kwh
+        tx = float(row["transmission"]) / kwh
+        td = float(row["per_kwh"])
         cells = [
-            label,
+            str(row["label"]),
             f"{dist * 100:,.{accuracy}f}",
             f"{tx * 100:,.{accuracy}f}",
             f"{td * 100:,.{accuracy}f}",
@@ -602,7 +637,7 @@ def autoenrolled_increase_table(
         [
             "| Share of the range | Distribution (¢/kWh) | Transmission (¢/kWh) | T&D (¢/kWh) | % of T&D | % of T&D and generation |",
             "| --- | ---: | ---: | ---: | ---: | ---: |",
-            *[line(label, customers) for label, customers in enrollment_range(floor_customers, ceiling_customers)],
+            *[line(row) for row in rows],
         ]
     )
 
@@ -643,30 +678,29 @@ def annual_bill_increase_stats(buildings: pl.DataFrame, dollars_per_kwh: float) 
     }
 
 
-def autoenrolled_bill_table(
-    floor_customers: int,
-    ceiling_customers: int,
-    dec_dist: float,
-    dec_tx: float,
+def bill_table_from_increases(
+    increases: Sequence[Mapping[str, Any]],
     buildings: pl.DataFrame,
 ) -> str:
-    """Weighted annual bill increase that recovers only the auto-enrolled revenue reduction.
+    """Weighted annual bill increase for each CIEC-3 per-kWh charge.
 
-    Rows are :func:`enrollment_range`. Each row divides :func:`group_revenue`
-    by the weighted kWh in ``buildings`` and multiplies that per-kWh charge by
-    each home's ``annual_kwh``. The mean and the percentiles use ``weight``.
+    ``increases`` rows have ``label``, ``customers``, and ``per_kwh`` in $/kWh,
+    as returned by :func:`autoenrolled_increases`. Each row multiplies that
+    charge by each home's ``annual_kwh``. The mean and the percentiles use
+    ``weight``.
     """
+    if not increases:
+        raise ValueError("increases is empty")
     usage = _usage(buildings)
     kwh = float((usage["annual_kwh"] * usage["weight"]).sum())
     if kwh <= 0:
         raise ValueError(f"kwh must be positive, got {kwh}")
 
-    def line(label: str, customers: int) -> str:
-        rev = group_revenue(customers, dec_dist, dec_tx)
-        stats = annual_bill_increase_stats(buildings, (rev["distribution"] + rev["transmission"]) / kwh)
+    def line(row: Mapping[str, Any]) -> str:
+        stats = annual_bill_increase_stats(buildings, float(row["per_kwh"]))
         cells = [
-            label,
-            f"{customers:,}",
+            str(row["label"]),
+            f"{int(row['customers']):,}",
             money(stats["mean"], 2),
             money(stats["p25"], 2),
             money(stats["median"], 2),
@@ -678,9 +712,28 @@ def autoenrolled_bill_table(
         [
             "| Share of the range | Customers | Mean | 25th | Median | 75th |",
             "| --- | ---: | ---: | ---: | ---: | ---: |",
-            *[line(label, customers) for label, customers in enrollment_range(floor_customers, ceiling_customers)],
+            *[line(row) for row in increases],
         ]
     )
+
+
+def autoenrolled_bill_table(
+    floor_customers: int,
+    ceiling_customers: int,
+    dec_dist: float,
+    dec_tx: float,
+    buildings: pl.DataFrame,
+) -> str:
+    """Weighted annual bill increase that recovers only the auto-enrolled revenue reduction.
+
+    Rows are :func:`autoenrolled_increases` for the weighted kWh in ``buildings``.
+    Each row multiplies that per-kWh charge by each home's ``annual_kwh``.
+    The mean and the percentiles use ``weight``.
+    """
+    usage = _usage(buildings)
+    kwh = float((usage["annual_kwh"] * usage["weight"]).sum())
+    increases = autoenrolled_increases(floor_customers, ceiling_customers, dec_dist, dec_tx, kwh)
+    return bill_table_from_increases(increases, buildings)
 
 
 def td_reduction_table(

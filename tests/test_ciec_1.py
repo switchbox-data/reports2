@@ -154,6 +154,28 @@ def test_annual_bill_increase_stats_weights_kwh_times_the_charge() -> None:
         ciec.annual_bill_increase_stats(buildings.drop("annual_kwh"), 0.01)
 
 
+def test_autoenrolled_increases_are_the_charge_applied_to_each_home() -> None:
+    import polars as pl
+
+    increases = ciec.autoenrolled_increases(10, 25, 1.2, 0.4, 4_000.0)
+    assert [row["label"] for row in increases] == ["Floor", "20%", "40%", "60%", "80%", "Ceiling"]
+    assert increases[0]["customers"] == 10
+    assert increases[0]["distribution"] == 12  # round(10 * 1.2)
+    assert increases[0]["transmission"] == 4  # round(10 * 0.4)
+    assert increases[0]["distribution_per_kwh"] == pytest.approx(12 / 4_000)
+    assert increases[0]["transmission_per_kwh"] == pytest.approx(4 / 4_000)
+    assert increases[0]["per_kwh"] == pytest.approx(16 / 4_000)
+    assert increases[-1]["per_kwh"] == pytest.approx(40 / 4_000)
+    with pytest.raises(ValueError, match="kwh must be positive"):
+        ciec.autoenrolled_increases(10, 25, 1.2, 0.4, 0.0)
+
+    buildings = pl.DataFrame({"bldg_id": [1, 2], "weight": [1.0, 1.0], "annual_kwh": [1000.0, 3000.0]})
+    from_rows = ciec.bill_table_from_increases(increases, buildings)
+    assert from_rows == ciec.autoenrolled_bill_table(10, 25, 1.2, 0.4, buildings)
+    with pytest.raises(ValueError, match="empty"):
+        ciec.bill_table_from_increases([], buildings)
+
+
 def test_autoenrolled_bill_table_applies_the_existing_decrease_to_each_home() -> None:
     import polars as pl
 

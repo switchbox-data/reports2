@@ -12,6 +12,7 @@ filer: CENTRAL MAINE POWER COMPANY
 document_type: filing
 pages_total: 2
 extraction_scope: full
+citation_scheme: page
 source_url: https://mpuc-cms.maine.gov/CQM.Public.WebUI/MatterManagement/MatterFilingItem.aspx?FilingSeq=136014&CaseNumber=2026-00248
 md5: "ee01d6d0ead1024eda09d11759e6dd3d"
 validated: 2026-10-29
@@ -27,13 +28,11 @@ contents: 'Two pages: history of the rate from the Docket 2021-00325 stipulation
 **Date**: August 25, 2026
 **Author(s)**: Mary Alice Laiho, Director, Regulatory, Central Maine Power Company (83 Edison Drive, Augusta, ME 04336)
 
-_Extractor note (not source text): Text is transcribed verbatim from the PDF text layer, including the source's "Mr. Amy Dumeny" salutation line and the placeholder docket "2026-00###". The letterhead logo and signature image are omitted. The attachments mentioned in the letter (draft tariff pages and Attachment 1 pricing) are not part of this 2-page PDF._
+_Extractor note (not source text): Text is transcribed verbatim from the PDF text layer, including the source's "Mr. Amy Dumeny" salutation line and the placeholder docket "2026-00###". The letterhead logo and signature image are omitted, as are the running footer lines ("Page | N" and the "83 Edison Drive / Augusta, ME 04336 / cmpco.com" address line). Page markers record the PDF page and the printed page number; the letter prints no margin line numbers, so citations are by page. The attachments mentioned in the letter (draft tariff pages and Attachment 1 pricing) are not part of this 2-page PDF._
 
 ---
 
-<!-- PDF page 1 (printed "Page | 1") -->
-
-83 Edison Drive / Augusta, ME 04336 / cmpco.com
+[PDF p. 1 | printed p. 1]
 
 August 25, 2026
 
@@ -57,7 +56,7 @@ On October 26, 2022, the Commission approved CMP's proposed A-Seasonal Rate as a
 
 On December 1, 2023, as part of the Follow-on Rate Design Proceeding, Docket No. 2022-00152, the Company proposed extending the termination date for the A-Seasonal Rate to January 31, 2026. The Company made this proposal based on collaborative meetings with, and
 
-<!-- PDF page 2 (printed "Page | 2") -->
+[PDF p. 2 | printed p. 2]
 
 input from, interested parties and stakeholders in the proceeding. The Commission approved the extension of the termination date on March 1, 2024.[^1]
 

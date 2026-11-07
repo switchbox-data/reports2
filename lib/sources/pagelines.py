@@ -48,6 +48,7 @@ class PdfLine:
     top: float
     text: str
     number: int | None = None
+    x0: float = 0.0  # left edge of the line's text, margin number excluded
 
 
 @dataclass
@@ -97,8 +98,9 @@ def _margin_numbers(words: list[dict], width: float, chars: list[dict] | None = 
     ]
     if chars:
         sizes = sorted(float(c["size"]) for c in chars if c["text"].strip())
-        body_size = sizes[len(sizes) // 2]
-        candidates = [w for w in candidates if _word_size(w, chars) >= body_size * _MIN_NUMBER_SIZE]
+        if sizes:  # a page with only whitespace chars (blank or image-only) has no body size
+            body_size = sizes[len(sizes) // 2]
+            candidates = [w for w in candidates if _word_size(w, chars) >= body_size * _MIN_NUMBER_SIZE]
     columns: dict[int, list[dict]] = {}
     for w in candidates:
         columns.setdefault(round(w["x1"] / 3), []).append(w)
@@ -144,9 +146,11 @@ def read_pdf(path: Path) -> list[PdfPage]:
             numbers = {id(w): int(w["text"]) for w in words if id(w) in margin}
             for row in _group_lines(words):
                 num = next((numbers[id(w)] for w in row if id(w) in numbers), None)
-                text = " ".join(w["text"] for w in row if id(w) not in numbers).strip()
+                text_words = [w for w in row if id(w) not in numbers]
+                text = " ".join(w["text"] for w in text_words).strip()
                 if text or num is not None:
-                    lines.append(PdfLine(top=float(row[0]["top"]), text=text, number=num))
+                    x0 = float(text_words[0]["x0"]) if text_words else 0.0
+                    lines.append(PdfLine(top=float(row[0]["top"]), text=text, number=num, x0=x0))
             height = float(page.height)
             label = _printed_label(lines, (height * 0.1, height * 0.88))
             pages.append(PdfPage(index=i, lines=lines, printed_label=label))

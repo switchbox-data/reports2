@@ -89,14 +89,19 @@ The JSON metadata maps straight onto the details card:
 
 ## Conventions for PURA sources
 
-- **One source per filing.** A response filing usually has one PDF per
-  question (`CLF-SC-024_Final.pdf`, …). Merge them with `--merge` and ingest
-  them as one item, in question order. Split only when the user wants a single
-  response cited on its own.
+- **One source per set.** Responses are grouped by the request set they
+  answer ("Information requests and their responses" in
+  `context/code/source_metadata_conventions.md`). A response filing usually has
+  one PDF per question (`CLF-SC-024_Final.pdf`, …); merge them with `--merge`,
+  in question order, into one item.
 - **Discovery compilations.** Eversource also files periodic "Discovery
   Compilations" correspondence (e.g. "ALLCO Set 11, CLF-SC Set 3, OCC Set 24")
-  that repackage responses already filed. Ingest the original response filing,
-  not the compilation, so the date and filing URL match the record.
+  whose attachments (`<Party> Set <n>_COMBINED.pdf`) repackage responses
+  already filed. Use a compilation as the item's file when it reproduces the
+  set's answers exactly; it saves merging. If it carries answers from another
+  set (the CLF-SC Set 1 compilation also holds CLF-SC-021 to 023), cut it to
+  this set's pages. Date the item by the original response filing, not the
+  compilation, and say in `context` that the file is the compilation.
 - **File names:** `pura_<docket without dashes>_<slug>`, e.g.
   `pura_260510_eversource_resp_clf_sc_set3.md`,
   `pura_260510_ciec_ir1_to_clf_sc.md`.

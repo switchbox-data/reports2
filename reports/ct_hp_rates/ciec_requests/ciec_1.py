@@ -560,40 +560,94 @@ def autoenrolled_reduction_table(
     )
 
 
+def scaled_nonhp_sales(
+    raw_customers: float,
+    raw_kwh: float,
+    rate_year_customers: float,
+    enrolled: int,
+) -> dict[str, float]:
+    """Scale non-heat-pump ResStock weights to the Rate Year customers who stay off Rate HP.
+
+    ``raw_customers`` and ``raw_kwh`` are sums over homes without a heat pump:
+    ResStock sample weights, and CAIRO grid kWh times those weights. ``enrolled``
+    is the existing heat pump customers who move to Rate HP, already counted on
+    the Rate Year customer total. The scale is
+    ``(rate_year_customers - enrolled) / raw_customers``. Scaled weights sum to
+    the customers who remain, and ``kwh`` is ``raw_kwh`` times that same scale.
+    CAIRO's grid kWh already carries the small rate-year energy calibration, so
+    this scale is the customer adjustment only.
+    """
+    if raw_customers <= 0:
+        raise ValueError(f"raw_customers must be positive, got {raw_customers}")
+    if raw_kwh <= 0:
+        raise ValueError(f"raw_kwh must be positive, got {raw_kwh}")
+    paying = float(rate_year_customers) - float(enrolled)
+    if paying <= 0:
+        raise ValueError(f"enrolled {enrolled} leaves no customers in a Rate Year class of {rate_year_customers}")
+    scale = paying / float(raw_customers)
+    return {"customers": paying, "kwh": float(raw_kwh) * scale, "scale": scale}
+
+
+def _per_row(values: float | Sequence[float], n: int, name: str) -> list[float]:
+    """One number repeated, or one number per enrollment row."""
+    # bool is a subclass of int, so reject it before the numeric branch.
+    if isinstance(values, bool):
+        raise TypeError(f"{name} must be a number or a sequence of numbers, got bool")
+    if isinstance(values, (int, float)):
+        number = float(values)
+        if number <= 0:
+            raise ValueError(f"{name} must be positive, got {number}")
+        return [number] * n
+    row_values = [float(value) for value in values]
+    if len(row_values) != n:
+        raise ValueError(f"{name} has {len(row_values)} values for {n} enrollment rows")
+    if any(value <= 0 for value in row_values):
+        raise ValueError(f"{name} must be positive, got {row_values}")
+    return row_values
+
+
 def autoenrolled_increases(
     floor_customers: int,
     ceiling_customers: int,
     dec_dist: float,
     dec_tx: float,
-    kwh: float,
+    kwh: float | Sequence[float],
+    *,
+    nonhp_customers: float | Sequence[float] | None = None,
 ) -> list[dict[str, Any]]:
     """Per-kWh charge that recovers only the auto-enrolled revenue reduction.
 
     One row per :func:`enrollment_range` step. ``distribution`` and
     ``transmission`` are dollars from :func:`group_revenue`.
     ``distribution_per_kwh`` and ``transmission_per_kwh`` are those dollars
-    divided by ``kwh``. ``per_kwh`` is the T&D charge, in $/kWh. CIEC-3 stores
-    these rows. CIEC-6 pastes the three rates and multiplies ``per_kwh`` by
-    each home's annual kWh.
+    divided by that row's ``kwh``. A single ``kwh`` is used for every row.
+    ``per_kwh`` is the T&D charge, in $/kWh. ``nonhp_kwh`` is the denominator.
+    ``nonhp_customers`` is the customer count that denominator was scaled to,
+    when the caller passes it. CIEC-3 stores these rows. CIEC-6 pastes the
+    three rates and multiplies ``per_kwh`` by each home's annual kWh.
     """
-    if kwh <= 0:
-        raise ValueError(f"kwh must be positive, got {kwh}")
+    steps = enrollment_range(floor_customers, ceiling_customers)
+    row_kwh = _per_row(kwh, len(steps), "kwh")
+    row_customers = None if nonhp_customers is None else _per_row(nonhp_customers, len(steps), "nonhp_customers")
     rows: list[dict[str, Any]] = []
-    for label, customers in enrollment_range(floor_customers, ceiling_customers):
+    for i, (label, customers) in enumerate(steps):
         rev = group_revenue(customers, dec_dist, dec_tx)
         dist = float(rev["distribution"])
         tx = float(rev["transmission"])
-        rows.append(
-            {
-                "label": label,
-                "customers": customers,
-                "distribution": dist,
-                "transmission": tx,
-                "distribution_per_kwh": dist / kwh,
-                "transmission_per_kwh": tx / kwh,
-                "per_kwh": (dist + tx) / kwh,
-            }
-        )
+        sales = row_kwh[i]
+        row: dict[str, Any] = {
+            "label": label,
+            "customers": customers,
+            "distribution": dist,
+            "transmission": tx,
+            "distribution_per_kwh": dist / sales,
+            "transmission_per_kwh": tx / sales,
+            "per_kwh": (dist + tx) / sales,
+            "nonhp_kwh": sales,
+        }
+        if row_customers is not None:
+            row["nonhp_customers"] = row_customers[i]
+        rows.append(row)
     return rows
 
 
@@ -602,10 +656,11 @@ def autoenrolled_increase_table(
     ceiling_customers: int,
     dec_dist: float,
     dec_tx: float,
-    kwh: float,
+    kwh: float | Sequence[float],
     *,
     td_rate: float,
     full_rate: float,
+    nonhp_customers: float | Sequence[float] | None = None,
     accuracy: int = 4,
 ) -> str:
     """Per-kWh charge increase that recovers only the auto-enrolled revenue reduction.
@@ -613,33 +668,47 @@ def autoenrolled_increase_table(
     Rows are :func:`autoenrolled_increases`. Distribution, transmission, and T&D
     are ¢/kWh. The last two columns are the T&D increase as a share of
     ``td_rate`` and of ``full_rate``. ``full_rate`` is distribution plus
-    transmission plus generation.
+    transmission plus generation. When ``nonhp_customers`` is set, the table
+    includes the customers the row's kWh was scaled to.
     """
-    rows = autoenrolled_increases(floor_customers, ceiling_customers, dec_dist, dec_tx, kwh)
+    rows = autoenrolled_increases(
+        floor_customers,
+        ceiling_customers,
+        dec_dist,
+        dec_tx,
+        kwh,
+        nonhp_customers=nonhp_customers,
+    )
     if td_rate <= 0 or full_rate <= 0:
         raise ValueError(f"rates must be positive, got td_rate={td_rate} and full_rate={full_rate}")
+    show_payers = nonhp_customers is not None
 
     def line(row: Mapping[str, Any]) -> str:
-        dist = float(row["distribution"]) / kwh
-        tx = float(row["transmission"]) / kwh
+        dist = float(row["distribution_per_kwh"])
+        tx = float(row["transmission_per_kwh"])
         td = float(row["per_kwh"])
-        cells = [
-            str(row["label"]),
-            f"{dist * 100:,.{accuracy}f}",
-            f"{tx * 100:,.{accuracy}f}",
-            f"{td * 100:,.{accuracy}f}",
-            pct(td / td_rate),
-            pct(td / full_rate),
-        ]
+        cells = [str(row["label"])]
+        if show_payers:
+            cells.append(f"{round(float(row['nonhp_customers'])):,}")
+        cells.extend(
+            [
+                f"{dist * 100:,.{accuracy}f}",
+                f"{tx * 100:,.{accuracy}f}",
+                f"{td * 100:,.{accuracy}f}",
+                pct(td / td_rate),
+                pct(td / full_rate),
+            ]
+        )
         return "| " + " | ".join(cells) + " |"
 
-    return "\n".join(
-        [
-            "| Share of the range | Distribution (¢/kWh) | Transmission (¢/kWh) | T&D (¢/kWh) | % of T&D | % of T&D and generation |",
-            "| --- | ---: | ---: | ---: | ---: | ---: |",
-            *[line(row) for row in rows],
-        ]
-    )
+    header = "| Share of the range | "
+    rule = "| --- | "
+    if show_payers:
+        header += "Non-HP customers | "
+        rule += "---: | "
+    header += "Distribution (¢/kWh) | Transmission (¢/kWh) | T&D (¢/kWh) | % of T&D | % of T&D and generation |"
+    rule += "---: | ---: | ---: | ---: | ---: |"
+    return "\n".join([header, rule, *[line(row) for row in rows]])
 
 
 def _usage(buildings: pl.DataFrame) -> pl.DataFrame:
@@ -663,7 +732,10 @@ def annual_bill_increase_stats(buildings: pl.DataFrame, dollars_per_kwh: float) 
 
     The mean is that charge times weighted-mean consumption. When
     ``dollars_per_kwh`` is a revenue reduction divided by weighted kWh, the
-    mean is that revenue divided by the number of customers. Keys are
+    mean is that revenue divided by the customer count those weights sum to.
+    Scaling every weight by the same factor does not change the mean or the
+    percentiles, so unscaled ResStock weights give the same bill distribution
+    as weights scaled to the Rate Year customers who remain. Keys are
     ``mean``, ``p25``, ``median``, and ``p75``.
     """
     if dollars_per_kwh < 0:

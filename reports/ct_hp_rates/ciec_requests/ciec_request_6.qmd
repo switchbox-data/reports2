@@ -38,8 +38,9 @@ for _key in (
     "dec_tx",
     "floor_existing",
     "ceiling_existing",
-    "nonhp_kwh",
-    "nonhp_customers",
+    "rate_year_customers",
+    "raw_nonhp_kwh",
+    "raw_nonhp_customers",
     "nonhp_buildings",
     "increases",
 ):
@@ -50,14 +51,15 @@ dec_dist = float(ciec_3["dec_dist"])
 dec_tx = float(ciec_3["dec_tx"])
 floor_existing = int(ciec_3["floor_existing"])
 ceiling_existing = int(ciec_3["ceiling_existing"])
-nonhp_kwh = float(ciec_3["nonhp_kwh"])
-nonhp_customers = float(ciec_3["nonhp_customers"])
+rate_year_customers = int(ciec_3["rate_year_customers"])
+raw_nonhp_kwh = float(ciec_3["raw_nonhp_kwh"])
+raw_nonhp_customers = float(ciec_3["raw_nonhp_customers"])
 nonhp_buildings = ciec_3["nonhp_buildings"]
 increases = list(ciec_3["increases"])
 weighted_kwh = float((nonhp_buildings["annual_kwh"] * nonhp_buildings["weight"]).sum())
 weighted_customers = float(nonhp_buildings["weight"].sum())
-if abs(weighted_kwh - nonhp_kwh) > 1e-6 or abs(weighted_customers - nonhp_customers) > 1e-6:
-    raise RuntimeError("non-heat-pump buildings do not match the CIEC-3 sales total")
+if abs(weighted_kwh - raw_nonhp_kwh) > 1e-6 or abs(weighted_customers - raw_nonhp_customers) > 1e-6:
+    raise RuntimeError("non-heat-pump buildings do not match the CIEC-3 ResStock sales total")
 
 
 def _increase(label: str) -> dict[str, Any]:
@@ -68,15 +70,21 @@ def _increase(label: str) -> dict[str, Any]:
 
 
 def _check_increase(row: dict[str, Any]) -> None:
-    for name in ("distribution_per_kwh", "transmission_per_kwh", "per_kwh"):
+    for name in ("distribution_per_kwh", "transmission_per_kwh", "per_kwh", "nonhp_kwh", "nonhp_customers"):
         if name not in row:
             raise RuntimeError(f"Missing {name} on a CIEC-3 increase row — render ciec_request_3.qmd first")
     rev = group_revenue(int(row["customers"]), dec_dist, dec_tx)
     if rev["distribution"] != float(row["distribution"]) or rev["transmission"] != float(row["transmission"]):
         raise RuntimeError(f"{row['label']} revenue does not match the CIEC-3 per-customer reduction")
-    dist_rate = float(row["distribution"]) / nonhp_kwh
-    tx_rate = float(row["transmission"]) / nonhp_kwh
-    per_kwh = (float(row["distribution"]) + float(row["transmission"])) / nonhp_kwh
+    paying = rate_year_customers - int(row["customers"])
+    if abs(float(row["nonhp_customers"]) - paying) > 1e-6:
+        raise RuntimeError(f"{row['label']} non-HP customers are not the Rate Year count minus enrollment")
+    sales = raw_nonhp_kwh * paying / raw_nonhp_customers
+    if abs(float(row["nonhp_kwh"]) - sales) > 1e-6 * sales:
+        raise RuntimeError(f"{row['label']} kWh does not match the ResStock load scaled to the customers who remain")
+    dist_rate = float(row["distribution"]) / float(row["nonhp_kwh"])
+    tx_rate = float(row["transmission"]) / float(row["nonhp_kwh"])
+    per_kwh = (float(row["distribution"]) + float(row["transmission"])) / float(row["nonhp_kwh"])
     if abs(dist_rate - float(row["distribution_per_kwh"])) > 1e-12:
         raise RuntimeError(f"{row['label']} distribution charge does not match the CIEC-3 revenue reduction")
     if abs(tx_rate - float(row["transmission_per_kwh"])) > 1e-12:
@@ -99,13 +107,17 @@ def _bound(row: dict[str, Any]) -> dict[str, float]:
     per_kwh = float(row["per_kwh"])
     stats = annual_bill_increase_stats(nonhp_buildings, per_kwh)
     revenue = float(row["distribution"]) + float(row["transmission"])
-    if abs(stats["mean"] - revenue / nonhp_customers) > 1e-6:
-        raise RuntimeError(f"{row['label']} mean bill is not the revenue reduction per customer")
+    # ResStock weights and Rate Year weights differ by one scale, so the weighted
+    # mean of (kWh × charge) equals the revenue reduction divided by the customers who remain.
+    if abs(stats["mean"] - revenue / float(row["nonhp_customers"])) > 1e-6:
+        raise RuntimeError(f"{row['label']} mean bill is not the revenue reduction per customer who remains")
     return {"per_kwh": per_kwh, **stats}
 
 
 floor = _bound(floor_increase)
 ceiling = _bound(ceiling_increase)
+floor_nonhp = int(round(float(floor_increase["nonhp_customers"])))
+ceiling_nonhp = int(round(float(ceiling_increase["nonhp_customers"])))
 floor_per_kwh = floor["per_kwh"]
 floor_mean = floor["mean"]
 floor_median = floor["median"]
@@ -146,17 +158,17 @@ The table below shows a summary of the bill increase for the population of resid
 print(bill_table_md)
 ```
 
-At the floor, **`{python} num(floor_existing)`** existing heat pump customers would move to Rate HP. The average residential customer who does not take Rate HP would pay **`{python} dollar(floor_mean, 2)`** more per year, or **`{python} dollar(floor_mean / 12, 2)`** per month. The median is **`{python} dollar(floor_median, 2)`** a year, or **`{python} dollar(floor_median / 12, 2)`** per month. 25 percent of those customers would pay less than **`{python} dollar(floor_p25, 2)`** per year, or **`{python} dollar(floor_p25 / 12, 2)`** per month. 25 percent would pay more than **`{python} dollar(floor_p75, 2)`** per year, or **`{python} dollar(floor_p75 / 12, 2)`** per month.
+At the floor, **`{python} num(floor_existing)`** existing heat pump customers would move to Rate HP, and **`{python} num(floor_nonhp)`** residential customers would remain. The average customer who remains would pay **`{python} dollar(floor_mean, 2)`** more per year, or **`{python} dollar(floor_mean / 12, 2)`** per month. The median is **`{python} dollar(floor_median, 2)`** a year, or **`{python} dollar(floor_median / 12, 2)`** per month. 25 percent of those customers would pay less than **`{python} dollar(floor_p25, 2)`** more per year, or **`{python} dollar(floor_p25 / 12, 2)`** per month. 25 percent would pay more than **`{python} dollar(floor_p75, 2)`** moreper year, or **`{python} dollar(floor_p75 / 12, 2)`** per month.
 
-At the ceiling, **`{python} num(ceiling_existing)`** existing customers would move to Rate HP. The average bill increase is **`{python} dollar(ceiling_mean, 2)`** a year, or **`{python} dollar(ceiling_mean / 12, 2)`** per month. The median is **`{python} dollar(ceiling_median, 2)`** a year, or **`{python} dollar(ceiling_median / 12, 2)`** per month.
+At the ceiling, **`{python} num(ceiling_existing)`** existing customers would move to Rate HP, and **`{python} num(ceiling_nonhp)`** residential customers would remain. The average bill increase is **`{python} dollar(ceiling_mean, 2)`** a year, or **`{python} dollar(ceiling_mean / 12, 2)`** per month. The median is **`{python} dollar(ceiling_median, 2)`** a year, or **`{python} dollar(ceiling_median / 12, 2)`** per month.
 
 Assumptions:
 
 - **What is recovered.** Only the revenue the Company would no longer collect from customers with heat pumps today who move from Rate 1 to Rate HP. Customers who install a heat pump in 2027 through 2031 and take the calibrated Rate HP are outside this recovery.
-- **Who pays.** Residential customers who are not on Rate HP, in proportion to annual kWh. The result is an increase in the annual distribution and transmission bill. Non-residential customers, including customers on Rate 39 and Rate 57, are outside that recovery. Their bill impact is zero.
-- **Bill.** The annual increase is the Rate 1 distribution charge increase plus the Rate 1 transmission charge increase, each in dollars per kWh, times annual grid kWh. The customer charge and the generation charge stay at Rate 1.
+- **Who pays.** Residential customers who are not on Rate HP, in proportion to annual kWh. That count is the Rate Year residential customers minus the existing heat pump customers who move. The result is an increase in the annual distribution and transmission bill. Non-residential customers, including customers on Rate 39 and Rate 57, are outside that recovery. Their bill impact is zero.
+- **Bill.** The annual increase is the Rate 1 distribution charge increase plus the Rate 1 transmission charge increase, each in dollars per kWh, times annual grid kWh. Those charges are the CIEC-3(c) increases. The customer charge and the generation charge stay at Rate 1.
 - **Enrollment.** Floor and ceiling counts of existing customers from CIEC-1(b). Every identified heat pump customer is auto-enrolled, none opt out, and enrollment persists.
-- **Load.** Load data are simulated results from ResStock. The revenue reduction is calculated from the ResStock load of heat pump customers, and the total kWh of customers without a heat pump also comes from ResStock.
+- **Load.** Load data are simulated results from ResStock. The revenue reduction is calculated from the ResStock load of heat pump customers. Annual kWh for customers without a heat pump is CAIRO grid consumption, and the per-kWh charge uses that consumption with sample weights scaled to the customers who remain.
 
 ```{python}
 #| echo: false
@@ -206,6 +218,7 @@ _wb = build_workbook(
     nonhp_buildings,
     _charge(floor_increase),
     _charge(ceiling_increase),
+    rate_year_customers=rate_year_customers,
 )
 _xlsx_path = Path("../cache") / DRIVE_NAME
 _wb.save(_xlsx_path)

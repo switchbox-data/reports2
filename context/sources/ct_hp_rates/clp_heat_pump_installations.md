@@ -1,9 +1,9 @@
 ---
 source_file: Heat Pump Installations.xlsx
-citekey: clp_HeatPumpInstallations_nd
+citekey: clp_HeatPumpInstallations_2026
 zotero_item: "6T5BEUFI"
 public_url: https://drive.google.com/file/d/1UVju0oeINR9Tz2UAqif3iZme6PUyfgCe/view
-short_url: https://pub.switch.box/clp_HeatPumpInstallations_nd
+short_url: https://pub.switch.box/clp_HeatPumpInstallations_2026
 source_url: https://www.ctenergydashboard.com/heat-pump
 md5: "f64035af577c793a8ecacef674fbaeea"
 validated: 2026-11-05

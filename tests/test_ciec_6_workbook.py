@@ -45,9 +45,9 @@ def _case() -> tuple[object, object, pl.DataFrame, object, object]:
 
 def test_workbook_bills_each_home_at_the_per_kwh_increase() -> None:
     floor, ceiling, buildings, floor_charge, ceiling_charge = _case()
-    wb = builder.build_workbook(floor, ceiling, buildings, floor_charge, ceiling_charge)
+    wb = builder.build_workbook(floor, ceiling, buildings, floor_charge, ceiling_charge, rate_year_customers=100)
 
-    assert wb.sheetnames == ["README", "revenue", "customers", "increase", "summary"]
+    assert wb.sheetnames == ["README", "revenue", "payers", "customers", "increase", "summary"]
 
     revenue = wb["revenue"]
     assert revenue["A5"].value == "Existing"
@@ -58,6 +58,15 @@ def test_workbook_bills_each_home_at_the_per_kwh_increase() -> None:
     assert revenue["I5"].value == "=G5+H5"
     assert revenue["C5"].fill.fgColor.rgb[-6:] == "FFF2CC"
     assert revenue["E5"].fill.patternType is None
+
+    payers = wb["payers"]
+    assert payers["B4"].value == 100
+    assert payers["B4"].fill.fgColor.rgb[-6:] == "FFF2CC"
+    assert payers["B5"].value == "=revenue!B5"
+    assert payers["B6"].value == "=B4-B5"
+    assert payers["B7"].value == "=revenue!F5"
+    assert payers["B8"].value == "=B4-B7"
+    assert payers["B6"].fill.patternType is None
 
     customers = wb["customers"]
     assert customers["A8"].value == 10
@@ -73,6 +82,7 @@ def test_workbook_bills_each_home_at_the_per_kwh_increase() -> None:
     assert customers["J9"].value == "=H9+I9"
     assert all(customers.cell(7, col).value != "cumulative weight" for col in range(1, 11))
     assert customers["B4"].value == "=SUM(D8:D9)"
+    assert customers["A6"].value == "ResStock weight"
     assert customers["B6"].value == "=SUM(B8:B9)"
     assert customers["H8"].fill.patternType is None
 
@@ -92,8 +102,8 @@ def test_workbook_bills_each_home_at_the_per_kwh_increase() -> None:
     assert summary["A7"].value == "Mean bill"
     assert summary["B7"].value == "=SUMPRODUCT(customers!G8:G9,customers!B8:B9)/customers!$B$6"
     assert summary["C6"].value == "=SUMPRODUCT(customers!I8:I9,customers!B8:B9)/customers!$B$6"
-    assert summary["B8"].value == "=revenue!E5/customers!$B$6"
-    assert summary["C8"].value == "=revenue!I5/customers!$B$6"
+    assert summary["B8"].value == "=revenue!E5/payers!B6"
+    assert summary["C8"].value == "=revenue!I5/payers!B8"
     assert summary["A9"].value == "25th percentile"
     running = "SCAN(0,customers!$B$8:$B9,LAMBDA(acc,w,acc+w))"
     assert summary["B10"].value == f"=INDEX(customers!G$8:G9,XMATCH(0.50*customers!$B$6,{running},1))"
@@ -110,9 +120,10 @@ def test_rejects_inputs_that_cannot_support_the_bill() -> None:
             buildings,
             floor_charge,
             ceiling_charge,
+            rate_year_customers=100,
         )
     with pytest.raises(ValueError, match="empty"):
-        builder.build_workbook(floor, ceiling, buildings.clear(), floor_charge, ceiling_charge)
+        builder.build_workbook(floor, ceiling, buildings.clear(), floor_charge, ceiling_charge, rate_year_customers=100)
     with pytest.raises(ValueError, match="positive"):
         builder.build_workbook(
             floor,
@@ -120,6 +131,7 @@ def test_rejects_inputs_that_cannot_support_the_bill() -> None:
             buildings.with_columns(pl.lit(0.0).alias("weight")),
             floor_charge,
             ceiling_charge,
+            rate_year_customers=100,
         )
     with pytest.raises(ValueError, match="non-negative"):
         builder.build_workbook(
@@ -128,6 +140,16 @@ def test_rejects_inputs_that_cannot_support_the_bill() -> None:
             buildings.with_columns(pl.lit(-1.0).alias("annual_kwh")),
             floor_charge,
             ceiling_charge,
+            rate_year_customers=100,
         )
     with pytest.raises(ValueError, match="non-negative"):
-        builder.build_workbook(floor, ceiling, buildings, builder.ChargeRow(-0.01, 0.0, 0.0), ceiling_charge)
+        builder.build_workbook(
+            floor,
+            ceiling,
+            buildings,
+            builder.ChargeRow(-0.01, 0.0, 0.0),
+            ceiling_charge,
+            rate_year_customers=100,
+        )
+    with pytest.raises(ValueError, match="nobody"):
+        builder.build_workbook(floor, ceiling, buildings, floor_charge, ceiling_charge, rate_year_customers=30)

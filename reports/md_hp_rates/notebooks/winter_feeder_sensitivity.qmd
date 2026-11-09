@@ -39,8 +39,6 @@ from plotnine import (
     geom_text,
     ggplot,
     labs,
-    position_dodge,
-    scale_fill_manual,
     scale_y_continuous,
     theme,
 )
@@ -61,10 +59,7 @@ report_vars: dict = {}
 
 ## Parameters
 
-The marginal cost year matches the testimony (2025). Each scenario runs on two **allocation loads**, the hourly BGE system load that decides which hours carry cost:
-
-- **2025**, the load the filed profiles use, so a scenario differs from the filed row only in its seasonal split.
-- **2024**, the year of the BGE hourly customer data behind the representative home. `representative_home.qmd` places those 2024 hours onto the 2025 calendar by date, so a 2025 cold snap meets 2024 home loads from a milder day. Allocating on 2024 load lines the cost hours up with the weather the home actually saw, which is why we treat 2024 as the central case.
+Everything matches the testimony. The marginal cost year is 2025, and the **allocation load**, the hourly BGE system load that decides which hours carry cost, is 2025 PJM load for the BGE zone, the same load the filed profiles were built on. Each scenario therefore differs from the filed profile only in its seasonal split. `LOAD_YEARS` can take other years for a weather sensitivity; a year other than `MC_YEAR` is placed onto the 2025 calendar by date.
 
 `N_DIST` and `N_TX` are the numbers of cost hours in the filed distribution and transmission profiles.
 
@@ -76,8 +71,7 @@ STATE = _batch_config["STATE"]
 ELECTRIC_UTILITY = "bge"
 
 MC_YEAR = 2025
-LOAD_YEARS = (2025, 2024)
-CENTRAL_LOAD_YEAR = 2024
+LOAD_YEARS = (MC_YEAR,)
 N_DIST = 100
 N_TX = 150
 ```
@@ -86,7 +80,7 @@ The scenarios are defined by x, the share of cost placed in winter (October to A
 
 | Scenario | x | How cost is spread |
 | --- | --- | --- |
-| Filed rule | none | Top N hours of the year, as filed (no seasonal constraint) |
+| Filed profile | none | Top N hours of the year, as filed (no seasonal constraint) |
 | 40% winter | 0.40 | 40% of dollars on the top N winter hours, 60% on the top N summer hours (CCANDR04-02: customers on winter-peaking feeders) |
 | 46% winter | 0.46 | Same, at 46% (CCANDR04-01: share of feeders that peak in winter) |
 | 100% winter | 1.00 | All cost on the top N winter hours |
@@ -98,7 +92,7 @@ The first four use the **cost split**. BGE split its feeders into winter-peaking
 #| label: scenarios
 
 SCENARIOS: dict[str, dict] = {
-    "filed": {"label": "Filed rule", "x": None, "split": "cost"},
+    "filed": {"label": "Filed profile", "x": None, "split": "cost"},
     "x040": {"label": "40% winter", "x": 0.40, "split": "cost"},
     "x046": {"label": "46% winter", "x": 0.46, "split": "cost"},
     "x100": {"label": "100% winter", "x": 1.00, "split": "cost"},
@@ -162,7 +156,7 @@ print(f"Transmission: ${C_TX:.2f}/kW-yr on {(mc_filed['mc_bulk_tx'] > 0).sum()} 
 
 ### Allocation loads
 
-The PJM hourly load for the BGE zone ranks and weights the cost hours. `load_pjm_allocation_load` prepares it the same way the rate-design-platform generators do, and for 2024 places it onto the 2025 calendar by date, matching the home.
+The PJM hourly load for the BGE zone ranks and weights the cost hours. `load_pjm_allocation_load` prepares it the same way the rate-design-platform generators do.
 
 ```{python}
 #| label: load-allocation
@@ -337,7 +331,7 @@ for _r in results.iter_rows(named=True):
 results.select("load_year", "facet", "scenario", "inc_td", "td_overcharge", "total_overcharge")
 ```
 
-The two tables below show one facet each, with the central 2024 allocation load first. The 2024 "Filed rule" row is the filed method run on 2024 load; its 2024 top hours all fall in summer, which is why it sits below the filed `$43`.
+The two tables below show one facet each. "Filed profile" is the profile behind the testimony, with about a fifth of the distribution dollars in winter.
 
 ```{python}
 #| label: results-table-fn
@@ -348,11 +342,15 @@ def results_table(facet: str) -> GT:
         results.filter(pl.col("facet") == facet)
         .with_columns(
             group=pl.format("Allocation load {}", pl.col("load_year")),
-            label=pl.col("label").str.replace("\n", " "),
+            label=pl.when(pl.col("scenario") != "filed")
+            .then(pl.col("label").str.replace("\n", " "))
+            .when(pl.col("load_year") == MC_YEAR)
+            .then(pl.lit("Filed profile"))
+            .otherwise(pl.format("Filed rule on {} load", pl.col("load_year"))),
             rhp_dist=pl.col("rhp_dist") * 100,
             rhp_tx=pl.col("rhp_tx") * 100,
         )
-        .sort(pl.col("load_year") != CENTRAL_LOAD_YEAR)
+        .sort(pl.col("load_year") != MC_YEAR)
         .select(
             "group", "label", "winter_share_dist", "winter_share_tx", "inc_dist", "inc_tx", "inc_td",
             "inc_td_change", "td_overcharge", "total_overcharge", "overcharge_change", "rhp_dist", "rhp_tx",
@@ -405,22 +403,20 @@ The figure compares the home's added T&D cost in each scenario with its added T&
 
 _scenario_order = [s["label"] for s in SCENARIOS.values()]
 _facet_order = list(FACETS.values())
-_plot_df = results.select(
+_plot_df = results.filter(pl.col("load_year") == MC_YEAR).select(
     pl.col("label").cast(pl.Enum(_scenario_order)).alias("scenario"),
     pl.col("facet").replace_strict(FACETS).cast(pl.Enum(_facet_order)),
-    pl.col("load_year").cast(pl.String).cast(pl.Enum([str(y) for y in LOAD_YEARS])),
     pl.col("inc_td").alias("cost"),
 )
 _charge_label = pl.DataFrame(
     {"facet": pl.Series(_facet_order[:1]).cast(pl.Enum(_facet_order)), "x": [0.5], "y": [DELIVERY_CHARGES_DELTA]}
 )
 (
-    ggplot(_plot_df, aes("scenario", "cost", fill="load_year"))
-    + geom_col(position=position_dodge(width=0.8), width=0.75)
+    ggplot(_plot_df, aes("scenario", "cost"))
+    + geom_col(fill=SB_COLORS["sky"], width=0.7)
     + geom_text(
         aes(label="cost"),
         format_string="${:,.0f}",
-        position=position_dodge(width=0.8),
         va="bottom",
         size=9,
         color="#333333",
@@ -438,11 +434,10 @@ _charge_label = pl.DataFrame(
         fontweight="bold",
     )
     + facet_wrap("facet", ncol=1)
-    + scale_fill_manual(values={"2025": SB_COLORS["sky"], "2024": SB_COLORS["midnight"]}, name="Allocation load year")
     + scale_y_continuous(labels=lambda breaks: [f"${b:,.0f}" for b in breaks], expand=(0, 0, 0.12, 0))
     + labs(x="", y="Added T&D marginal cost per year", title="Added T&D cost of the heat pump home, by share of cost in winter")
     + theme_switchbox()
-    + theme(figure_size=(10.5, 7.5), legend_position="top")
+    + theme(figure_size=(10.5, 7.5))
 )
 ```
 
@@ -550,7 +545,7 @@ display_gt(
         feeder_types.with_columns(
             group=pl.format("Allocation load {}, constrained share from {}", pl.col("load_year"), pl.col("constrained_basis"))
         )
-        .sort(pl.col("load_year") != CENTRAL_LOAD_YEAR)
+        .sort(pl.col("load_year") != MC_YEAR)
         .select("group", "feeder_type", "inc_dist", "inc_td", "td_overcharge", "total_overcharge"),
         rowname_col="feeder_type",
         groupname_col="group",

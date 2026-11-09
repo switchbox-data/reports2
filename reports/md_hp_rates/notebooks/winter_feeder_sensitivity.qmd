@@ -1,0 +1,609 @@
+---
+title: "BGE Winter-Peaking Feeders: Sensitivity of the Representative Home's Overpayment"
+reference-location: margin
+fig-cap-location: bottom
+execute:
+  warning: false
+  message: false
+---
+
+In its response to CCAN's data request 4 (CCANDR04), BGE reports that **46%** of its feeders peak in winter and that **40%** of its customers are served by them. The marginal distribution cost profile behind our testimony puts about a fifth of the distribution dollars in winter, because it spreads cost over the 100 highest hours of BGE's system load, and most of those fall on summer afternoons. If winter peaks drive more of BGE's distribution cost than that, a heat pump home, whose added load is concentrated in winter, causes more added cost than we estimated.
+
+This notebook asks whether that changes the testimony's conclusion. It takes the representative all-fossil home from `representative_home.qmd`, keeps its bills exactly as filed, and reprices its hourly loads against marginal cost profiles that move a chosen share of the cost into winter. The question is whether the home's **T&D overpayment** (added delivery charges minus added delivery marginal cost) survives.
+
+We look at the question from two angles:
+
+1. **System average:** move share x of the distribution cost (and, as a stress test, the transmission cost) into winter, at x = 40% (customers on winter-peaking feeders), 46% (winter-peaking feeders) and 100%.
+2. **Feeder types:** price the home on a constrained winter-peaking feeder, a constrained summer-peaking feeder, and an unconstrained feeder.
+
+Nothing here changes CAIRO's outputs. Moving cost between hours doesn't change what BGE charges, so only the cost side of the overpayment moves.
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+import pickle
+from pathlib import Path
+
+import polars as pl
+import yaml
+from great_tables import GT, loc, style
+from plotnine import (
+    aes,
+    facet_wrap,
+    geom_col,
+    geom_hline,
+    geom_text,
+    ggplot,
+    labs,
+    position_dodge,
+    scale_fill_manual,
+    scale_y_continuous,
+    theme,
+)
+
+from lib.great_tables import get_switchbox_gt_tab_options
+from lib.plotnine import SB_COLORS, theme_switchbox
+from lib.quarto import display_gt
+from lib.rates_analysis.rate_case_funcs import building_delivery_mc_8760, load_delivery_mc_heatmap
+from lib.rates_analysis.seasonal_mc import (
+    WINTER_MONTHS,
+    build_seasonal_split_mc_8760,
+    load_pjm_allocation_load,
+    winter_cost_share,
+)
+
+report_vars: dict = {}
+```
+
+## Parameters
+
+The marginal cost year matches the testimony (2025). Each scenario runs on two **allocation loads**, the hourly BGE system load that decides which hours carry cost:
+
+- **2025**, the load the filed profiles use, so a scenario differs from the filed row only in its seasonal split.
+- **2024**, the year of the BGE hourly customer data behind the representative home. `representative_home.qmd` places those 2024 hours onto the 2025 calendar by date, so a 2025 cold snap meets 2024 home loads from a milder day. Allocating on 2024 load lines the cost hours up with the weather the home actually saw, which is why we treat 2024 as the central case.
+
+`N_DIST` and `N_TX` are the numbers of cost hours in the filed distribution and transmission profiles.
+
+```{python}
+#| label: params
+
+_batch_config = yaml.safe_load(Path("../batch_config.yaml").read_text())
+STATE = _batch_config["STATE"]
+ELECTRIC_UTILITY = "bge"
+
+MC_YEAR = 2025
+LOAD_YEARS = (2025, 2024)
+CENTRAL_LOAD_YEAR = 2024
+N_DIST = 100
+N_TX = 150
+```
+
+The scenarios are defined by x, the share of cost placed in winter (October to April), and by how that cost is spread:
+
+| Scenario | x | How cost is spread |
+| --- | --- | --- |
+| Filed rule | none | Top N hours of the year, as filed (no seasonal constraint) |
+| 40% winter | 0.40 | 40% of dollars on the top N winter hours, 60% on the top N summer hours (CCANDR04-02: customers on winter-peaking feeders) |
+| 46% winter | 0.46 | Same, at 46% (CCANDR04-01: share of feeders that peak in winter) |
+| 100% winter | 1.00 | All cost on the top N winter hours |
+| 40% winter (hours split) | 0.40 | 40 of the N cost hours in winter and the rest in summer, weighted by load together, which packs winter cost onto the coldest hours |
+
+The first four use the **cost split**. BGE split its feeders into winter-peaking and summer-peaking ones, each with its own peak hours, so each season keeps its own full set of N hours and x sets only how the dollars divide. Under that split a home's cost is linear in x. The **hours split** describes a single feeder that peaks in both seasons, which BGE didn't report. We keep it as a sensitivity because it concentrates winter cost more.
+
+```{python}
+#| label: scenarios
+
+SCENARIOS: dict[str, dict] = {
+    "filed": {"label": "Filed rule", "x": None, "split": "cost"},
+    "x040": {"label": "40% winter", "x": 0.40, "split": "cost"},
+    "x046": {"label": "46% winter", "x": 0.46, "split": "cost"},
+    "x100": {"label": "100% winter", "x": 1.00, "split": "cost"},
+    "x040h": {"label": "40% winter\n(hours split)", "x": 0.40, "split": "hours"},
+}
+FACETS: dict[str, str] = {
+    "dist": "Distribution only",
+    "both": "Distribution and transmission",
+}
+```
+
+## Import data
+
+### The representative home
+
+`representative_home.qmd` saves two things we need. Its report variables hold the home's added charges, its bills before and after the heat pump, and the filed marginal cost results we must reproduce. Its hourly export holds the home's loads before and after the heat pump, exactly as they enter the testimony's marginal cost calculation. The home is the direct testimony's all-fossil home, built from BGE's 2024 hourly data for its non-heating (R and RL) and heating (RH and RLH) residential classes.
+
+```{python}
+#| label: load-home
+
+rh = pickle.loads(Path("../cache/representative_home_vars.pkl").read_bytes())
+home_hourly = pl.read_parquet("../cache/representative_home_hourly_all_fossil.parquet")
+home_hourly.group_by("period").agg(
+    pl.len().alias("hours"),
+    pl.col("kwh").sum().alias("annual_kwh"),
+    pl.col("kwh").max().alias("peak_kwh"),
+    pl.col("timestamp").min().alias("first_hour_utc"),
+).sort("period", descending=True)
+```
+
+The bill side of the overpayment comes straight from the filed results. These numbers don't change in any scenario.
+
+```{python}
+#| label: bill-side
+
+DELIVERY_CHARGES_DELTA = rh["all_fossil_annual_delivery_charges_delta"]
+EMPOWER_DELTA = rh["all_fossil_annual_empower_maryland_delta"]
+print(f"Added T&D charges: ${DELIVERY_CHARGES_DELTA:,.2f}")
+print(f"Added EmPOWER charges: ${EMPOWER_DELTA:,.2f}")
+```
+
+### Filed marginal costs
+
+The filed 8760 has distribution (`mc_dist_sub_tx`) and bulk transmission (`mc_bulk_tx`) marginal costs in `$/kWh` for every hour of 2025. Each sums to its annual cost per kW-year, so we take the annual totals from the profiles themselves.
+
+```{python}
+#| label: load-filed-mc
+
+mc_filed = load_delivery_mc_heatmap(STATE, ELECTRIC_UTILITY, MC_YEAR).select("timestamp", "mc_bulk_tx", "mc_dist_sub_tx")
+C_DIST = float(mc_filed["mc_dist_sub_tx"].sum())
+C_TX = float(mc_filed["mc_bulk_tx"].sum())
+FILED_WINTER_SHARE_DIST = winter_cost_share(mc_filed, "mc_dist_sub_tx")
+FILED_WINTER_SHARE_TX = winter_cost_share(mc_filed, "mc_bulk_tx")
+report_vars["wf_c_dist"] = C_DIST
+report_vars["wf_c_tx"] = C_TX
+report_vars["wf_filed_winter_share_dist"] = FILED_WINTER_SHARE_DIST
+report_vars["wf_filed_winter_share_tx"] = FILED_WINTER_SHARE_TX
+print(f"Distribution: ${C_DIST:.2f}/kW-yr on {(mc_filed['mc_dist_sub_tx'] > 0).sum()} hours, {FILED_WINTER_SHARE_DIST:.0%} in winter")
+print(f"Transmission: ${C_TX:.2f}/kW-yr on {(mc_filed['mc_bulk_tx'] > 0).sum()} hours, {FILED_WINTER_SHARE_TX:.0%} in winter")
+```
+
+### Allocation loads
+
+The PJM hourly load for the BGE zone ranks and weights the cost hours. `load_pjm_allocation_load` prepares it the same way the rate-design-platform generators do, and for 2024 places it onto the 2025 calendar by date, matching the home.
+
+```{python}
+#| label: load-allocation
+
+allocation_load = {year: load_pjm_allocation_load(ELECTRIC_UTILITY, year, MC_YEAR) for year in LOAD_YEARS}
+pl.DataFrame(
+    {
+        "load_year": list(LOAD_YEARS),
+        "peak_mw": [float(allocation_load[y]["load_mw"].max()) for y in LOAD_YEARS],
+        "peak_hour": [allocation_load[y].sort("load_mw", descending=True)["timestamp"][0] for y in LOAD_YEARS],
+        "winter_peak_mw": [
+            float(allocation_load[y].filter(pl.col("timestamp").dt.month().is_in(WINTER_MONTHS))["load_mw"].max())
+            for y in LOAD_YEARS
+        ],
+    }
+)
+```
+
+Let's run a quick sanity check, making sure the rebuilt top-N rule reproduces the filed profiles hour for hour on 2025 load. If the platform generators ever change, this check fails.
+
+```{python}
+#| label: check-filed-rule
+
+for _col, _cost, _n in [("mc_dist_sub_tx", C_DIST, N_DIST), ("mc_bulk_tx", C_TX, N_TX)]:
+    _rebuilt = build_seasonal_split_mc_8760(allocation_load[MC_YEAR], _cost, _n, None)["mc_per_kwh"]
+    _gap = max(abs(a - b) for a, b in zip(_rebuilt.to_list(), mc_filed[_col].to_list(), strict=True))
+    assert _gap < 1e-9, (_col, _gap)
+    print(f"{_col}: largest hourly difference {_gap:.1e}")
+```
+
+## Pricing the home against a marginal cost profile
+
+`home_incremental_mc` multiplies the home's hourly loads by a marginal cost 8760, the same way `representative_home.qmd` does, and returns the added distribution and transmission cost from the heat pump: cost after minus cost before.
+
+```{python}
+#| label: home-incremental-mc
+
+
+def home_incremental_mc(mc_8760: pl.DataFrame) -> dict[str, float]:
+    """Added annual distribution and transmission marginal cost from the heat pump."""
+    totals = {}
+    for period in ("before", "after"):
+        hourly = building_delivery_mc_8760(home_hourly.filter(pl.col("period") == period).select("timestamp", "kwh"), mc_8760)
+        totals[period] = (float(hourly["mc_dist_dollars"].sum()), float(hourly["mc_tx_dollars"].sum()))
+    return {
+        "inc_dist": totals["after"][0] - totals["before"][0],
+        "inc_tx": totals["after"][1] - totals["before"][1],
+    }
+```
+
+Before reporting any scenario, the filed profile must reproduce the testimony's numbers to the cent: about `$43` of added T&D cost, a `$302` T&D overpayment and a `$359` total overpayment.
+
+```{python}
+#| label: validate-filed
+
+_filed = home_incremental_mc(mc_filed)
+_filed_inc_td = _filed["inc_dist"] + _filed["inc_tx"]
+assert abs(_filed["inc_dist"] - rh["all_fossil_annual_mc_dist_delta"]) < 0.005
+assert abs(_filed["inc_tx"] - rh["all_fossil_annual_mc_tx_delta"]) < 0.005
+assert abs(DELIVERY_CHARGES_DELTA - _filed_inc_td + EMPOWER_DELTA - rh["all_fossil_annual_total_overcharge"]) < 0.005
+print(f"Added T&D cost ${_filed_inc_td:,.2f}; T&D overpayment ${DELIVERY_CHARGES_DELTA - _filed_inc_td:,.2f}; "
+      f"total ${DELIVERY_CHARGES_DELTA - _filed_inc_td + EMPOWER_DELTA:,.2f}")
+```
+
+The proposed Schedule R-HP rates come from the same added cost: the fair distribution bill after the heat pump equals the bill before plus the added distribution cost, and the rate is today's average rate scaled by the ratio of the fair bill to today's. `rhp_rates` repeats that calculation from `representative_home.qmd`'s `compute-rhp-rates` cell, so each scenario also shows what BGE's winter evidence would do to the remedy.
+
+```{python}
+#| label: rhp-rates
+
+
+def rhp_rates(inc_dist: float, inc_tx: float) -> dict[str, float]:
+    """Schedule R-HP distribution and transmission rates ($/kWh) implied by an added cost."""
+    lam_dist = (rh["all_fossil_annual_distribution_before"] + inc_dist) / rh["all_fossil_annual_distribution_after"]
+    lam_tx = (rh["all_fossil_annual_transmission_before"] + inc_tx) / rh["all_fossil_annual_transmission_after"]
+    return {"rhp_dist": rh["rhp_avg_rate_dist"] * lam_dist, "rhp_tx": rh["rhp_avg_rate_tx"] * lam_tx}
+
+
+_rhp_filed = rhp_rates(_filed["inc_dist"], _filed["inc_tx"])
+assert abs(_rhp_filed["rhp_dist"] - rh["rhp_rate_dist"]) < 1e-9
+assert abs(_rhp_filed["rhp_tx"] - rh["rhp_rate_tx"]) < 1e-9
+print(f"Filed R-HP: distribution {_rhp_filed['rhp_dist'] * 100:.2f}¢/kWh, transmission {_rhp_filed['rhp_tx'] * 100:.2f}¢/kWh")
+```
+
+## Scenario marginal cost profiles
+
+`scenario_mc` builds the 8760 for one scenario, facet and allocation load. In the distribution-only facet transmission stays on its filed profile; in the other, the same x and split reshape transmission too.
+
+```{python}
+#| label: scenario-mc
+
+
+def scenario_mc(load_year: int, scenario: str, facet: str) -> pl.DataFrame:
+    """Marginal cost 8760 for one scenario, in load_delivery_mc_heatmap's shape."""
+    spec = SCENARIOS[scenario]
+    load = allocation_load[load_year]
+
+    def reshape(cost: float, n_hours: int) -> pl.Series:
+        return build_seasonal_split_mc_8760(load, cost, n_hours, spec["x"], split=spec["split"])["mc_per_kwh"]
+
+    mc = mc_filed.with_columns(mc_dist_sub_tx=reshape(C_DIST, N_DIST))
+    if facet == "both":
+        mc = mc.with_columns(mc_bulk_tx=reshape(C_TX, N_TX))
+    return mc
+```
+
+Under the cost split, the 40% and 46% profiles are mixes of the all-winter and all-summer profiles, so the home's added cost should be the same mix of its all-winter and all-summer costs. Let's check that on the directly built profiles; the break-even calculation below relies on it.
+
+```{python}
+#| label: check-linearity
+
+for _year in LOAD_YEARS:
+    _winter = home_incremental_mc(scenario_mc(_year, "x100", "both"))
+    _summer = home_incremental_mc(
+        mc_filed.with_columns(
+            mc_dist_sub_tx=build_seasonal_split_mc_8760(allocation_load[_year], C_DIST, N_DIST, 0.0)["mc_per_kwh"],
+            mc_bulk_tx=build_seasonal_split_mc_8760(allocation_load[_year], C_TX, N_TX, 0.0)["mc_per_kwh"],
+        )
+    )
+    for _key in ("x040", "x046"):
+        _x = SCENARIOS[_key]["x"]
+        _direct = home_incremental_mc(scenario_mc(_year, _key, "both"))
+        for _c in ("inc_dist", "inc_tx"):
+            assert abs(_direct[_c] - (_x * _winter[_c] + (1 - _x) * _summer[_c])) < 1e-9
+print("Cost-split scenarios are linear in x")
+```
+
+## Results
+
+For every allocation load, facet and scenario we compute:
+
+- `winter_share_dist`, `winter_share_tx`: the share of each cost's dollars that falls in winter;
+- `inc_dist`, `inc_tx`, `inc_td`: the home's added distribution, transmission and T&D marginal cost;
+- `inc_td_change`: the change in added T&D cost from the filed profile (the canonical 2025 one);
+- `td_overcharge`: added T&D charges minus added T&D cost;
+- `total_overcharge`: the T&D overpayment plus the added EmPOWER charges, as in the testimony;
+- `rhp_dist`, `rhp_tx`: the implied Schedule R-HP rates.
+
+```{python}
+#| label: compute-scenarios
+
+_rows = []
+for _year in LOAD_YEARS:
+    for _facet in FACETS:
+        for _key, _spec in SCENARIOS.items():
+            _mc = scenario_mc(_year, _key, _facet)
+            _inc = home_incremental_mc(_mc)
+            _inc_td = _inc["inc_dist"] + _inc["inc_tx"]
+            _rows.append(
+                {
+                    "load_year": _year,
+                    "facet": _facet,
+                    "scenario": _key,
+                    "label": _spec["label"],
+                    "winter_share_dist": winter_cost_share(_mc, "mc_dist_sub_tx"),
+                    "winter_share_tx": winter_cost_share(_mc, "mc_bulk_tx"),
+                    **_inc,
+                    "inc_td": _inc_td,
+                    "inc_td_change": _inc_td - _filed_inc_td,
+                    "td_overcharge": DELIVERY_CHARGES_DELTA - _inc_td,
+                    "total_overcharge": DELIVERY_CHARGES_DELTA - _inc_td + EMPOWER_DELTA,
+                    **rhp_rates(_inc["inc_dist"], _inc["inc_tx"]),
+                }
+            )
+results = pl.DataFrame(_rows).with_columns(
+    overcharge_change=pl.col("total_overcharge") - (DELIVERY_CHARGES_DELTA - _filed_inc_td + EMPOWER_DELTA)
+)
+
+for _r in results.iter_rows(named=True):
+    _prefix = f"wf_{_r['facet']}_{_r['load_year']}_{_r['scenario']}"
+    for _metric in ("inc_dist", "inc_tx", "inc_td", "td_overcharge", "total_overcharge", "rhp_dist", "rhp_tx"):
+        report_vars[f"{_prefix}_{_metric}"] = _r[_metric]
+results.select("load_year", "facet", "scenario", "inc_td", "td_overcharge", "total_overcharge")
+```
+
+The two tables below show one facet each, with the central 2024 allocation load first. The 2024 "Filed rule" row is the filed method run on 2024 load; its 2024 top hours all fall in summer, which is why it sits below the filed `$43`.
+
+```{python}
+#| label: results-table-fn
+
+
+def results_table(facet: str) -> GT:
+    df = (
+        results.filter(pl.col("facet") == facet)
+        .with_columns(
+            group=pl.format("Allocation load {}", pl.col("load_year")),
+            label=pl.col("label").str.replace("\n", " "),
+            rhp_dist=pl.col("rhp_dist") * 100,
+            rhp_tx=pl.col("rhp_tx") * 100,
+        )
+        .sort(pl.col("load_year") != CENTRAL_LOAD_YEAR)
+        .select(
+            "group", "label", "winter_share_dist", "winter_share_tx", "inc_dist", "inc_tx", "inc_td",
+            "inc_td_change", "td_overcharge", "total_overcharge", "overcharge_change", "rhp_dist", "rhp_tx",
+        )
+    )
+    return (
+        GT(df, rowname_col="label", groupname_col="group")
+        .tab_header(title=f"Representative heat pump home: {FACETS[facet].lower()} reshaped")
+        .tab_spanner("Winter share of cost", ["winter_share_dist", "winter_share_tx"])
+        .tab_spanner("Added marginal cost", ["inc_dist", "inc_tx", "inc_td", "inc_td_change"])
+        .tab_spanner("Overpayment", ["td_overcharge", "total_overcharge", "overcharge_change"])
+        .tab_spanner("Schedule R-HP (¢/kWh)", ["rhp_dist", "rhp_tx"])
+        .cols_label(
+            winter_share_dist="Dist.", winter_share_tx="Trans.", inc_dist="Dist.", inc_tx="Trans.", inc_td="T&D",
+            inc_td_change="vs filed", td_overcharge="T&D", total_overcharge="Total", overcharge_change="vs filed",
+            rhp_dist="Dist.", rhp_tx="Trans.",
+        )
+        .fmt_percent(["winter_share_dist", "winter_share_tx"], decimals=0)
+        .fmt_currency(["inc_dist", "inc_tx", "inc_td", "td_overcharge", "total_overcharge"], decimals=0)
+        .fmt_currency(["inc_td_change", "overcharge_change"], decimals=0, force_sign=True)
+        .fmt_number(["rhp_dist", "rhp_tx"], decimals=2)
+        .tab_style(style.text(weight="bold"), loc.body(columns="total_overcharge"))
+        .tab_source_note(
+            f"Added T&D charges ${DELIVERY_CHARGES_DELTA:,.0f} and EmPOWER ${EMPOWER_DELTA:,.0f} are as filed in every row. "
+            f"Distribution cost on N = {N_DIST} hours, transmission on N = {N_TX}. Winter is October to April."
+        )
+        .tab_options(**get_switchbox_gt_tab_options())
+    )
+```
+
+```{python}
+#| label: tbl-wf-dist
+#| tbl-cap: "Representative all-fossil home's added marginal cost and overpayment with distribution cost moved into winter; transmission as filed."
+
+display_gt(results_table("dist"))
+```
+
+```{python}
+#| label: tbl-wf-both
+#| tbl-cap: "Representative all-fossil home's added marginal cost and overpayment with both distribution and transmission cost moved into winter."
+
+display_gt(results_table("both"))
+```
+
+The figure compares the home's added T&D cost in each scenario with its added T&D charges, which don't move.
+
+```{python}
+#| label: fig-wf-cost-vs-charges
+#| fig-cap: "Added T&D marginal cost of the representative all-fossil heat pump home under each winter scenario, against its added T&D charges."
+
+_scenario_order = [s["label"] for s in SCENARIOS.values()]
+_facet_order = list(FACETS.values())
+_plot_df = results.select(
+    pl.col("label").cast(pl.Enum(_scenario_order)).alias("scenario"),
+    pl.col("facet").replace_strict(FACETS).cast(pl.Enum(_facet_order)),
+    pl.col("load_year").cast(pl.String).cast(pl.Enum([str(y) for y in LOAD_YEARS])),
+    pl.col("inc_td").alias("cost"),
+)
+_charge_label = pl.DataFrame(
+    {"facet": pl.Series(_facet_order[:1]).cast(pl.Enum(_facet_order)), "x": [0.5], "y": [DELIVERY_CHARGES_DELTA]}
+)
+(
+    ggplot(_plot_df, aes("scenario", "cost", fill="load_year"))
+    + geom_col(position=position_dodge(width=0.8), width=0.75)
+    + geom_text(
+        aes(label="cost"),
+        format_string="${:,.0f}",
+        position=position_dodge(width=0.8),
+        va="bottom",
+        size=9,
+        color="#333333",
+    )
+    + geom_hline(yintercept=DELIVERY_CHARGES_DELTA, color=SB_COLORS["carrot"], linetype="dashed", size=0.8)
+    + geom_text(
+        _charge_label,
+        aes("x", "y"),
+        label=f"Added T&D charges: ${DELIVERY_CHARGES_DELTA:,.0f}",
+        inherit_aes=False,
+        ha="left",
+        va="bottom",
+        size=11,
+        color=SB_COLORS["carrot"],
+        fontweight="bold",
+    )
+    + facet_wrap("facet", ncol=1)
+    + scale_fill_manual(values={"2025": SB_COLORS["sky"], "2024": SB_COLORS["midnight"]}, name="Allocation load year")
+    + scale_y_continuous(labels=lambda breaks: [f"${b:,.0f}" for b in breaks], expand=(0, 0, 0.12, 0))
+    + labs(x="", y="Added T&D marginal cost per year", title="Added T&D cost of the heat pump home, by share of cost in winter")
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 7.5), legend_position="top")
+)
+```
+
+### Break-even winter share
+
+Under the cost split the overpayment falls linearly in x, so we can solve for the winter share at which it would reach zero. A break-even above 1 means no seasonal reallocation of today's cost can eliminate the overpayment.
+
+```{python}
+#| label: break-even
+
+_be_rows = []
+for _year in LOAD_YEARS:
+    for _facet in FACETS:
+        _sub = results.filter(pl.col("load_year") == _year, pl.col("facet") == _facet)
+        _at_040 = _sub.filter(pl.col("scenario") == "x040")["td_overcharge"].item()
+        _at_100 = _sub.filter(pl.col("scenario") == "x100")["td_overcharge"].item()
+        _slope = (_at_100 - _at_040) / 0.60
+        _at_0 = _at_040 - 0.40 * _slope
+        for _target, _name in (("td_overcharge", "T&D"), ("total_overcharge", "Total")):
+            _offset = 0.0 if _target == "td_overcharge" else EMPOWER_DELTA
+            _x_be = -(_at_0 + _offset) / _slope if _slope < 0 else float("inf")
+            _be_rows.append({"load_year": _year, "facet": _facet, "overpayment": _name, "break_even_x": _x_be})
+            report_vars[f"wf_{_facet}_{_year}_break_even_x_{_name.lower().replace('&', '')}"] = _x_be
+break_even = pl.DataFrame(_be_rows)
+break_even
+```
+
+## Feeder types
+
+CCANDR04 describes feeders, not hours, and it reports two things separately: which feeders peak in winter, and how much headroom feeders and substations have. Only constrained equipment causes marginal distribution cost. BGE reports that **36%** of customers are on feeders with more than 20% headroom and **44%** on substations with more than 20% headroom (CCANDR04-03 to -06). Treating 20% headroom or less as constrained, the constrained share p_c of customers is 64% (feeders) or 56% (substations).
+
+If the system-average distribution cost C is caused only by the share p_c of customers on constrained equipment, each of those customers' feeders carries C / p_c per kW. We price the home on three feeder types:
+
+- **Winter-peaking, constrained:** all of C / p_c on the feeder's top winter hours, the all-winter (x = 1) distribution profile scaled by 1 / p_c.
+- **Summer-peaking, constrained:** the all-summer (x = 0) profile scaled by 1 / p_c.
+- **Unconstrained:** no distribution cost.
+
+Transmission stays as filed. The winter-peaking, constrained feeder is the strongest version of BGE's point: a heat pump home on exactly the equipment BGE is worried about.
+
+```{python}
+#| label: feeder-type-costs
+
+P_CONSTRAINED = {"feeders (64%)": 0.64, "substations (56%)": 0.56}
+P_WINTER_CUSTOMERS = 0.40
+
+_inc_tx_filed = _filed["inc_tx"]
+seasonal_dist = {}
+for _year in LOAD_YEARS:
+    seasonal_dist[_year] = {
+        _season: home_incremental_mc(
+            mc_filed.with_columns(
+                mc_dist_sub_tx=build_seasonal_split_mc_8760(allocation_load[_year], C_DIST, N_DIST, _x)["mc_per_kwh"]
+            )
+        )["inc_dist"]
+        for _season, _x in (("winter", 1.0), ("summer", 0.0))
+    }
+
+_ft_rows = []
+for _year in LOAD_YEARS:
+    for _basis, _pc in P_CONSTRAINED.items():
+        for _type, _inc_dist in (
+            ("Winter-peaking, constrained", seasonal_dist[_year]["winter"] / _pc),
+            ("Summer-peaking, constrained", seasonal_dist[_year]["summer"] / _pc),
+            ("Unconstrained", 0.0),
+        ):
+            _inc_td = _inc_dist + _inc_tx_filed
+            _ft_rows.append(
+                {
+                    "load_year": _year,
+                    "constrained_basis": _basis,
+                    "feeder_type": _type,
+                    "inc_dist": _inc_dist,
+                    "inc_td": _inc_td,
+                    "td_overcharge": DELIVERY_CHARGES_DELTA - _inc_td,
+                    "total_overcharge": DELIVERY_CHARGES_DELTA - _inc_td + EMPOWER_DELTA,
+                }
+            )
+feeder_types = pl.DataFrame(_ft_rows)
+for _r in feeder_types.filter(pl.col("feeder_type") == "Winter-peaking, constrained").iter_rows(named=True):
+    _tag = "feeders" if _r["constrained_basis"].startswith("feeders") else "substations"
+    report_vars[f"wf_feeder_winter_constrained_{_tag}_{_r['load_year']}_total_overcharge"] = _r["total_overcharge"]
+    report_vars[f"wf_feeder_winter_constrained_{_tag}_{_r['load_year']}_inc_dist"] = _r["inc_dist"]
+```
+
+As a check, averaging the three feeder types by their customer shares should return the system result. With a winter share w among constrained customers, the average distribution cost is p_c × (w × W / p_c + (1 − w) × S / p_c) = w × W + (1 − w) × S, the cost-split result at x = w.
+
+```{python}
+#| label: check-feeder-average
+
+for _year in LOAD_YEARS:
+    _w, _s = seasonal_dist[_year]["winter"], seasonal_dist[_year]["summer"]
+    _system = results.filter(pl.col("load_year") == _year, pl.col("facet") == "dist", pl.col("scenario") == "x040")
+    for _pc in P_CONSTRAINED.values():
+        _avg = _pc * (P_WINTER_CUSTOMERS * _w / _pc + (1 - P_WINTER_CUSTOMERS) * _s / _pc)
+        assert abs(_avg - _system["inc_dist"].item()) < 1e-9
+print("Customer-weighted feeder average matches the 40% system scenario")
+```
+
+```{python}
+#| label: tbl-wf-feeder-types
+#| tbl-cap: "Representative all-fossil home's overpayment by the type of feeder it is on; distribution cost concentrated on constrained feeders, transmission as filed."
+
+display_gt(
+    GT(
+        feeder_types.with_columns(
+            group=pl.format("Allocation load {}, constrained share from {}", pl.col("load_year"), pl.col("constrained_basis"))
+        )
+        .sort(pl.col("load_year") != CENTRAL_LOAD_YEAR)
+        .select("group", "feeder_type", "inc_dist", "inc_td", "td_overcharge", "total_overcharge"),
+        rowname_col="feeder_type",
+        groupname_col="group",
+    )
+    .tab_header(title="Representative heat pump home by feeder type")
+    .cols_label(
+        inc_dist="Added dist. cost", inc_td="Added T&D cost", td_overcharge="T&D overpayment", total_overcharge="Total overpayment"
+    )
+    .fmt_currency(["inc_dist", "inc_td", "td_overcharge", "total_overcharge"], decimals=0)
+    .tab_style(style.text(weight="bold"), loc.body(columns="total_overcharge"))
+    .tab_source_note(
+        f"Constrained feeders carry the system distribution cost ${C_DIST:.2f}/kW-yr divided by the constrained customer share. "
+        "Constrained means 20% headroom or less (CCANDR04-03 to -06)."
+    )
+    .tab_options(**get_switchbox_gt_tab_options())
+)
+```
+
+### Bounds on the winter share of constrained customers
+
+CCANDR04 doesn't say how many constrained customers are on winter-peaking feeders. With 40% of customers on winter-peaking feeders and p_c constrained, the winter share w of constrained customers can be anywhere between the Fréchet bounds max(0, (0.40 + p_c − 1) / p_c) and min(1, 0.40 / p_c). Because cost is linear in w, those bounds give a range for the system-average overpayment.
+
+```{python}
+#| label: frechet-bounds
+
+_fb_rows = []
+for _year in LOAD_YEARS:
+    _w, _s = seasonal_dist[_year]["winter"], seasonal_dist[_year]["summer"]
+    for _basis, _pc in P_CONSTRAINED.items():
+        _lo = max(0.0, (P_WINTER_CUSTOMERS + _pc - 1) / _pc)
+        _hi = min(1.0, P_WINTER_CUSTOMERS / _pc)
+        for _bound, _x in (("low", _lo), ("high", _hi)):
+            _inc_td = _x * _w + (1 - _x) * _s + _inc_tx_filed
+            _fb_rows.append(
+                {
+                    "load_year": _year,
+                    "constrained_basis": _basis,
+                    "bound": _bound,
+                    "winter_share": _x,
+                    "inc_td": _inc_td,
+                    "total_overcharge": DELIVERY_CHARGES_DELTA - _inc_td + EMPOWER_DELTA,
+                }
+            )
+frechet = pl.DataFrame(_fb_rows)
+frechet
+```
+
+## Report variables
+
+```{python}
+#| label: export-vars
+
+Path("../cache").mkdir(exist_ok=True)
+Path("../cache/winter_feeder_vars.pkl").write_bytes(pickle.dumps(report_vars))
+print(f"Exported {len(report_vars)} report variables")
+```

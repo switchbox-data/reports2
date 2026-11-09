@@ -91,6 +91,114 @@ local function has_class(div, name)
   return false
 end
 
+--! One extract line as a borderless two-column table (line ref | text) so long lines wrap at full width.
+local function testimony_line_table(inlines)
+  local s = pandoc.utils.stringify(inlines)
+  local label, body = s:match("^([^\t]+)\t(.+)")
+  if not label or body == nil or body == "" then
+    return styled("IR Testimony Line", inlines)
+  end
+  label = label:gsub("%s+$", "")
+  body = body:gsub("^%s+", "")
+  return pandoc.RawBlock(
+    "openxml",
+    string.format(
+      [[<w:tbl xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:tblPr>
+    <w:tblW w:w="0" w:type="auto"/>
+    <w:tblInd w:w="360" w:type="dxa"/>
+    <w:tblBorders>
+      <w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/>
+      <w:insideH w:val="nil"/><w:insideV w:val="nil"/>
+    </w:tblBorders>
+    <w:tblCellMar>
+      <w:top w:w="0" w:type="dxa"/><w:left w:w="0" w:type="dxa"/>
+      <w:bottom w:w="0" w:type="dxa"/><w:right w:w="60" w:type="dxa"/>
+    </w:tblCellMar>
+  </w:tblPr>
+  <w:tblGrid>
+    <w:gridCol w:w="1000"/>
+    <w:gridCol w:w="8360"/>
+  </w:tblGrid>
+  <w:tr>
+    <w:tc>
+      <w:tcPr><w:tcW w:w="1000" w:type="dxa"/><w:shd w:val="clear" w:fill="F5F5F5"/></w:tcPr>
+      <w:p>
+        <w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr>
+        <w:r><w:rPr><w:b/><w:color w:val="404040"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t>%s</w:t></w:r>
+      </w:p>
+    </w:tc>
+    <w:tc>
+      <w:tcPr><w:tcW w:w="8360" w:type="dxa"/><w:shd w:val="clear" w:fill="F5F5F5"/></w:tcPr>
+      <w:p>
+        <w:pPr><w:spacing w:after="40" w:line="240" w:lineRule="auto"/></w:pPr>
+        <w:r><w:rPr><w:color w:val="404040"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t xml:space="preserve">%s</w:t></w:r>
+      </w:p>
+    </w:tc>
+  </w:tr>
+</w:tbl>]],
+      xml_escape(label),
+      xml_escape(body)
+    )
+  )
+end
+
+local function passage_title_para(para)
+  local s = pandoc.utils.stringify(para)
+  return s:match("^Velez Direct, printed") ~= nil
+end
+
+--! Style the nested ``referenced-testimony`` block inside a question.
+local function format_referenced_testimony(div)
+  local out = {}
+  table.insert(
+    out,
+    styled(
+      "IR Testimony Heading",
+      { pandoc.Emph({ pandoc.Str("Referenced testimony (not part of the request)") }) }
+    )
+  )
+  for _, blk in ipairs(div.content) do
+    if blk.t == "Para" then
+      if passage_title_para(blk) then
+        table.insert(out, styled("IR Testimony Passage", blk.content))
+      else
+        table.insert(out, testimony_line_table(blk.content))
+      end
+    elseif blk.t == "Div" then
+      for _, child in ipairs(blk.content) do
+        if child.t == "Para" then
+          if passage_title_para(child) then
+            table.insert(out, styled("IR Testimony Passage", child.content))
+          else
+            table.insert(out, testimony_line_table(child.content))
+          end
+        else
+          table.insert(out, child)
+        end
+      end
+    else
+      table.insert(out, blk)
+    end
+  end
+  return out
+end
+
+local function normalize_question(blocks)
+  local out = {}
+  for _, blk in ipairs(blocks) do
+    if blk.t == "Div" and has_class(blk, "referenced-testimony") then
+      local inner = format_referenced_testimony(blk)
+      for _, b in ipairs(inner) do
+        table.insert(out, b)
+      end
+    else
+      table.insert(out, blk)
+    end
+  end
+  return out
+end
+
 local function append_all(dst, blocks)
   for _, b in ipairs(blocks) do table.insert(dst, b) end
 end
@@ -142,7 +250,7 @@ function Pandoc(doc)
     table.insert(out, styled("IR Meta", { pandoc.Strong({ pandoc.Str("Witness:") }), tab(), pandoc.Str(witness) }))
     table.insert(out, styled("IR Meta", { pandoc.Strong({ pandoc.Str("Request from:") }), tab(), pandoc.Str(requesting_party) }))
     table.insert(out, styled("IR Label", { pandoc.Strong({ pandoc.Str("Question:") }) }))
-    append_all(out, s.question)
+    append_all(out, normalize_question(s.question))
     table.insert(out, styled("IR Label", { pandoc.Strong({ pandoc.Str("Response:") }) }))
     if #s.response == 0 then
       table.insert(out, pandoc.Para({ pandoc.Emph({ pandoc.Str("[Response not yet written.]") }) }))

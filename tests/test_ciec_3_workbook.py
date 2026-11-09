@@ -50,7 +50,7 @@ def _case() -> tuple[list, list, pl.DataFrame, dict[str, float]]:
     return floor, ceiling, buildings, _generation()
 
 
-def test_workbook_divides_pasted_revenue_by_summed_kwh() -> None:
+def test_workbook_divides_pasted_revenue_by_scaled_kwh() -> None:
     floor, ceiling, buildings, generation = _case()
     wb = builder.build_workbook(
         floor,
@@ -59,9 +59,10 @@ def test_workbook_divides_pasted_revenue_by_summed_kwh() -> None:
         distribution=0.11,
         transmission=0.05,
         generation_monthly=generation,
+        rate_year_customers=100,
     )
 
-    assert wb.sheetnames == ["README", "revenue", "nonhp_kwh", "rates", "increase"]
+    assert wb.sheetnames == ["README", "revenue", "nonhp_kwh", "payers", "rates", "increase"]
 
     revenue = wb["revenue"]
     assert revenue["A5"].value == "Existing"
@@ -84,6 +85,24 @@ def test_workbook_divides_pasted_revenue_by_summed_kwh() -> None:
     assert kwh["B4"].value == "=SUM(D8:D9)"
     assert kwh["B5"].value == "=COUNTA(A8:A9)"
     assert kwh["B6"].value == "=SUM(B8:B9)"
+    assert kwh["A6"].value == "ResStock customers"
+
+    payers = wb["payers"]
+    assert payers["B4"].value == 100
+    assert payers["B4"].fill.fgColor.rgb[-6:] == "FFF2CC"
+    assert payers["B5"].value == "=nonhp_kwh!B6"
+    assert payers["B6"].value == "=nonhp_kwh!B4"
+    assert payers["A9"].value == "=revenue!A5"
+    assert payers["B9"].value == "=revenue!B5"
+    assert payers["C9"].value == "=$B$4-B9"
+    assert payers["D9"].value == "=C9/$B$5"
+    assert payers["E9"].value == "=$B$6*D9"
+    assert payers["F9"].value == "=revenue!F5"
+    assert payers["G9"].value == "=$B$4-F9"
+    assert payers["H9"].value == "=G9/$B$5"
+    assert payers["I9"].value == "=$B$6*H9"
+    assert payers["B10"].value == "=revenue!B6"
+    assert payers["C9"].fill.patternType is None
 
     rates = wb["rates"]
     assert rates["C5"].value == 0.11
@@ -98,12 +117,12 @@ def test_workbook_divides_pasted_revenue_by_summed_kwh() -> None:
 
     increase = wb["increase"]
     assert increase["A5"].value == "=revenue!A5"
-    assert increase["B5"].value == "=revenue!C5/nonhp_kwh!$B$4"
-    assert increase["C5"].value == "=revenue!D5/nonhp_kwh!$B$4"
+    assert increase["B5"].value == "=revenue!C5/payers!E9"
+    assert increase["C5"].value == "=revenue!D5/payers!E9"
     assert increase["D5"].value == "=B5+C5"
     assert increase["E5"].value == "=D5/rates!$C$7"
     assert increase["F5"].value == "=D5/rates!$C$25"
-    assert increase["G6"].value == "=revenue!G6/nonhp_kwh!$B$4"
+    assert increase["G6"].value == "=revenue!G6/payers!I10"
     assert increase["I6"].value == "=G6+H6"
     assert increase["K6"].value == "=I6/rates!$C$25"
     assert increase["B5"].value.startswith("=")
@@ -119,6 +138,7 @@ def test_rejects_inputs_that_cannot_support_the_increase() -> None:
             distribution=0.11,
             transmission=0.05,
             generation_monthly=generation,
+            rate_year_customers=100,
         )
     missing = dict(generation)
     missing.pop("2025-07")
@@ -130,6 +150,7 @@ def test_rejects_inputs_that_cannot_support_the_increase() -> None:
             distribution=0.11,
             transmission=0.05,
             generation_monthly=missing,
+            rate_year_customers=100,
         )
     with pytest.raises(ValueError, match="empty"):
         builder.build_workbook(
@@ -139,6 +160,7 @@ def test_rejects_inputs_that_cannot_support_the_increase() -> None:
             distribution=0.11,
             transmission=0.05,
             generation_monthly=generation,
+            rate_year_customers=100,
         )
     with pytest.raises(ValueError, match="positive"):
         builder.build_workbook(
@@ -148,4 +170,15 @@ def test_rejects_inputs_that_cannot_support_the_increase() -> None:
             distribution=0.0,
             transmission=0.05,
             generation_monthly=generation,
+            rate_year_customers=100,
+        )
+    with pytest.raises(ValueError, match="nobody"):
+        builder.build_workbook(
+            floor,
+            ceiling,
+            buildings,
+            distribution=0.11,
+            transmission=0.05,
+            generation_monthly=generation,
+            rate_year_customers=40,
         )

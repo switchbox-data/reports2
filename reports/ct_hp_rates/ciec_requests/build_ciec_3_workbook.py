@@ -15,15 +15,21 @@ revenue
     the CIEC-1(a) dollars for that stock, pasted as values. Later installers
     are not included. T&D adds the two components.
 nonhp_kwh
-    One row per Eversource home without a heat pump. Weighted kWh is annual
-    kWh times the sample weight. The total is a sum.
+    One row per Eversource home without a heat pump. Annual kWh is CAIRO grid
+    consumption. Weight is the ResStock sample weight. Weighted kWh is the product.
+    The totals are sums, still on the ResStock weight.
+payers
+    For each revenue row, the heat pump customers who move to Rate HP and the
+    residential customers who remain. Customers who remain are the Rate Year
+    residential count minus the customers who move. Weighted kWh scales the
+    ResStock total by that count over the ResStock weight sum.
 rates
     Today's Rate 1 distribution, transmission, and twelve monthly generation
     charges. T&D and T&D-plus-generation are formulas. The increase sheet
     divides by them.
 increase
-    The auto-enrolled revenue reduction divided by total weighted kWh, and
-    that increase as a share of the Rate 1 charges.
+    The auto-enrolled revenue reduction divided by that bound's weighted kWh
+    on payers, and that increase as a share of the Rate 1 charges.
 """
 
 from __future__ import annotations
@@ -59,6 +65,7 @@ FMT_PCT = "0.00%"
 REVENUE_HEADER = 4
 REVENUE_FIRST = 5
 KWH_TOTAL_ROW = 4
+KWH_CUSTOMERS_ROW = 6
 KWH_HEADER = 7
 KWH_FIRST = 8
 RATES_DIST_ROW = 5
@@ -70,6 +77,11 @@ RATES_AVG_ROW = 23
 RATES_FULL_ROW = 25
 INCREASE_HEADER = 4
 INCREASE_FIRST = 5
+PAYERS_RATE_YEAR_ROW = 4
+PAYERS_RAW_CUSTOMERS_ROW = 5
+PAYERS_RAW_KWH_ROW = 6
+PAYERS_HEADER = 8
+PAYERS_FIRST = 9
 
 
 @dataclass(frozen=True)
@@ -167,6 +179,9 @@ def _buildings(buildings: pl.DataFrame) -> pl.DataFrame:
     total = float((out["annual_kwh"] * out["weight"]).sum())
     if total <= 0:
         raise ValueError(f"weighted kWh must be positive, got {total}")
+    customers = float(out["weight"].sum())
+    if customers <= 0:
+        raise ValueError(f"weight must be positive, got {customers}")
     return out
 
 
@@ -202,9 +217,19 @@ def _write_readme(wb: Workbook) -> None:
         ("nonhp_kwh", True),
         (
             "One row per Eversource home without a heat pump in the ResStock baseline. Annual kWh is CAIRO "
-            "grid consumption. Weighted kWh multiplies annual kWh by the sample weight. The total is the sum "
-            "of that column, and the per-kWh increase divides by it. Homes on Rate 5 and Rate 7 are included "
-            "with Rate 1. Customers on Rate HP are not on this sheet.",
+            "grid consumption. Weight is the ResStock sample weight, before the Rate Year scale. Weighted kWh "
+            "multiplies annual kWh by that weight. Homes on Rate 5 and Rate 7 are included with Rate 1. "
+            "Customers on Rate HP are not on this sheet. The per-kWh increase divides by the scaled total on payers.",
+            False,
+        ),
+        ("", False),
+        ("payers", True),
+        (
+            "Heat pump customers who move to Rate HP, and the residential customers who remain and pay the "
+            "increase. The Rate Year count is an input, the average bills rendered for Rates 1, 5, and 7. "
+            "Customers who remain are that count minus the customers who move. The scale is the customers who "
+            "remain divided by the ResStock weight sum. Weighted kWh is the ResStock weighted kWh times that scale. "
+            "Floor and ceiling each have their own scale, because a different number of customers move.",
             False,
         ),
         ("", False),
@@ -219,9 +244,9 @@ def _write_readme(wb: Workbook) -> None:
         ("", False),
         ("increase", True),
         (
-            "Each row divides that bound's revenue reduction by total weighted kWh. Distribution and transmission "
-            "are separate. T&D adds them. % of T&D divides the combined increase by the T&D rate. "
-            "% of T&D and generation divides it by T&D plus average generation.",
+            "Each row divides that bound's revenue reduction by that bound's weighted kWh on payers. "
+            "Distribution and transmission are separate. T&D adds them. % of T&D divides the combined increase "
+            "by the T&D rate. % of T&D and generation divides it by T&D plus average generation.",
             False,
         ),
     ]
@@ -232,8 +257,8 @@ def _write_readme(wb: Workbook) -> None:
             cell.font = TITLE_FONT if row == 1 else HEADER_FONT
     ws.column_dimensions["A"].width = 120
     ws.row_dimensions[1].height = 22
-    for row in (8, 11, 14, 17):
-        ws.row_dimensions[row].height = 48
+    for row in (8, 11, 14, 17, 20):
+        ws.row_dimensions[row].height = 64
 
 
 def _write_revenue(wb: Workbook, floor: Sequence[RevenueRow], ceiling: Sequence[RevenueRow]) -> None:
@@ -286,8 +311,9 @@ def _write_kwh(wb: Workbook, buildings: pl.DataFrame) -> None:
         ws,
         2,
         "Eversource homes without a heat pump in the ResStock baseline. Annual kWh is CAIRO grid consumption, "
-        "the same billing basis as the heat pump bill in CIEC-1(a). Weighted kWh is annual kWh times the sample "
-        "weight. The per-kWh increase divides by the total. Homes on Rate 5 and Rate 7 are included with Rate 1.",
+        "the same billing basis as the heat pump bill in CIEC-1(a). Weight is the ResStock sample weight. "
+        "Weighted kWh is annual kWh times that weight. The payers sheet scales this total. Homes on Rate 5 and "
+        "Rate 7 are included with Rate 1.",
         4,
         height=48,
     )
@@ -296,8 +322,8 @@ def _write_kwh(wb: Workbook, buildings: pl.DataFrame) -> None:
     _put(ws, KWH_TOTAL_ROW, 2, f"=SUM(D{KWH_FIRST}:D{last})", fmt=FMT_KWH, bold=True)
     _put(ws, 5, 1, "Buildings", bold=True)
     _put(ws, 5, 2, f"=COUNTA(A{KWH_FIRST}:A{last})", fmt=FMT_COUNT, bold=True)
-    _put(ws, 6, 1, "Customers", bold=True)
-    _put(ws, 6, 2, f"=SUM(B{KWH_FIRST}:B{last})", fmt=FMT_WEIGHT, bold=True)
+    _put(ws, KWH_CUSTOMERS_ROW, 1, "ResStock customers", bold=True)
+    _put(ws, KWH_CUSTOMERS_ROW, 2, f"=SUM(B{KWH_FIRST}:B{last})", fmt=FMT_WEIGHT, bold=True)
     _headers(ws, KWH_HEADER, ["bldg_id", "weight", "annual kWh", "weighted kWh"])
     for i, record in enumerate(buildings.iter_rows(named=True)):
         row = KWH_FIRST + i
@@ -379,13 +405,77 @@ def _write_rates(
     ws.column_dimensions["E"].width = 48
 
 
+def _check_rate_year(rate_year_customers: float, floor: Sequence[RevenueRow], ceiling: Sequence[RevenueRow]) -> None:
+    if rate_year_customers <= 0:
+        raise ValueError(f"Rate Year customers must be positive, got {rate_year_customers}")
+    for left, right in zip(floor, ceiling, strict=True):
+        if left.customers >= rate_year_customers or right.customers >= rate_year_customers:
+            raise ValueError(
+                f"enrolled customers leave nobody to pay: Rate Year {rate_year_customers}, "
+                f"floor {left.customers}, ceiling {right.customers}"
+            )
+
+
+def _write_payers(wb: Workbook, n_years: int, rate_year_customers: float) -> None:
+    ws = wb.create_sheet("payers")
+    _heading(ws, 1, "Customers who move and customers who pay")
+    _note(
+        ws,
+        2,
+        "Heat pump customers who move from Rate 1 to Rate HP, and the residential customers who remain. "
+        "The Rate Year count is the average bills rendered for Rates 1, 5, and 7. Customers who remain are "
+        "that count minus the customers who move. The scale divides the customers who remain by the ResStock "
+        "weight sum on nonhp_kwh. Weighted kWh multiplies the ResStock weighted kWh by that scale. The increase "
+        "sheet divides each bound's revenue reduction by that bound's weighted kWh.",
+        9,
+        height=64,
+    )
+    _put(ws, PAYERS_RATE_YEAR_ROW, 1, "Rate Year residential customers", bold=True)
+    _put(ws, PAYERS_RATE_YEAR_ROW, 2, rate_year_customers, input_=True, fmt=FMT_COUNT, bold=True)
+    _put(ws, PAYERS_RAW_CUSTOMERS_ROW, 1, "ResStock non-HP customers", bold=True)
+    _put(ws, PAYERS_RAW_CUSTOMERS_ROW, 2, f"=nonhp_kwh!B{KWH_CUSTOMERS_ROW}", fmt=FMT_WEIGHT, bold=True)
+    _put(ws, PAYERS_RAW_KWH_ROW, 1, "ResStock non-HP kWh", bold=True)
+    _put(ws, PAYERS_RAW_KWH_ROW, 2, f"=nonhp_kwh!B{KWH_TOTAL_ROW}", fmt=FMT_KWH, bold=True)
+    _headers(
+        ws,
+        PAYERS_HEADER,
+        [
+            "Year",
+            "Floor HP customers",
+            "Floor non-HP customers",
+            "Floor scale",
+            "Floor weighted kWh",
+            "Ceiling HP customers",
+            "Ceiling non-HP customers",
+            "Ceiling scale",
+            "Ceiling weighted kWh",
+        ],
+    )
+    for i in range(n_years):
+        row = PAYERS_FIRST + i
+        src = REVENUE_FIRST + i
+        _put(ws, row, 1, f"=revenue!A{src}")
+        _put(ws, row, 2, f"=revenue!B{src}", fmt=FMT_COUNT)
+        _put(ws, row, 3, f"=$B${PAYERS_RATE_YEAR_ROW}-B{row}", fmt=FMT_COUNT)
+        _put(ws, row, 4, f"=C{row}/$B${PAYERS_RAW_CUSTOMERS_ROW}", fmt=FMT_WEIGHT)
+        _put(ws, row, 5, f"=$B${PAYERS_RAW_KWH_ROW}*D{row}", fmt=FMT_KWH)
+        _put(ws, row, 6, f"=revenue!F{src}", fmt=FMT_COUNT)
+        _put(ws, row, 7, f"=$B${PAYERS_RATE_YEAR_ROW}-F{row}", fmt=FMT_COUNT)
+        _put(ws, row, 8, f"=G{row}/$B${PAYERS_RAW_CUSTOMERS_ROW}", fmt=FMT_WEIGHT)
+        _put(ws, row, 9, f"=$B${PAYERS_RAW_KWH_ROW}*H{row}", fmt=FMT_KWH)
+    ws.freeze_panes = "B9"
+    ws.column_dimensions["A"].width = 36
+    for col in range(2, 10):
+        ws.column_dimensions[get_column_letter(col)].width = 26
+
+
 def _write_increase(wb: Workbook, n_years: int) -> None:
     ws = wb.create_sheet("increase")
     _heading(ws, 1, "Rate 1 charge increase")
     _note(
         ws,
         2,
-        "Each increase is that bound's auto-enrolled revenue reduction divided by total weighted kWh on nonhp_kwh. "
+        "Each increase is that bound's auto-enrolled revenue reduction divided by that bound's weighted kWh on payers. "
         "Distribution and transmission are separate, and T&D adds them. % of T&D divides the combined "
         "increase by the T&D rate. % of T&D and generation divides it by T&D plus average generation.",
         11,
@@ -411,13 +501,14 @@ def _write_increase(wb: Workbook, n_years: int) -> None:
         row = INCREASE_FIRST + i
         src = REVENUE_FIRST + i
         _put(ws, row, 1, f"=revenue!A{src}")
-        _put(ws, row, 2, f"=revenue!C{src}/nonhp_kwh!$B${KWH_TOTAL_ROW}", fmt=FMT_RATE)
-        _put(ws, row, 3, f"=revenue!D{src}/nonhp_kwh!$B${KWH_TOTAL_ROW}", fmt=FMT_RATE)
+        payers = PAYERS_FIRST + i
+        _put(ws, row, 2, f"=revenue!C{src}/payers!E{payers}", fmt=FMT_RATE)
+        _put(ws, row, 3, f"=revenue!D{src}/payers!E{payers}", fmt=FMT_RATE)
         _put(ws, row, 4, f"=B{row}+C{row}", fmt=FMT_RATE)
         _put(ws, row, 5, f"=D{row}/rates!$C${RATES_TD_ROW}", fmt=FMT_PCT)
         _put(ws, row, 6, f"=D{row}/rates!$C${RATES_FULL_ROW}", fmt=FMT_PCT)
-        _put(ws, row, 7, f"=revenue!G{src}/nonhp_kwh!$B${KWH_TOTAL_ROW}", fmt=FMT_RATE)
-        _put(ws, row, 8, f"=revenue!H{src}/nonhp_kwh!$B${KWH_TOTAL_ROW}", fmt=FMT_RATE)
+        _put(ws, row, 7, f"=revenue!G{src}/payers!I{payers}", fmt=FMT_RATE)
+        _put(ws, row, 8, f"=revenue!H{src}/payers!I{payers}", fmt=FMT_RATE)
         _put(ws, row, 9, f"=G{row}+H{row}", fmt=FMT_RATE)
         _put(ws, row, 10, f"=I{row}/rates!$C${RATES_TD_ROW}", fmt=FMT_PCT)
         _put(ws, row, 11, f"=I{row}/rates!$C${RATES_FULL_ROW}", fmt=FMT_PCT)
@@ -435,15 +526,18 @@ def build_workbook(
     distribution: float,
     transmission: float,
     generation_monthly: Mapping[str, float],
+    rate_year_customers: float,
 ) -> Workbook:
     """Assemble the CIEC-3(c) workpaper. Inputs are values; the results are formulas."""
     _check_revenue(floor, ceiling)
+    _check_rate_year(rate_year_customers, floor, ceiling)
     generation = _check_rates(distribution, transmission, generation_monthly)
     rows = _buildings(buildings)
     wb = Workbook()
     _write_readme(wb)
     _write_revenue(wb, floor, ceiling)
     _write_kwh(wb, rows)
+    _write_payers(wb, len(floor), rate_year_customers)
     _write_rates(wb, distribution, transmission, generation)
     _write_increase(wb, len(floor))
     return wb

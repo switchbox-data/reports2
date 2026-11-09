@@ -168,6 +168,8 @@ def test_autoenrolled_increases_are_the_charge_applied_to_each_home() -> None:
     assert increases[-1]["per_kwh"] == pytest.approx(40 / 4_000)
     with pytest.raises(ValueError, match="kwh must be positive"):
         ciec.autoenrolled_increases(10, 25, 1.2, 0.4, 0.0)
+    with pytest.raises(ValueError, match="enrollment rows"):
+        ciec.autoenrolled_increases(10, 25, 1.2, 0.4, [1_000.0, 2_000.0])
 
     buildings = pl.DataFrame({"bldg_id": [1, 2], "weight": [1.0, 1.0], "annual_kwh": [1000.0, 3000.0]})
     from_rows = ciec.bill_table_from_increases(increases, buildings)
@@ -190,3 +192,42 @@ def test_autoenrolled_bill_table_applies_the_existing_decrease_to_each_home() ->
     assert "| Ceiling | 25 | \\$20.00 | \\$10.00 | \\$10.00 | \\$30.00 |" in table
     with pytest.raises(ValueError, match="kwh must be positive"):
         ciec.autoenrolled_bill_table(10, 25, 1.2, 0.4, pl.DataFrame({"weight": [1.0], "annual_kwh": [0.0]}))
+
+
+def test_scaled_nonhp_sales_uses_each_rows_customers_who_remain() -> None:
+    import polars as pl
+
+    sales = ciec.scaled_nonhp_sales(800.0, 4_000.0, 1_200, 100)
+    assert sales["customers"] == 1_100
+    assert sales["scale"] == pytest.approx(1_100 / 800)
+    assert sales["kwh"] == pytest.approx(4_000 * 1_100 / 800)
+    with pytest.raises(ValueError, match="no customers"):
+        ciec.scaled_nonhp_sales(800.0, 4_000.0, 100, 100)
+
+    # Floor enrolls 10 and ceiling enrolls 25. Paying customers fall as enrollment rises,
+    # so each row divides by a smaller kWh total.
+    enrolled = [10, 13, 16, 19, 22, 25]
+    paying = [1_200 - customers for customers in enrolled]
+    kwh = [4_000.0 * customers / 800.0 for customers in paying]
+    increases = ciec.autoenrolled_increases(10, 25, 1.2, 0.4, kwh, nonhp_customers=paying)
+    assert increases[0]["distribution_per_kwh"] == pytest.approx(12 / kwh[0])
+    assert increases[-1]["per_kwh"] == pytest.approx(40 / kwh[-1])
+    assert increases[2]["nonhp_customers"] == 1_184
+    assert increases[2]["nonhp_kwh"] == pytest.approx(kwh[2])
+
+    table = ciec.autoenrolled_increase_table(
+        10, 25, 1.2, 0.4, kwh, td_rate=0.10, full_rate=0.20, nonhp_customers=paying
+    )
+    assert "| Share of the range | Non-HP customers | Distribution (¢/kWh) |" in table
+    assert "| Floor | 1,190 |" in table
+
+    # The bill mean uses unscaled weights. It still equals revenue / paying customers,
+    # because the charge was spread over kWh scaled by the same factor.
+    buildings = pl.DataFrame({"weight": [1.0, 3.0], "annual_kwh": [1_000.0, 1_000.0]})
+    raw_customers = 4.0
+    raw_kwh = 4_000.0
+    one = ciec.scaled_nonhp_sales(raw_customers, raw_kwh, 1_200, 100)
+    row = ciec.autoenrolled_increases(100, 100, 1.2, 0.4, one["kwh"], nonhp_customers=one["customers"])[0]
+    stats = ciec.annual_bill_increase_stats(buildings, row["per_kwh"])
+    revenue = row["distribution"] + row["transmission"]
+    assert stats["mean"] == pytest.approx(revenue / one["customers"])

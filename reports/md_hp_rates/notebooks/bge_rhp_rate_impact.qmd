@@ -21,31 +21,13 @@ format:
     page-layout: full
 ---
 
-## Introduction
+If BGE's existing heat pump homes moved from Schedule R to Schedule R-HP, this is what it
+would add to the rates and bills of everyone still on Schedule R.
 
-If BGE's existing heat pump homes moved from Schedule R to Schedule R-HP, BGE would collect
-less distribution, transmission and EmPOWER revenue from them. This notebook estimates that
-shortfall and what it would add to the rates and bills of everyone still on Schedule R.
+## Calculation
 
-This is a simplified, static, one-year estimate on the test-year rates. It follows the
-Connecticut method (Lee's CIEC-3 and CIEC-6 responses), with three differences for Maryland:
-
-- **Only existing heat pump homes create a shortfall.** Today's Schedule R rates recover the
-  residential class's embedded costs from today's customers, fossil-heated homes included. A
-  home that adds a heat pump and moves to R-HP keeps paying at least its old bill, plus the
-  marginal cost of its new load, which R-HP's rates are calibrated to cover on average. It
-  still pays the share of embedded costs it was assigned, so it shifts nothing onto others.
-  An existing heat pump home is different: it already pays Schedule R's full rate, so moving
-  it to R-HP cuts revenue BGE collects today. New adopters are set to zero.
-- **R-HP is flat and year-round.** It replaces three volumetric charges in every month:
-  distribution, Rider 1 transmission and Rider 8 EmPOWER. Connecticut's Rate HP changes only
-  winter distribution and transmission.
-- **Electric resistance homes stay on Schedule R** and are in the group that pays.
-
-The range of results comes from **how many homes enroll**. The counts come from
-[`bge_hp_customer_estimate.qmd`](bge_hp_customer_estimate.qmd), so that notebook is rendered
-first. The **load profile** of an enrolled home is a second, parallel choice, so we show one
-table for each of two profiles.
+Weights, billed kWh, flat rates, load profiles and enrollment counts. Render
+[`bge_hp_customer_estimate.qmd`](bge_hp_customer_estimate.qmd) first.
 
 ```{python}
 #| label: setup
@@ -56,8 +38,7 @@ from pathlib import Path
 
 import polars as pl
 import yaml
-from great_tables import GT, html, md, style
-from great_tables import loc as gt_loc
+from great_tables import GT, html, md
 from IPython.display import Markdown
 
 from lib.great_tables import get_switchbox_gt_tab_options
@@ -114,15 +95,9 @@ def num(x: float) -> str:
     return f"{round(x):,}"
 ```
 
-## Customers and total kWh from CAIRO
-
-We take customer weights and billed kWh from CAIRO batch `{python} BATCH`, the run behind
-the direct testimony. CAIRO rescales ResStock's sample weights so they sum to BGE's test-year
-residential customer count from Karas Exhibit E-3. Raw ResStock metadata weights don't
-have that scaling, so we read the weights from the master bills.
-
 ```{python}
 #| label: weights
+#| output: false
 
 weights = (
     load_master_bills(STATE, BATCH, SEG_R_PRECALC)
@@ -142,13 +117,11 @@ if abs(customers - _rr["test_year_customer_count"]) > 1:
 if weights["bldg_id"].n_unique() != weights.height:
     raise RuntimeError("Duplicate buildings in master bills")
 report_vars["customers"] = customers
-weights.group_by("heating_type", "has_hp").agg(pl.len().alias("buildings"), pl.col("weight").sum().alias("customers"))
 ```
-
-The kWh that still pays is the weighted sum of each building's annual billed grid kWh.
 
 ```{python}
 #| label: total-kwh
+#| output: false
 
 annual_kwh_r = load_billing_kwh_annual(STATE, UTILITY, BATCH, SEG_R_PRECALC).collect()
 _joined = annual_kwh_r.join(weights, on="bldg_id", how="inner")
@@ -159,32 +132,14 @@ kwh_total = float((_joined["annual_kwh_grid"] * _joined["weight"]).sum())
 # Karas Exhibit E-3: Schedule R + RL test-year kWh, from the rate-case budget config.
 kwh_test_year = float(yaml.safe_load(fetch_rdp_file(PATH_RR_TEST_YEAR, ref=RDP_REF))["test_year_residential_kwh"])
 if _rr["resstock_kwh_scale_factor"] != 1:
-    raise RuntimeError("This batch scales ResStock kWh; revisit the kWh caveat below")
+    raise RuntimeError("This batch scales ResStock kWh; the uniform-gap qualifier no longer holds")
 kwh_ratio = kwh_test_year / kwh_total
 report_vars.update(kwh_total=kwh_total, kwh_test_year=kwh_test_year, kwh_ratio=kwh_ratio)
-print(f"CAIRO billed residential kWh: {kwh_total / 1e9:,.2f} TWh")
-print(f"BGE test-year residential kWh (Karas E-3): {kwh_test_year / 1e9:,.2f} TWh")
-print(f"Ratio (BGE / CAIRO): {kwh_ratio:.3f}")
 ```
-
-The batch's revenue-requirement config sets `resstock_kwh_scale_factor` to 1, so CAIRO
-bills ResStock's unscaled kWh: `{python} f"{kwh_total / 1e9:,.2f}"` TWh, against BGE's
-test-year `{python} f"{kwh_test_year / 1e9:,.2f}"` TWh. The per-kWh charge below is not
-affected by a uniform gap, because the shortfall and the kWh that pays come from the same
-run. The dollar shortfall and the mean bill are at ResStock's usage, so they are high by that
-gap; multiply them by `{python} f"{kwh_ratio:.3f}"` to put them on BGE's sales.
-
-## Rates
-
-Schedule R's volumetric rates change during BGE's April 2025 to March 2026 rate year, so we
-flatten each one to an annual flat rate: the simple average of its 12 monthly rates.
-Distribution is the core delivery rate plus the environmental surcharge, which is how the R-HP
-distribution rate is defined. R-HP replaces these three charges with flat rates. The customer
-charge, universal service charge and generation stay on Schedule R, so they drop out of the
-difference.
 
 ```{python}
 #| label: rates
+#| output: false
 
 _rates_r = yaml.safe_load(fetch_rdp_file(PATH_RATES_R, ref=RDP_REF))
 _charges_r = {**_rates_r["add_to_drr"]["charges"], **_rates_r["already_in_drr"]["charges"]}
@@ -222,34 +177,7 @@ monthly_r_total = {
 discount = {name: schedule_r_flat[name] - rhp_flat[name] for name in COMPONENTS}
 discount["Total"] = sum(discount.values())
 report_vars.update(schedule_r_flat=schedule_r_flat, rhp_flat=rhp_flat, discount=discount)
-
-pl.DataFrame(
-    {
-        "component": [*COMPONENTS, "Total"],
-        "schedule_r_flat": [*schedule_r_flat.values(), sum(schedule_r_flat.values())],
-        "rhp_flat": [*rhp_flat.values(), sum(rhp_flat.values())],
-        "discount": list(discount.values()),
-    }
-)
 ```
-
-On an annual flat basis, Schedule R charges `{python} cents(sum(schedule_r_flat.values()), 2)`
-per kWh for the three charges combined and R-HP charges
-`{python} cents(sum(rhp_flat.values()), 1)`, so R-HP charges
-`{python} cents(discount["Total"], 2)` less per kWh.
-
-## Two load profiles
-
-Each profile is the weighted-average annual grid kWh of a group of BGE buildings, from CAIRO's
-billed kWh:
-
-- **Profile A, existing stock:** the buildings that already heat with a heat pump in the
-  ResStock baseline (upgrade 0), on their baseline load.
-- **Profile B, simulated average:** every BGE building on its upgrade 1 load, ResStock's
-  ENERGY STAR heat pump with electric backup applied to every building.
-
-With flat rates, a home's shortfall is its annual kWh times the per-kWh discount, by
-component.
 
 ```{python}
 #| label: segments
@@ -262,6 +190,7 @@ if segment_upgrade(STATE, BATCH, SEG_R_CALIBRATED) != 1:
 
 ```{python}
 #| label: profiles
+#| output: false
 
 
 def _profile(segment: str, group: pl.DataFrame) -> dict:
@@ -272,68 +201,437 @@ def _profile(segment: str, group: pl.DataFrame) -> dict:
     kwh_annual = float((annual["annual_kwh_grid"] * annual["weight"]).sum() / annual["weight"].sum())
     shortfall = {name: kwh_annual * discount[name] for name in COMPONENTS}
     shortfall["Total"] = sum(shortfall.values())
-    return {"buildings": group.height, "kwh": kwh_annual, "shortfall": shortfall}
+    return {"buildings": group.height, "homes": float(annual["weight"].sum()), "kwh": kwh_annual, "shortfall": shortfall}
 
 
 profiles = {
     "A": {
         "name": "Profile A, existing stock",
+        "population": "BGE buildings that already heat with a heat pump, on their baseline load (upgrade 0)",
         **_profile(SEG_R_PRECALC, weights.filter(pl.col("has_hp"))),
     },
     "B": {
         "name": "Profile B, simulated average",
+        "population": "Every BGE building, retrofitted to an ENERGY STAR heat pump with electric backup (upgrade 1)",
         **_profile(SEG_R_CALIBRATED, weights),
     },
 }
 for _key, _p in profiles.items():
     report_vars[f"profile_{_key}_buildings"] = _p["buildings"]
+    report_vars[f"profile_{_key}_homes"] = _p["homes"]
     report_vars[f"profile_{_key}_kwh"] = _p["kwh"]
     report_vars[f"profile_{_key}_shortfall"] = _p["shortfall"]
 
-pl.DataFrame(
+_PROFILE_SHORTFALL_COLS = [f"shortfall_{name.lower()}" for name in [*COMPONENTS, "Total"]]
+profiles_table = pl.DataFrame(
     [
         {
             "profile": _p["name"],
+            "population": _p["population"],
             "buildings": _p["buildings"],
+            "homes": _p["homes"],
             "annual_kwh": _p["kwh"],
-            **{f"shortfall_{name.lower()}": _p["shortfall"][name] for name in [*COMPONENTS, "Total"]},
+            **dict(zip(_PROFILE_SHORTFALL_COLS, (_p["shortfall"][name] for name in [*COMPONENTS, "Total"]))),
         }
         for _p in profiles.values()
     ]
 )
 ```
 
-A Profile A home uses `{python} num(profiles["A"]["kwh"])` kWh a year and would pay
-**`{python} dollar(profiles["A"]["shortfall"]["Total"], 2)`** less on R-HP. A Profile B home
-uses `{python} num(profiles["B"]["kwh"])` kWh and would pay
-**`{python} dollar(profiles["B"]["shortfall"]["Total"], 2)`** less.
-
-### Electric resistance homes
-
-Electric resistance homes stay on Schedule R, so they pay the added charge on every kWh. They
-use more electricity than the average home, so their bill impact is larger than the mean. We
-take their weighted-average annual kWh from the same CAIRO run.
-
 ```{python}
 #| label: er-kwh
+#| output: false
 
 _er = annual_kwh_r.join(weights.filter(pl.col("heating_type") == "electrical_resistance"), on="bldg_id", how="inner")
 er_homes = float(_er["weight"].sum())
 er_kwh = float((_er["annual_kwh_grid"] * _er["weight"]).sum() / er_homes)
 report_vars.update(er_homes=er_homes, er_kwh=er_kwh, er_buildings=_er.height)
-print(f"Electric resistance homes: {_er.height} buildings, {er_homes:,.0f} customers, {er_kwh:,.0f} kWh a year")
 ```
 
-An electric resistance home uses `{python} num(er_kwh)` kWh a year, against
-`{python} num(kwh_total / customers)` for the average BGE home.
+```{python}
+#| label: cross-check
+#| output: false
+
+
+def _delivery_bills(segment: str) -> pl.DataFrame:
+    return (
+        load_master_bills(STATE, BATCH, segment)
+        .filter(pl.col("month") == "Annual", pl.col("sb.electric_utility") == UTILITY)
+        .select("bldg_id", "elec_delivery_bill")
+        .collect()
+    )
+
+
+_cross = (
+    weights.filter(pl.col("has_hp"))
+    .join(_delivery_bills(SEG_R_PRECALC), on="bldg_id")
+    .join(_delivery_bills(SEG_RHP_PRECALC), on="bldg_id", suffix="_rhp")
+)
+cairo_shortfall = float(
+    ((_cross["elec_delivery_bill"] - _cross["elec_delivery_bill_rhp"]) * _cross["weight"]).sum() / _cross["weight"].sum()
+)
+flat_vs_cairo = profiles["A"]["shortfall"]["Total"] / cairo_shortfall - 1
+report_vars.update(cairo_shortfall_profile_A=cairo_shortfall, flat_vs_cairo=flat_vs_cairo)
+if abs(flat_vs_cairo) > 0.05:
+    raise RuntimeError("Flat-rate shortfall is more than 5% off CAIRO's R-HP run")
+```
+
+```{python}
+#| label: enrollment
+#| output: false
+
+_path_counts = PATH_CACHE / "bge_hp_customer_estimate_vars.pkl"
+if not _path_counts.exists():
+    raise RuntimeError(f"Missing {_path_counts}: render bge_hp_customer_estimate.qmd first")
+counts = pickle.loads(_path_counts.read_bytes())
+# The ResStock count must be on the same customer base as the weights C comes from.
+_cairo_hp_homes = weights.filter(pl.col("has_hp"))["weight"].sum()
+if abs(counts["stock_central"] / _cairo_hp_homes - 1) > 1e-6:
+    raise RuntimeError(
+        f"ResStock count {counts['stock_central']:,.0f} != CAIRO's weighted heat pump homes {_cairo_hp_homes:,.0f}"
+    )
+
+SOURCES = {
+    "floor": "[BGE EmPOWER reports, 2017 to mid-2026](https://pub.switch.box/bge_Docket97052026_2026) (latest, p. 6; full list below)",
+    "low": "[EIA RECS 2020 microdata](https://www.eia.gov/consumption/residential/data/2020/), 90% low end",
+    "central": "[NREL ResStock 2024.2](https://data.openei.org/s3_viewer?bucket=oedi-data-lake&prefix=nrel-pds-building-stock%2Fend-use-load-profiles-for-us-building-stock%2F2024%2Fresstock_amy2018_release_2%2F)",
+    "high": "[Brattle 2023](https://pub.switch.box/brattle_AssessmentElectrificationImpacts_2023), p. 50, with hybrids",
+}
+
+floor_homes = round(counts["hp_program_systems_cumulative"])
+central_homes = round(counts["stock_central"])
+enrollment = [
+    ("Program floor", floor_homes, SOURCES["floor"]),
+    ("Stock low (RECS 2020)", round(counts["stock_low"]), SOURCES["low"]),
+    ("Stock central (ResStock)", central_homes, SOURCES["central"]),
+    ("Stock high (Brattle)", round(counts["stock_high"]), SOURCES["high"]),
+]
+enrollment.sort(key=lambda row: row[1])
+```
+
+```{python}
+#| label: impact
+
+
+def impact(profile: dict, homes: int) -> dict:
+    kwh_paying = kwh_total - homes * profile["kwh"]
+    if kwh_paying <= 0:
+        raise RuntimeError(f"{homes:,} homes remove more kWh than the class has")
+    shortfall = {name: homes * profile["shortfall"][name] for name in [*COMPONENTS, "Total"]}
+    charge = {name: shortfall[name] / kwh_paying for name in [*COMPONENTS, "Total"]}
+    share = {name: charge[name] / schedule_r_flat[name] for name in COMPONENTS}
+    share["Total"] = charge["Total"] / sum(schedule_r_flat.values())
+    return {
+        "homes": homes,
+        "shortfall": shortfall,
+        "kwh_paying": kwh_paying,
+        "charge": charge,
+        "share": share,
+        "mean_bill": shortfall["Total"] / (customers - homes),
+        "er_bill": charge["Total"] * er_kwh,
+    }
+
+
+_SHORTFALL_COLS = [f"shortfall_{name.lower()}" for name in [*COMPONENTS, "Total"]]
+_CHARGE_COLS = [f"charge_{name.lower()}" for name in [*COMPONENTS, "Total"]]
+
+
+def _table_note() -> str:
+    return (
+        "Today's rate is Schedule R's distribution, transmission and EmPOWER charges "
+        f"combined, as an annual flat rate ({cents(sum(schedule_r_flat.values()), 2)}). "
+        "The average customer is every customer that doesn't enroll."
+    )
+
+
+def headline_table(profile: dict) -> GT:
+    rows = []
+    for label, homes, _source in enrollment:
+        row = impact(profile, homes)
+        rows.append(
+            {
+                "estimate": label,
+                "homes": homes,
+                "shortfall": row["shortfall"]["Total"],
+                "charge": row["charge"]["Total"],
+                "charge_share": row["share"]["Total"],
+                "mean_bill": row["mean_bill"],
+                "er_bill": row["er_bill"],
+            }
+        )
+    return (
+        GT(pl.DataFrame(rows), rowname_col="estimate")
+        .tab_header(title="Profile A: existing heat pump homes move to R-HP")
+        .tab_stubhead(label="Enrollment")
+        .cols_label(
+            homes="Homes enrolled",
+            shortfall=html("Revenue shortfall<br>per year"),
+            charge=html("Added charge<br>per kWh"),
+            charge_share=html("Share of<br>today's rate"),
+            mean_bill=html("Average customer<br>still on Schedule R"),
+            er_bill=html("Electric resistance<br>home"),
+        )
+        .fmt_number(columns="homes", decimals=0)
+        .fmt_currency(columns="shortfall", scale_by=1e-6, decimals=1, pattern="{x}M")
+        .fmt_number(columns="charge", scale_by=100, decimals=3, pattern="{x}¢")
+        .fmt_percent(columns="charge_share", decimals=1)
+        .fmt_currency(columns=["mean_bill", "er_bill"], decimals=2)
+        .tab_source_note(md(_table_note()))
+        .tab_options(**get_switchbox_gt_tab_options())
+    )
+
+
+def impact_table(profile: dict, title: str) -> GT:
+    rows = []
+    for label, homes, source in enrollment:
+        row = impact(profile, homes)
+        rows.append(
+            {
+                "estimate": label,
+                "homes": homes,
+                "source": source,
+                **{col: row["shortfall"][name] for col, name in zip(_SHORTFALL_COLS, [*COMPONENTS, "Total"])},
+                "kwh_paying": row["kwh_paying"],
+                **{col: row["charge"][name] for col, name in zip(_CHARGE_COLS, [*COMPONENTS, "Total"])},
+                "charge_share": row["share"]["Total"],
+                "mean_bill": row["mean_bill"],
+                "er_bill": row["er_bill"],
+            }
+        )
+    return (
+        GT(pl.DataFrame(rows), rowname_col="estimate")
+        .tab_header(title=title)
+        .tab_stubhead(label="Enrollment estimate")
+        .tab_spanner(label="Revenue BGE no longer collects, per year", columns=_SHORTFALL_COLS)
+        .tab_spanner(
+            label="Added charge for customers still on Schedule R, per kWh",
+            columns=["kwh_paying", *_CHARGE_COLS, "charge_share"],
+        )
+        .tab_spanner(
+            label=html("Annual bill increase for<br>customers still on Schedule R"),
+            columns=["mean_bill", "er_bill"],
+        )
+        .cols_label(
+            homes="Homes enrolled",
+            source="Source",
+            shortfall_distribution="Distribution",
+            shortfall_transmission="Transmission",
+            shortfall_empower="EmPOWER",
+            shortfall_total="Total",
+            kwh_paying=html("Spread over<br>(TWh)"),
+            charge_distribution="Distribution",
+            charge_transmission="Transmission",
+            charge_empower="EmPOWER",
+            charge_total="Total",
+            charge_share=html("Total as % of<br>today's rate"),
+            mean_bill=html("Average<br>customer"),
+            er_bill=html("Electric<br>resistance home"),
+        )
+        .fmt_number(columns="homes", decimals=0)
+        .fmt_markdown(columns="source")
+        .fmt_currency(columns=_SHORTFALL_COLS, scale_by=1e-6, decimals=1, pattern="{x}M")
+        .fmt_number(columns="kwh_paying", scale_by=1e-9, decimals=2)
+        .fmt_number(columns=_CHARGE_COLS, scale_by=100, decimals=3, pattern="{x}¢")
+        .fmt_percent(columns="charge_share", decimals=1)
+        .fmt_currency(columns=["mean_bill", "er_bill"], decimals=2)
+        .tab_source_note(md(_table_note()))
+        .tab_options(**get_switchbox_gt_tab_options())
+    )
+
+
+def rates_table(profile: dict, title: str) -> GT:
+    """Today's flat Schedule R rate, R-HP, and Schedule R after each enrollment count, in $/kWh."""
+    today_total = sum(schedule_r_flat.values())
+    data: dict[str, list] = {
+        "component": [*COMPONENTS, "Total"],
+        "schedule_r_today": [*schedule_r_flat.values(), today_total],
+        "rhp": [*rhp_flat.values(), sum(rhp_flat.values())],
+    }
+    after_labels = {}
+    for i, (label, homes, _source) in enumerate(enrollment):
+        charge = impact(profile, homes)["charge"]
+        data[f"after_{i}"] = [schedule_r_flat[name] + charge[name] for name in COMPONENTS] + [
+            today_total + charge["Total"]
+        ]
+        after_labels[f"after_{i}"] = html(f"{label}<br>{homes:,} homes")
+    after_cols = list(after_labels)
+    return (
+        GT(pl.DataFrame(data), rowname_col="component")
+        .tab_header(title=title)
+        .tab_spanner(label="Schedule R after enrollment, by enrollment estimate", columns=after_cols)
+        .cols_label(
+            schedule_r_today=html("Schedule R today<br>(annual flat)"),
+            rhp=html("Schedule R-HP<br>(as filed)"),
+            **after_labels,
+        )
+        .fmt_number(columns=["schedule_r_today", "rhp", *after_cols], scale_by=100, decimals=3, pattern="{x}¢")
+        .tab_source_note(
+            md(
+                "Cents per kWh. Schedule R today is the average of its 12 monthly rates, April 2025 to "
+                "March 2026. Each enrollment column adds the charge that recovers the shortfall from "
+                "everyone still on Schedule R."
+            )
+        )
+        .tab_options(**get_switchbox_gt_tab_options())
+    )
+
+
+impacts = {key: {label: impact(p, homes) for label, homes, _ in enrollment} for key, p in profiles.items()}
+for _key, _rows in impacts.items():
+    for _label, _row in _rows.items():
+        _slug = _label.split(" (")[0].lower().replace(" ", "_")
+        report_vars[f"profile_{_key}_{_slug}"] = _row
+```
+
+## Present this
+
+**Profile A** uses the `{python} num(profiles["A"]["buildings"])` BGE buildings in ResStock that
+already heat with a heat pump, on their baseline load (upgrade 0). They represent
+`{python} num(profiles["A"]["homes"])` homes, the stock central count. The average one uses
+`{python} num(profiles["A"]["kwh"])` kWh a year, so R-HP would cut its bill by
+`{python} dollar(profiles["A"]["shortfall"]["Total"], 2)`.
+
+```{python}
+#| label: tbl-headline-profile-a
+
+display_gt(headline_table(profiles["A"]))
+```
+
+```{python}
+#| label: tbl-rates-profile-a
+
+display_gt(rates_table(profiles["A"], "Profile A: delivery rates per kWh, today and after enrollment"))
+```
+
+- New adopters add nothing. A home that adds a heat pump and moves to R-HP keeps paying at
+  least its old bill, plus the marginal cost of its new load, which R-HP's rates cover on
+  average.
+- Dollar figures are at ResStock's usage. Multiply them by `{python} f"{kwh_ratio:.3f}"` for
+  BGE's sales. The per-kWh charge is unchanged if that gap is uniform.
+- The flat rate is `{python} pct(abs(flat_vs_cairo))`
+  `{python} "below" if flat_vs_cairo < 0 else "above"` CAIRO's month-by-month run, because
+  winter rates are higher and heat pump load is winter-heavy.
+
+**Profile B** is a sensitivity case. It uses every BGE building in ResStock
+(`{python} num(profiles["B"]["buildings"])` buildings, all `{python} num(profiles["B"]["homes"])`
+customers), each retrofitted to an ENERGY STAR heat pump with electric backup (upgrade 1). So it
+includes homes that heat with gas, oil, propane or resistance today. Its average home uses
+`{python} num(profiles["B"]["kwh"])` kWh a year and would pay
+`{python} dollar(profiles["B"]["shortfall"]["Total"], 2)` less, applied to the same enrollment
+counts. Its tables are in the workpaper.
+
+ResStock is the central count because CAIRO bills that stock. RECS is the survey
+cross-check and is lower.
+
+## Workpaper
+
+For each enrollment count $N$ and a profile with annual kWh $k$ and per-home shortfall $S$:
+
+- **Revenue shortfall:** $N \times S$, by component.
+- **kWh still paying:** $K - N \times k$, where $K$ is CAIRO's total residential kWh. The same
+  profile's $k$ is used for the shortfall and the kWh removed, so both are on one basis.
+- **Per-kWh charge:** $N \times S / (K - N \times k)$, by component, and as a share of today's
+  Schedule R charge (its annual flat rate).
+- **Average annual bill increase per customer still on Schedule R** (every customer that
+  doesn't enroll, including heat pump homes that stay): $N \times S / (C - N)$, where $C$ is
+  the customer count.
+- **Annual bill increase for an electric resistance home:** the per-kWh charge times its
+  annual kWh, `{python} num(er_kwh)`.
+
+### Profile A, existing stock
+
+```{python}
+#| label: tbl-impact-profile-a
+
+display_gt(impact_table(profiles["A"], "Profile A: existing heat pump homes move to R-HP"))
+```
+
+### Profile B, simulated average
+
+```{python}
+#| label: tbl-impact-profile-b
+
+display_gt(impact_table(profiles["B"], "Profile B: enrolled homes use the all-buildings upgrade 1 average load"))
+```
+
+```{python}
+#| label: tbl-rates-profile-b
+
+display_gt(rates_table(profiles["B"], "Profile B: delivery rates per kWh, today and after enrollment"))
+```
+
+### Customers and kWh
+
+CAIRO batch `{python} BATCH`. Weights are scaled to BGE's test-year residential customer count.
+
+```{python}
+#| label: show-kwh
+
+print(f"CAIRO customers: {customers:,.0f}")
+print(f"CAIRO billed residential kWh: {kwh_total / 1e9:,.2f} TWh")
+print(f"BGE test-year residential kWh (Karas E-3): {kwh_test_year / 1e9:,.2f} TWh")
+print(f"Ratio (BGE / CAIRO): {kwh_ratio:.3f}")
+```
+
+### Rates
+
+Schedule R's monthly rates, flattened to the average of the twelve monthly rates. Distribution
+is the core delivery rate plus the environmental surcharge. The customer charge, universal
+service charge and generation stay on Schedule R. The rates tables above show each component
+today, under R-HP, and after each enrollment count.
+
+### Load profiles
+
+Both profiles come from BGE's ResStock buildings (those CAIRO assigns to BGE), weighted to the
+test-year customer count. The kWh is CAIRO's billed annual grid kWh.
+
+- **Profile A, existing stock:** the buildings whose baseline heating type is a heat pump
+  (`postprocess_group.has_hp`), on their baseline load (upgrade 0). The same buildings and
+  weights give the stock central count.
+- **Profile B, simulated average:** every BGE building, whatever it heats with today, on its
+  upgrade 1 load: an ENERGY STAR heat pump with electric backup.
+
+```{python}
+#| label: show-profiles
+
+display_gt(
+    GT(profiles_table, rowname_col="profile")
+    .tab_header(title="Load profiles and per-home shortfall")
+    .tab_stubhead(label="Profile")
+    .tab_spanner(label="Shortfall per enrolled home, per year", columns=_PROFILE_SHORTFALL_COLS)
+    .cols_label(
+        population="ResStock population",
+        buildings=html("ResStock<br>buildings"),
+        homes=html("Homes they<br>represent"),
+        annual_kwh=html("Annual kWh<br>per home"),
+        shortfall_distribution="Distribution",
+        shortfall_transmission="Transmission",
+        shortfall_empower="EmPOWER",
+        shortfall_total="Total",
+    )
+    .fmt_number(columns=["buildings", "homes", "annual_kwh"], decimals=0)
+    .fmt_currency(columns=_PROFILE_SHORTFALL_COLS, decimals=2)
+    .tab_options(**get_switchbox_gt_tab_options())
+)
+```
+
+### Electric resistance homes
+
+Electric resistance homes stay on Schedule R. The resistance-home bill column uses the
+weighted-average annual kWh of BGE's ResStock buildings whose baseline heating type is
+electric resistance (upgrade 0).
+
+```{python}
+#| label: show-er
+
+print(f"Electric resistance homes: {report_vars['er_buildings']} buildings, {er_homes:,.0f} customers, {er_kwh:,.0f} kWh a year")
+```
 
 ### Check against BGE's billed usage
 
-BGE can't supply a representative heat pump load. Its residential heating rate codes, RH and
-RLH, cover all electrically heated homes, mixing electric resistance and heat pumps, and a heat
-pump uses much less electricity than resistance heat for the same heat. So the profiles above
-come from ResStock. As a check on scale, we compare BGE's billed usage per heating customer,
-from its response to CCAN 1-4, with ResStock's electric resistance and heat pump homes combined.
+BGE's heating rate codes (RH and RLH) mix electric resistance and heat pumps, so the profiles
+come from ResStock. This compares BGE's billed kWh per heating-code customer with ResStock's
+electric resistance and heat pump homes combined.
 
 ```{python}
 #| label: bge-heating-kwh
@@ -372,62 +670,35 @@ report_vars.update(
     resstock_electric_heat_homes=resstock_electric_heat_homes,
     resstock_electric_heat_kwh=resstock_electric_heat_kwh,
 )
-pl.DataFrame(
-    {
-        "group": ["BGE RH + RLH (heating codes)", "ResStock electric resistance + heat pump", "BGE R + RL (other codes)"],
-        "customers": [bge_heating_customers, resstock_electric_heat_homes, None],
-        "annual_kwh_per_customer": [bge_heating_kwh, resstock_electric_heat_kwh, bge_nonheating_kwh],
-    }
-)
-```
-
-BGE's heating-code customers averaged `{python} num(bge_heating_kwh)` kWh a year over the rate
-year, against `{python} num(resstock_electric_heat_kwh)` for ResStock's electric resistance and
-heat pump homes, `{python} pct(resstock_electric_heat_kwh / bge_heating_kwh - 1, 0)` higher. Part
-of that is the class-wide gap between ResStock and BGE's sales (`{python} pct(1 / kwh_ratio - 1, 0)`,
-see above). ResStock also has more electrically heated homes
-(`{python} num(resstock_electric_heat_homes)`) than BGE has on heating codes
-(`{python} num(bge_heating_customers)`). Not every electrically heated home is on a heating
-code, so the two groups don't line up exactly. The check confirms the profiles are the right
-order of magnitude; the per-kWh charge is less sensitive to the level than the dollar figures.
-
-### Comparison with CAIRO's R-HP run
-
-CAIRO also billed every building on R-HP in `{python} SEG_RHP_PRECALC`, on Schedule R's
-month-by-month rates. For the existing heat pump homes, we compare the weighted mean difference
-in the volumetric delivery bill (`elec_delivery_bill`) between the Schedule R and R-HP runs
-with Profile A's flat-rate shortfall. The two differ only because flattening ignores which
-months a home's kWh fall in, so they should be close.
-
-```{python}
-#| label: cross-check
-
-
-def _delivery_bills(segment: str) -> pl.DataFrame:
-    return (
-        load_master_bills(STATE, BATCH, segment)
-        .filter(pl.col("month") == "Annual", pl.col("sb.electric_utility") == UTILITY)
-        .select("bldg_id", "elec_delivery_bill")
-        .collect()
+display_gt(
+    GT(
+        pl.DataFrame(
+            {
+                "group": [
+                    "BGE RH + RLH (heating codes)",
+                    "ResStock electric resistance + heat pump",
+                    "BGE R + RL (other codes)",
+                ],
+                "customers": [bge_heating_customers, resstock_electric_heat_homes, None],
+                "annual_kwh_per_customer": [bge_heating_kwh, resstock_electric_heat_kwh, bge_nonheating_kwh],
+            }
+        ),
+        rowname_col="group",
     )
-
-
-_cross = (
-    weights.filter(pl.col("has_hp"))
-    .join(_delivery_bills(SEG_R_PRECALC), on="bldg_id")
-    .join(_delivery_bills(SEG_RHP_PRECALC), on="bldg_id", suffix="_rhp")
+    .tab_header(title="Billed kWh per customer: BGE heating codes vs. ResStock")
+    .cols_label(customers="Customers", annual_kwh_per_customer=html("Annual kWh<br>per customer"))
+    .fmt_number(columns=["customers", "annual_kwh_per_customer"], decimals=0)
+    .sub_missing(columns="customers", missing_text="")
+    .tab_options(**get_switchbox_gt_tab_options())
 )
-cairo_shortfall = float(
-    ((_cross["elec_delivery_bill"] - _cross["elec_delivery_bill_rhp"]) * _cross["weight"]).sum() / _cross["weight"].sum()
-)
-flat_vs_cairo = profiles["A"]["shortfall"]["Total"] / cairo_shortfall - 1
-report_vars.update(cairo_shortfall_profile_A=cairo_shortfall, flat_vs_cairo=flat_vs_cairo)
-print(f"Profile A shortfall, annual flat rates: ${profiles['A']['shortfall']['Total']:,.2f}")
-print(f"CAIRO, monthly rates:                   ${cairo_shortfall:,.2f}")
-print(f"Difference: {flat_vs_cairo:+.1%}")
-if abs(flat_vs_cairo) > 0.05:
-    raise RuntimeError("Flat-rate shortfall is more than 5% off CAIRO's R-HP run")
 ```
+
+ResStock's combined homes use
+`{python} pct(resstock_electric_heat_kwh / bge_heating_kwh - 1, 0)` more kWh than BGE's
+heating-code customers, against a class-wide gap of
+`{python} pct(1 / kwh_ratio - 1, 0)`.
+
+### Schedule R by month
 
 ```{python}
 #| label: monthly-rate-range
@@ -444,251 +715,50 @@ def _month_span(months: list[str]) -> str:
 
 peak_months = _month_span([m for m, r in monthly_r_total.items() if r == _peak_rate])
 low_months = _month_span([m for m, r in monthly_r_total.items() if r == _low_rate])
-pl.DataFrame({"month": list(monthly_r_total), "schedule_r_three_charges": list(monthly_r_total.values())})
-```
-
-The flat-rate shortfall is `{python} pct(abs(flat_vs_cairo))`
-`{python} "below" if flat_vs_cairo < 0 else "above"` CAIRO's month-by-month result of
-`{python} dollar(cairo_shortfall, 2)`. The direction follows from the rate calendar: Schedule
-R's three charges combined are highest in `{python} peak_months`
-(`{python} cents(_peak_rate, 2)`) and lowest in `{python} low_months`
-(`{python} cents(_low_rate, 2)`), against a flat `{python} cents(sum(schedule_r_flat.values()), 2)`.
-A heat pump home uses more of its kWh in winter, so it gets more than the average discount,
-and the flat rate slightly understates its shortfall. The tables below therefore lean low
-for Profile A.
-
-## How many homes enroll
-
-We read the counts from the estimate notebook's cache. The **program floor** is the EmPOWER
-heat pump systems rebated since 2017: the homes BGE could identify without attestation. It
-counts systems, not homes, and some rebated systems are supplemental or cooling-only
-mini-splits in homes that still heat with fossil fuel, which wouldn't qualify. So it
-overstates the eligible homes behind it. It is an enrollment floor, not a lower bound on the
-stock. The **stock** estimates are the whole population of homes whose main heating system is
-a heat pump, which could enroll if every one attested. Between the program floor and the
-central stock estimate we add four evenly spaced **illustrative steps**; they are not
-estimates in their own right.
-
-R-HP is for homes whose primary heating source is a heat pump. Hybrids with fossil backup
-qualify; a fossil-heated home with one mini-split, say for cooling a garage, does not. All the
-stock estimates classify homes by main heating system, so they already apply that rule.
-
-```{python}
-#| label: enrollment
-
-_path_counts = PATH_CACHE / "bge_hp_customer_estimate_vars.pkl"
-if not _path_counts.exists():
-    raise RuntimeError(f"Missing {_path_counts}: render bge_hp_customer_estimate.qmd first")
-counts = pickle.loads(_path_counts.read_bytes())
-# The ResStock count must be on the same customer base as the weights C comes from.
-_cairo_hp_homes = weights.filter(pl.col("has_hp"))["weight"].sum()
-if abs(counts["stock_central"] / _cairo_hp_homes - 1) > 1e-6:
-    raise RuntimeError(
-        f"ResStock count {counts['stock_central']:,.0f} != CAIRO's weighted heat pump homes {_cairo_hp_homes:,.0f}"
-    )
-
-SOURCES = {
-    "floor": "[BGE EmPOWER reports, 2017 to mid-2026](https://pub.switch.box/bge_Docket97052026_2026) (latest, p. 6; full list below)",
-    "low": "[EIA RECS 2020 microdata](https://www.eia.gov/consumption/residential/data/2020/), 90% low end",
-    "central": "[NREL ResStock 2024.2](https://data.openei.org/s3_viewer?bucket=oedi-data-lake&prefix=nrel-pds-building-stock%2Fend-use-load-profiles-for-us-building-stock%2F2024%2Fresstock_amy2018_release_2%2F)",
-    "high": "[Brattle 2023](https://pub.switch.box/brattle_AssessmentElectrificationImpacts_2023), p. 50, with hybrids",
-    "interpolated": "Illustrative step, not an estimate",
-}
-N_STEPS = 4
-
-floor_homes = round(counts["hp_program_systems_cumulative"])
-central_homes = round(counts["stock_central"])
-enrollment = [
-    ("Program floor", floor_homes, SOURCES["floor"]),
-    *[
-        (
-            f"Step {step} of {N_STEPS} toward central",
-            round(floor_homes + step / (N_STEPS + 1) * (central_homes - floor_homes)),
-            SOURCES["interpolated"],
-        )
-        for step in range(1, N_STEPS + 1)
-    ],
-    ("Stock low (RECS 2020)", round(counts["stock_low"]), SOURCES["low"]),
-    ("Stock central (ResStock)", central_homes, SOURCES["central"]),
-    ("Stock high (Brattle)", round(counts["stock_high"]), SOURCES["high"]),
-]
-enrollment.sort(key=lambda row: row[1])
-pl.DataFrame({"estimate": [r[0] for r in enrollment], "homes": [r[1] for r in enrollment]})
-```
-
-## Rate and bill impact
-
-For each enrollment count $N$ and a profile with annual kWh $k$ and per-home shortfall $S$:
-
-- **Revenue shortfall:** $N \times S$, by component.
-- **kWh still paying:** $K - N \times k$, where $K$ is CAIRO's total residential kWh. The same
-  profile's $k$ is used for the shortfall and the kWh removed, so both are on one basis.
-- **Per-kWh charge:** $N \times S / (K - N \times k)$, by component, and as a share of today's
-  Schedule R charge (its annual flat rate).
-- **Average annual bill increase per customer still on Schedule R** (every customer that
-  doesn't enroll, including heat pump homes that stay): $N \times S / (C - N)$, where $C$ is
-  the customer count.
-- **Annual bill increase for an electric resistance home:** the per-kWh charge times its
-  annual kWh, `{python} num(er_kwh)`.
-
-```{python}
-#| label: impact
-
-
-def impact(profile: dict, homes: int) -> dict:
-    kwh_paying = kwh_total - homes * profile["kwh"]
-    if kwh_paying <= 0:
-        raise RuntimeError(f"{homes:,} homes remove more kWh than the class has")
-    shortfall = {name: homes * profile["shortfall"][name] for name in [*COMPONENTS, "Total"]}
-    charge = {name: shortfall[name] / kwh_paying for name in [*COMPONENTS, "Total"]}
-    share = {name: charge[name] / schedule_r_flat[name] for name in COMPONENTS}
-    share["Total"] = charge["Total"] / sum(schedule_r_flat.values())
-    return {
-        "homes": homes,
-        "shortfall": shortfall,
-        "kwh_paying": kwh_paying,
-        "charge": charge,
-        "share": share,
-        "mean_bill": shortfall["Total"] / (customers - homes),
-        "er_bill": charge["Total"] * er_kwh,
-    }
-
-
-_SHORTFALL_COLS = [f"shortfall_{name.lower()}" for name in [*COMPONENTS, "Total"]]
-_CHARGE_COLS = [f"charge_{name.lower()}" for name in [*COMPONENTS, "Total"]]
-
-
-def impact_table(profile: dict, title: str) -> GT:
-    rows = []
-    for label, homes, source in enrollment:
-        row = impact(profile, homes)
-        rows.append(
+display_gt(
+    GT(
+        pl.DataFrame(
             {
-                "estimate": label,
-                "homes": homes,
-                "source": source,
-                **{col: row["shortfall"][name] for col, name in zip(_SHORTFALL_COLS, [*COMPONENTS, "Total"])},
-                "kwh_paying": row["kwh_paying"],
-                **{col: row["charge"][name] for col, name in zip(_CHARGE_COLS, [*COMPONENTS, "Total"])},
-                "charge_share": row["share"]["Total"],
-                "mean_bill": row["mean_bill"],
-                "er_bill": row["er_bill"],
+                "month": [f"{datetime.strptime(m, '%Y-%m'):%b %Y}" for m in monthly_r_total],
+                "schedule_r_three_charges": list(monthly_r_total.values()),
             }
         )
-    df = pl.DataFrame(rows)
-    steps = [i for i, label in enumerate(df["estimate"]) if label.startswith("Step ")]
-    return (
-        GT(df, rowname_col="estimate")
-        .tab_header(title=title)
-        .tab_stubhead(label="Enrollment estimate")
-        .tab_spanner(label="Revenue BGE no longer collects, per year", columns=_SHORTFALL_COLS)
-        .tab_spanner(
-            label="Added charge for customers still on Schedule R, per kWh",
-            columns=["kwh_paying", *_CHARGE_COLS, "charge_share"],
-        )
-        .tab_spanner(
-            label=html("Annual bill increase for<br>customers still on Schedule R"),
-            columns=["mean_bill", "er_bill"],
-        )
-        .cols_label(
-            homes="Homes enrolled",
-            source="Source",
-            shortfall_distribution="Distribution",
-            shortfall_transmission="Transmission",
-            shortfall_empower="EmPOWER",
-            shortfall_total="Total",
-            kwh_paying=html("Spread over<br>(TWh)"),
-            charge_distribution="Distribution",
-            charge_transmission="Transmission",
-            charge_empower="EmPOWER",
-            charge_total="Total",
-            charge_share=html("Total as % of<br>today's rate"),
-            mean_bill=html("Average<br>customer"),
-            er_bill=html("Electric<br>resistance home"),
-        )
-        .fmt_number(columns="homes", decimals=0)
-        .fmt_markdown(columns="source")
-        .fmt_currency(columns=_SHORTFALL_COLS, scale_by=1e-6, decimals=1, pattern="{x}M")
-        .fmt_number(columns="kwh_paying", scale_by=1e-9, decimals=2)
-        .fmt_number(columns=_CHARGE_COLS, scale_by=100, decimals=3, pattern="{x}¢")
-        .fmt_percent(columns="charge_share", decimals=1)
-        .fmt_currency(columns=["mean_bill", "er_bill"], decimals=2)
-        .tab_style(style=style.text(color="#777777", style="italic"), locations=gt_loc.body(rows=steps))
-        .tab_style(style=style.text(color="#777777", style="italic"), locations=gt_loc.stub(rows=steps))
-        .tab_source_note(
-            md(
-                "Today's rate is Schedule R's distribution, transmission and EmPOWER charges "
-                f"combined, as an annual flat rate ({cents(sum(schedule_r_flat.values()), 2)}). "
-                "The average customer is every customer that doesn't enroll. Dollar figures are at "
-                f"ResStock's usage; multiply by {kwh_ratio:.3f} for BGE's sales."
-            )
-        )
-        .tab_options(**get_switchbox_gt_tab_options())
     )
-
-
-impacts = {key: {label: impact(p, homes) for label, homes, _ in enrollment} for key, p in profiles.items()}
-for _key, _rows in impacts.items():
-    for _label, _row in _rows.items():
-        _slug = _label.split(" (")[0].lower().replace(" ", "_")
-        report_vars[f"profile_{_key}_{_slug}"] = _row
+    .tab_header(title="Schedule R distribution, transmission and EmPOWER, by month")
+    .cols_label(month="Month", schedule_r_three_charges=html("Combined rate<br>per kWh"))
+    .fmt_number(columns="schedule_r_three_charges", scale_by=100, decimals=3, pattern="{x}¢")
+    .tab_options(**get_switchbox_gt_tab_options())
+)
 ```
 
-Each table reads left to right: how many homes enroll, the revenue BGE stops collecting from
-them, the per-kWh charge that recovers it from everyone still on Schedule R, and what that
-charge adds to a year's bill. The gray, italic rows are the illustrative steps between the
-program floor and the central stock estimate.
+The three charges combined are highest in `{python} peak_months`
+(`{python} cents(_peak_rate, 2)`) and lowest in `{python} low_months`
+(`{python} cents(_low_rate, 2)`).
 
-### Profile A, existing stock
+### Flat rates against CAIRO's monthly run
 
-Each enrolled home uses `{python} num(profiles["A"]["kwh"])` kWh a year and pays
-`{python} dollar(profiles["A"]["shortfall"]["Distribution"], 2)` less for distribution,
-`{python} dollar(profiles["A"]["shortfall"]["Transmission"], 2)` less for transmission and
-`{python} dollar(profiles["A"]["shortfall"]["EmPOWER"], 2)` less for EmPOWER, a total of
-**`{python} dollar(profiles["A"]["shortfall"]["Total"], 2)`**.
+Profile A's shortfall at the annual flat rates, against CAIRO billed on Schedule R's
+month-by-month rates (`{python} SEG_RHP_PRECALC`).
 
 ```{python}
-#| label: tbl-impact-profile-a
+#| label: show-cross-check
 
-display_gt(impact_table(profiles["A"], "Profile A: existing heat pump homes move to R-HP"))
+display_gt(
+    GT(
+        pl.DataFrame(
+            {
+                "basis": ["Annual flat rates", "CAIRO monthly rates"],
+                "profile_a_shortfall": [profiles["A"]["shortfall"]["Total"], cairo_shortfall],
+            }
+        ),
+        rowname_col="basis",
+    )
+    .tab_header(title="Profile A shortfall per home: flat vs. monthly rates")
+    .cols_label(profile_a_shortfall=html("Shortfall per home<br>per year"))
+    .fmt_currency(columns="profile_a_shortfall", decimals=2)
+    .tab_options(**get_switchbox_gt_tab_options())
+)
 ```
-
-### Profile B, simulated average
-
-Each enrolled home uses `{python} num(profiles["B"]["kwh"])` kWh a year and pays
-`{python} dollar(profiles["B"]["shortfall"]["Distribution"], 2)` less for distribution,
-`{python} dollar(profiles["B"]["shortfall"]["Transmission"], 2)` less for transmission and
-`{python} dollar(profiles["B"]["shortfall"]["EmPOWER"], 2)` less for EmPOWER, a total of
-**`{python} dollar(profiles["B"]["shortfall"]["Total"], 2)`**.
-
-```{python}
-#| label: tbl-impact-profile-b
-
-display_gt(impact_table(profiles["B"], "Profile B: enrolled homes use the simulated average heat pump load"))
-```
-
-```{python}
-#| label: summary-values
-
-_a_floor = impacts["A"]["Program floor"]
-_a_central = impacts["A"]["Stock central (ResStock)"]
-_b_floor = impacts["B"]["Program floor"]
-_b_central = impacts["B"]["Stock central (ResStock)"]
-```
-
-At the program floor of `{python} num(floor_homes)` homes, the charge for customers still on
-Schedule R would rise by `{python} cents(_a_floor["charge"]["Total"])` per kWh with Profile A
-(`{python} pct(_a_floor["share"]["Total"])` of today's three charges). That is
-`{python} dollar(_a_floor["mean_bill"], 2)` a year for the average remaining customer and
-`{python} dollar(_a_floor["er_bill"], 2)` for an electric resistance home. At the central stock
-estimate of `{python} num(central_homes)` homes, it would rise by
-`{python} cents(_a_central["charge"]["Total"])` per kWh
-(`{python} pct(_a_central["share"]["Total"])`): `{python} dollar(_a_central["mean_bill"], 2)` a
-year for the average remaining customer and `{python} dollar(_a_central["er_bill"], 2)` for an
-electric resistance home. With Profile B, the same two counts give
-`{python} cents(_b_floor["charge"]["Total"])` and `{python} cents(_b_central["charge"]["Total"])`
-per kWh, or `{python} dollar(_b_floor["mean_bill"], 2)` and
-`{python} dollar(_b_central["mean_bill"], 2)` a year for the average remaining customer.
 
 ## Data sources, assumptions and caveats
 
@@ -734,18 +804,12 @@ per kWh, or `{python} dollar(_b_floor["mean_bill"], 2)` and
 
 **Assumptions**
 
-- R-HP is for homes whose primary heating source is a heat pump. Hybrids with fossil backup
-  qualify; fossil-heated homes with a supplemental or cooling-only heat pump do not.
-- Only existing heat pump homes create a shortfall. A new adopter's bill on R-HP is at least
-  its old Schedule R bill plus the marginal cost of its new load, which R-HP's rates are
-  calibrated to recover on average, so it keeps paying the embedded costs assigned to it.
-  This holds on average, not home by home. Electric resistance homes that convert to heat
-  pumps are not counted as new adopters here.
 - Electric resistance homes, and heat pump homes that don't enroll, stay on Schedule R and pay.
 - The shortfall is recovered on the kWh of everyone still on Schedule R, separately for
   distribution, transmission and EmPOWER, within the residential class.
-- Static, one year, test-year rates. R-HP rates are applied as filed. Generation, the customer
-  charge and the universal service charge are unchanged.
+- Static, one year, test-year rates, following the Connecticut method (CIEC-3 and CIEC-6).
+  R-HP rates are applied as filed. Generation, the customer charge and the universal service
+  charge are unchanged.
 - Every enrolled home uses the representative profile (A or B).
 
 **Caveats**
@@ -759,8 +823,7 @@ per kWh, or `{python} dollar(_b_floor["mean_bill"], 2)` and
 - The Brattle figure rests on the AEG/Verdant 2022 survey, where main heating systems are
   self-reported and some respondents may have confused heat pumps with central air
   conditioning. Its split by configuration comes from Brattle's contractor survey, not the
-  survey itself. It includes hybrids, which qualify when the heat pump is the primary
-  heating source.
+  survey itself.
 - The enrollment counts use slightly different customer bases: RECS is applied to BGE's
   `{python} num(counts["bge_res_customers"])` March 2026 residential customers and Brattle to
   its `{python} num(counts["stock_high"] / counts["verdant_bge_hp_share_incl_hybrid"])` 2022
@@ -771,12 +834,6 @@ per kWh, or `{python} dollar(_b_floor["mean_bill"], 2)` and
   heat pump homes, so BGE can't supply a heat pump load. ResStock's electric resistance and
   heat pump homes use `{python} pct(resstock_electric_heat_kwh / bge_heating_kwh - 1, 0)` more
   kWh than BGE's heating-code customers (see the check above).
-- The annual flat rate understates a winter-heavy home's discount slightly, so the Profile A
-  figures lean low (`{python} pct(abs(flat_vs_cairo))` against CAIRO's monthly-rate run).
-- CAIRO bills ResStock's unscaled kWh: total residential kWh is
-  `{python} pct(1 / kwh_ratio - 1, 0)` above BGE's test-year sales. The per-kWh charge is
-  unaffected if that gap is uniform; the dollar figures are high by the same amount (factor
-  `{python} f"{kwh_ratio:.3f}"`).
 - Profile A rests on `{python} num(profiles["A"]["buildings"])` ResStock buildings. Profile B is
   a simulated retrofit, mostly standard-efficiency (SEER 16 / 9.2 HSPF) equipment, and most of
   its homes keep gas water heating and appliances.

@@ -23,24 +23,19 @@ format:
 
 ## Introduction
 
-If BGE's existing heat pump customers moved onto Schedule R-HP, the heat pump rate we
-designed, BGE would collect less revenue from them. That shortfall would be recovered
-from everyone else. To size it, we need to know how many heat pump homes BGE serves
-today. This notebook gathers that evidence and turns it into a **floor** and a **ceiling**
-for the number of homes. Later, these become the inputs to the revenue-shortfall
-calculation, which reuses the Connecticut method.
+This notebook produces the four enrollment counts
+[`bge_rhp_rate_impact.qmd`](bge_rhp_rate_impact.qmd) reads: the EmPOWER program floor
+(`hp_program_systems_cumulative`) and the stock low, central and high (`stock_low`,
+`stock_central`, `stock_high`).
 
 Only **existing** heat pump homes create a shortfall. A home that installs a heat pump and
 moves onto R-HP pays for the incremental cost it adds to the system, so it shifts no costs
-onto other customers. We still record the evidence on new installations near the end, as
-context for adoption scenarios, but it does not enter the shortfall.
+onto other customers. The forecasts near the end record new installations as context. They
+are not an input to the rate impact.
 
 We count **heat pump homes only**. Homes heated by electric resistance (baseboards,
 electric furnaces) are excluded, even though BGE's own data groups them with heat pump
 homes as "electric heating" customers.
-
-This is a working research notebook and will grow as the remaining sources are found.
-Sources not yet in our library are linked directly and marked _(pending ingest)_.
 
 ```{python}
 #| label: setup
@@ -136,9 +131,11 @@ print(
 )
 ```
 
-We use the total residential count, about
-`{python} f"{report_vars['bge_res_customers'] / 1e6:.2f}"` million, as the customer base that the
-shortfall is spread over. We don't use the heating flag to bound heat pump homes.
+The total residential count, about
+`{python} f"{report_vars['bge_res_customers'] / 1e6:.2f}"` million in March 2026, is the
+customer base the RECS share is applied to. The rate-impact notebook spreads the shortfall
+over CAIRO's test-year customers, not this count. We don't use the heating flag to bound
+heat pump homes.
 
 ## Programs that identify heat pump homes
 
@@ -568,12 +565,13 @@ not a lower bound on the stock.
 ::: {.callout-important}
 ## What can be cited
 
-The citable range for BGE's heat pump homes is RECS 2020:
+ResStock's `{python} f"{round(report_vars['resstock_hp_homes'], -3):,.0f}"` is the central
+count the rate-impact table uses, because CAIRO bills that stock. The citable survey range
+is RECS 2020:
 **`{python} f"{round(report_vars['recs_bge_hp_homes_lo90'], -3):,.0f}"` to
 `{python} f"{round(report_vars['recs_bge_hp_homes_hi90'], -3):,.0f}"`**, central
-`{python} f"{round(report_vars['recs_bge_hp_homes'], -3):,.0f}"`, with ResStock's
-`{python} f"{round(report_vars['resstock_hp_homes'], -3):,.0f}"` as a cross-check. Three caveats
-go with it:
+`{python} f"{round(report_vars['recs_bge_hp_homes'], -3):,.0f}"`, which sits lower. Brattle
+stays the high end. Three caveats go with the RECS range:
 
 - **Statewide, not BGE.** RECS gives a Maryland share
   (`{python} report_vars['recs_md_hp_respondents']` heat pump respondents), which we apply to BGE's
@@ -598,6 +596,8 @@ home, and BGE's 2027–2029 plan puts those at a few thousand a year (below). Th
 comes from the forecasts below.
 
 ## Forecasts
+
+These forecasts are not an input to [`bge_rhp_rate_impact.qmd`](bge_rhp_rate_impact.qmd).
 
 We found five forward-looking studies with heat pump adoption paths for BGE or Maryland, plus
 PJM's load forecast. None is a BGE adoption forecast in the regulatory sense: BGE says it has
@@ -740,28 +740,17 @@ BGE's planned electrification participants, and
 the 2025 pace of rebated systems. E3's scenarios are policy pathways that meet the
 state's climate targets, not a forecast of what BGE customers will do, so this is a ceiling.
 
-## What this means for the shortfall inputs
+## Counts the rate impact uses
 
-The Connecticut code (`ciec_1.py` on Lee's branch) takes hardcoded floor and ceiling counts for
-existing and new heat pump homes, plus a number of years. It counts the discount to new
-adopters too, because the Connecticut interrogatory asks for revenue lost relative to Rate 1.
-The Maryland question is different: what other customers would pay. Only existing heat pump
-homes shift costs onto them, so the shortfall uses the existing counts alone and sets the new
-cohort to zero. These are the inputs the research supports, all in homes:
+[`bge_rhp_rate_impact.qmd`](bge_rhp_rate_impact.qmd) reads four values from this notebook's
+cache. New-adopter counts are not used.
 
-| Input in Lee's code | Maryland value | Basis |
+| Cache key | Value | Role |
 |---|---|---|
-| `EXISTING_FLOOR` | At most ~`{python} f"{round(report_vars['hp_program_systems_cumulative'], -3):,.0f}"` | EmPOWER heat pump systems rebated January 2017–June 2026 (BGE reports); an upper limit on program homes |
-| `EXISTING_CEILING` | ~`{python} f"{round(report_vars['stock_central'], -3):,.0f}"` (range `{python} f"{round(report_vars['stock_low'], -3):,.0f}"`–`{python} f"{round(report_vars['stock_high'], -3):,.0f}"`; outer bound ~`{python} f"{round(report_vars['verdant_md_hp_homes_at_bge'], -3):,.0f}"`) | ResStock and RECS 2020 (central); Verdant 2022 via Brattle (high); Verdant statewide (outer bound). Each is stored as a separate report variable |
-| Residential customers | ~`{python} f"{report_vars['bge_res_customers'] / 1e6:.2f}"` million | BGE DR CCAN 1-4, March 2026 |
-| `NEW_FLOOR`, `NEW_CEILING` (per year) | 0 in the shortfall | New adopters pay their incremental cost. For context only: ~`{python} f"{round(report_vars['new_floor_low_per_year'], -2):,.0f}"`–`{python} f"{round(report_vars['new_floor_high_2029'], -2):,.0f}"` a year (BGE's plan) to ~`{python} f"{round(report_vars['new_ceiling_low'], -3):,.0f}"`–`{python} f"{round(report_vars['new_ceiling_high'], -3):,.0f}"` a year (E3's scenarios) |
-
-The Connecticut code also needs three changes before it can be reused here. R-HP discounts
-distribution, transmission and EmPOWER charges at a flat rate year-round, while the
-Connecticut code swaps in winter distribution and transmission only. The customer count
-must come from DR 1-4 instead of a Connecticut-specific function. And we still have to choose
-the non-heat-pump kWh denominator: ResStock's non-heat-pump homes, or BGE's non-heating
-R/RL sales, which also include unflagged electric-heat homes.
+| `hp_program_systems_cumulative` | `{python} f"{round(report_vars['hp_program_systems_cumulative']):,}"` | Program floor: EmPOWER heat pump systems rebated January 2017–June 2026 |
+| `stock_low` | `{python} f"{round(report_vars['stock_low']):,}"` | RECS 2020, low end of the 90% interval |
+| `stock_central` | `{python} f"{round(report_vars['stock_central']):,}"` | ResStock, the central count |
+| `stock_high` | `{python} f"{round(report_vars['stock_high']):,}"` | Brattle 2023, with hybrids |
 
 ## Export report variables
 

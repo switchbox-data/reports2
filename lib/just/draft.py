@@ -34,7 +34,7 @@ import subprocess
 import sys
 import tempfile
 import zipfile
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
@@ -66,7 +66,7 @@ def _output_name(qmd_path: Path) -> str:
 
 
 @contextmanager
-def _hide_quarto_yml() -> Iterator[None]:
+def _hide_quarto_yml() -> Generator[None]:
     """Temporarily move _quarto.yml out of the way, restoring on exit.
 
     Quarto Manuscript projects only produce DOCX for the main article

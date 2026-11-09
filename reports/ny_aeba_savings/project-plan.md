@@ -210,9 +210,11 @@ def run_model() -> pl.DataFrame:
     # loads all data, builds scenarios, computes everything
     # returns the 12-row result DataFrame
 
+
 def main():
     results = run_model()
     print(results)
+
 
 if __name__ == "__main__":
     main()

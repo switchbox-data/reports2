@@ -44,11 +44,12 @@ Illustrator exports SVGs with generic class names (`.cls-1`, `.cls-2`, …). Eac
 import re
 from pathlib import Path
 
+
 def scope_svg_classes(svg_path: Path) -> None:
     prefix = svg_path.stem.replace("-", "_").replace(" ", "_") + "_"
     text = svg_path.read_text(encoding="utf-8")
-    for cls in sorted(set(re.findall(r'\bcls-\d+\b', text))):
-        text = re.sub(r'\b' + re.escape(cls) + r'\b', prefix + cls, text)
+    for cls in sorted(set(re.findall(r"\bcls-\d+\b", text))):
+        text = re.sub(r"\b" + re.escape(cls) + r"\b", prefix + cls, text)
     svg_path.write_text(text, encoding="utf-8")
 ```
 

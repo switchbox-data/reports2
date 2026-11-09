@@ -828,11 +828,7 @@ lf = pl.scan_parquet("s3://data.sb/eia/heating_oil_prices/*.parquet")
 
 # Apply transformations and aggregations (still lazy)
 # By using parquet and arrow with lazy execution, we limit how much data is downloaded
-result = (
-    lf.filter(pl.col("state") == "RI")
-    .group_by("year")
-    .agg(pl.col("price").mean().alias("avg_price"))
-)
+result = lf.filter(pl.col("state") == "RI").group_by("year").agg(pl.col("price").mean().alias("avg_price"))
 
 # 💡 TIP: Stay in lazy execution as long as possible - do all filtering, grouping, and aggregations
 # before calling collect(). This allows Polars to optimize the query plan and minimize data transfer.

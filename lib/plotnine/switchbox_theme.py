@@ -127,8 +127,8 @@ def _install_figsize_cap() -> None:
             kwargs["figsize"] = _cap_figsize(kwargs["figsize"])
         return _orig_subplots(*args, **kwargs)
 
-    plt.figure = figure  # type: ignore[assignment]
-    plt.subplots = subplots  # type: ignore[assignment]
+    plt.figure = figure  # ty: ignore[invalid-assignment]
+    plt.subplots = subplots  # ty: ignore[invalid-assignment]
     _FIGSIZE_CAP_INSTALLED = True
 
 

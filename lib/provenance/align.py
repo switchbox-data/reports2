@@ -75,7 +75,7 @@ def align_stream(q_tokens: list[QToken], p_tokens: list[PdfToken]) -> list[Occur
         while i < len(q_tokens) and q_tokens[i].expr_id == eid:
             i += 1
         e = i
-        mapped = [q2p[k] for k in range(s, e) if q2p[k] is not None]
+        mapped = [v for k in range(s, e) if (v := q2p[k]) is not None]
         before_ok = s == 0 or exact[s - 1]
         after_ok = e >= len(qn) or exact[e]
         if all(exact[s:e]):

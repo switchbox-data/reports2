@@ -14,7 +14,7 @@ Search, download, de-duplicate and recommend. **Do not write to Zotero, Document
 ## Steps
 
 1. **Pin down the request**: topic, project (see `uv run python -m lib.sources.cli projects`), jurisdictions, years, document types, and **what the sources are for**: the question, testimony, report section or argument they will serve. Ingest needs this for each source's "why it's here" (see `context/code/source_metadata_conventions.md`, Index rows and descriptions), and this is the moment it is known. If the project or the purpose is unclear, ask once.
-2. **Search.** Use web search and the source's own sites (commission dockets, agency libraries, Google Scholar, OSTI, SSRN). Prefer the primary document over a summary of it. For Maryland PSC filings use the `mdpuc-documents` skill's fetch recipes.
+2. **Search.** Use web search and the source's own sites (commission dockets, agency libraries, Google Scholar, OSTI, SSRN). Prefer the primary document over a summary of it. For Maryland PSC filings use the `mdpuc-documents` skill's fetch recipes. For Oregon PUC orders and eDocket filings use the `orpuc-documents` skill (no browser needed; it downloads straight into the inbox).
 3. **Download to the scratch inbox**, never into the repo:
 
    ```text

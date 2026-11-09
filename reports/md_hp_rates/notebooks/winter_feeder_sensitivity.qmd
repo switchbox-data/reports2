@@ -322,6 +322,9 @@ for _year in LOAD_YEARS:
             )
 results = pl.DataFrame(_rows).with_columns(
     overcharge_change=pl.col("total_overcharge") - (DELIVERY_CHARGES_DELTA - _filed_inc_td + EMPOWER_DELTA)
+).with_columns(
+    pl.when(pl.col("inc_td_change").abs() < 1e-9).then(0.0).otherwise(pl.col(c)).alias(c)
+    for c in ("inc_td_change", "overcharge_change")
 )
 
 for _r in results.iter_rows(named=True):
@@ -393,6 +396,49 @@ display_gt(results_table("dist"))
 #| tbl-cap: "Representative all-fossil home's added marginal cost and overpayment with both distribution and transmission cost moved into winter."
 
 display_gt(results_table("both"))
+```
+
+The 100% winter scenario is the outer bound of BGE's argument: every dollar of the reshaped cost sits on the top winter hours. The next table pulls out just that scenario for both facets, next to the filed profile.
+
+```{python}
+#| label: tbl-wf-x100
+#| tbl-cap: "Representative all-fossil home with 100% of reshaped cost on the top winter hours, compared with the filed profile."
+
+_x100 = (
+    results.filter(pl.col("load_year") == MC_YEAR, pl.col("scenario").is_in(["filed", "x100"]))
+    .filter((pl.col("scenario") == "x100") | (pl.col("facet") == "dist"))
+    .with_columns(
+        label=pl.when(pl.col("scenario") == "filed")
+        .then(pl.lit("Filed profile"))
+        .otherwise(pl.format("100% winter: {}", pl.col("facet").replace_strict(FACETS).str.to_lowercase())),
+        rhp_dist=pl.col("rhp_dist") * 100,
+        rhp_tx=pl.col("rhp_tx") * 100,
+    )
+    .select(
+        "label", "inc_dist", "inc_tx", "inc_td", "inc_td_change", "td_overcharge", "total_overcharge",
+        "overcharge_change", "rhp_dist", "rhp_tx",
+    )
+)
+display_gt(
+    GT(_x100, rowname_col="label")
+    .tab_header(title="BGE representative heat pump home: all reshaped cost in winter")
+    .tab_spanner("Added marginal cost", ["inc_dist", "inc_tx", "inc_td", "inc_td_change"])
+    .tab_spanner("Overpayment", ["td_overcharge", "total_overcharge", "overcharge_change"])
+    .tab_spanner("Schedule R-HP (¢/kWh)", ["rhp_dist", "rhp_tx"])
+    .cols_label(
+        inc_dist="Dist.", inc_tx="Trans.", inc_td="T&D", inc_td_change="vs filed", td_overcharge="T&D",
+        total_overcharge="Total", overcharge_change="vs filed", rhp_dist="Dist.", rhp_tx="Trans.",
+    )
+    .fmt_currency(["inc_dist", "inc_tx", "inc_td", "td_overcharge", "total_overcharge"], decimals=0)
+    .fmt_currency(["inc_td_change", "overcharge_change"], decimals=0, force_sign=True)
+    .fmt_number(["rhp_dist", "rhp_tx"], decimals=2)
+    .tab_style(style.text(weight="bold"), loc.body(columns="total_overcharge"))
+    .tab_source_note(
+        f"All reshaped cost on the top {N_DIST} winter hours (distribution) and top {N_TX} winter hours (transmission) "
+        f"of {MC_YEAR} BGE load. Added T&D charges ${DELIVERY_CHARGES_DELTA:,.0f} and EmPOWER ${EMPOWER_DELTA:,.0f} as filed."
+    )
+    .tab_options(**get_switchbox_gt_tab_options())
+)
 ```
 
 The figure compares the home's added T&D cost in each scenario with its added T&D charges, which don't move.

@@ -128,6 +128,54 @@ def test_workbook_divides_pasted_revenue_by_scaled_kwh() -> None:
     assert increase["B5"].value.startswith("=")
 
 
+def test_enrollment_range_is_formulas_between_floor_and_ceiling() -> None:
+    floor = [builder.RevenueRow("Existing", 10, 100.0, 40.0)]
+    ceiling = [builder.RevenueRow("Existing", 30, 300.0, 120.0)]
+    _floor, _ceiling, buildings, generation = _case()
+    wb = builder.build_workbook(
+        floor,
+        ceiling,
+        buildings,
+        distribution=0.11,
+        transmission=0.05,
+        generation_monthly=generation,
+        rate_year_customers=100,
+        per_customer_distribution=10.0,
+        per_customer_transmission=4.0,
+    )
+
+    revenue = wb["revenue"]
+    assert revenue["B4"].value == 10.0
+    assert revenue["B5"].value == 4.0
+    assert revenue["B4"].fill.fgColor.rgb[-6:] == "FFF2CC"
+    assert [revenue.cell(row, 1).value for row in range(8, 14)] == ["Floor", "20%", "40%", "60%", "80%", "Ceiling"]
+    assert revenue["B8"].value == 10
+    assert revenue["B13"].value == 30
+    assert revenue["B9"].value == "=ROUND($B$8+(1/5)*($B$13-$B$8),0)"
+    assert revenue["B10"].value == "=ROUND($B$8+(2/5)*($B$13-$B$8),0)"
+    assert revenue["B12"].value == "=ROUND($B$8+(4/5)*($B$13-$B$8),0)"
+    assert revenue["C8"].value == "=ROUND(B8*$B$4,0)"
+    assert revenue["D13"].value == "=ROUND(B13*$B$5,0)"
+    assert revenue["E9"].value == "=C9+D9"
+    assert revenue["C8"].fill.patternType is None
+    assert revenue["B9"].fill.patternType is None
+
+    payers = wb["payers"]
+    assert payers["A8"].value == "=revenue!A8"
+    assert payers["B9"].value == "=revenue!B9"
+    assert payers["C12"].value == "=$B$4-B12"
+    assert payers["E13"].value == "=$B$6*D13"
+
+    increase = wb["increase"]
+    assert increase["A11"].value == "=revenue!A11"
+    assert increase["B8"].value == "=revenue!C8/payers!E8"
+    assert increase["C13"].value == "=revenue!D13/payers!E13"
+    assert increase["D9"].value == "=B9+C9"
+    assert increase["E12"].value == "=D12/rates!$C$7"
+    assert increase["F13"].value == "=D13/rates!$C$25"
+    assert increase["B8"].fill.patternType is None
+
+
 def test_rejects_inputs_that_cannot_support_the_increase() -> None:
     floor, ceiling, buildings, generation = _case()
     with pytest.raises(ValueError, match="labels"):

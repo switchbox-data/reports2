@@ -10,19 +10,23 @@ Sheets
 README
     What the file is and how the sheets connect.
 revenue
-    Floor and ceiling distribution and transmission reductions for the
-    customers already on a heat pump who would be auto-enrolled. These are
-    the CIEC-1(a) dollars for that stock, pasted as values. Later installers
-    are not included. T&D adds the two components.
+    Floor and ceiling customer counts, and the per-customer distribution and
+    transmission decreases, are inputs. The 20, 40, 60, and 80 percent rows
+    place the customer count that share of the way from the floor to the
+    ceiling. Distribution and transmission are that count times the
+    per-customer decrease, rounded to the dollar. Later installers are not
+    included. T&D adds the two components. A file with more than one year
+    keeps one pasted row per year instead of this range.
 nonhp_kwh
     One row per Eversource home without a heat pump. Annual kWh is CAIRO grid
     consumption. Weight is the ResStock sample weight. Weighted kWh is the product.
     The totals are sums, still on the ResStock weight.
 payers
     For each revenue row, the heat pump customers who move to Rate HP and the
-    residential customers who remain. Customers who remain are the Rate Year
-    residential count minus the customers who move. Weighted kWh scales the
-    ResStock total by that count over the ResStock weight sum.
+    residential customers who remain. On the enrollment range, that is one row
+    per step from the floor to the ceiling. Customers who remain are the Rate
+    Year residential count minus the customers who move. Weighted kWh scales
+    the ResStock total by that count over the ResStock weight sum.
 rates
     Today's Rate 1 distribution, transmission, and twelve monthly generation
     charges. T&D and T&D-plus-generation are formulas. The increase sheet
@@ -82,6 +86,23 @@ PAYERS_RAW_CUSTOMERS_ROW = 5
 PAYERS_RAW_KWH_ROW = 6
 PAYERS_HEADER = 8
 PAYERS_FIRST = 9
+
+# Enrollment range. Floor and ceiling customer counts are inputs. The steps
+# between them, and every revenue dollar, are formulas. Rows line up across
+# revenue, payers, and increase.
+RANGE_STEPS: tuple[tuple[str, str | None], ...] = (
+    ("Floor", None),
+    ("20%", "1/5"),
+    ("40%", "2/5"),
+    ("60%", "3/5"),
+    ("80%", "4/5"),
+    ("Ceiling", None),
+)
+RANGE_DIST_ROW = 4
+RANGE_TX_ROW = 5
+RANGE_HEADER = 7
+RANGE_FIRST = 8
+RANGE_LAST = RANGE_FIRST + len(RANGE_STEPS) - 1
 
 
 @dataclass(frozen=True)
@@ -185,7 +206,18 @@ def _buildings(buildings: pl.DataFrame) -> pl.DataFrame:
     return out
 
 
-def _write_readme(wb: Workbook) -> None:
+def _customer_count(first: int, last: int, fraction: str | None) -> str | None:
+    """Formula for a step between the floor and ceiling customer counts.
+
+    ``None`` marks the floor and the ceiling, which stay as inputs. A fraction
+    such as ``"1/5"`` is that share of the distance, rounded to a customer.
+    """
+    if fraction is None:
+        return None
+    return f"=ROUND($B${first}+({fraction})*($B${last}-$B${first}),0)"
+
+
+def _write_readme(wb: Workbook, *, ranged: bool) -> None:
     ws = wb.active
     ws.title = "README"
     lines = [
@@ -207,10 +239,21 @@ def _write_readme(wb: Workbook) -> None:
         ("", False),
         ("revenue", True),
         (
-            "Floor and ceiling revenue reductions from CIEC-1(a) for the customers already enrolled, including "
-            "the 2026 installations. Distribution and transmission are the values already calculated there, "
-            "rounded to the dollar. This sheet does not recompute them. T&D adds the two components. "
-            "Installations in 2027 through 2031 are not on this sheet.",
+            (
+                "Floor and ceiling customer counts are inputs, from CIEC-1(b), including the 2026 installations. "
+                "The per-customer distribution and transmission decreases are inputs, from CIEC-1(a). "
+                "The 20, 40, 60, and 80 percent rows are that share of the distance from the floor to the "
+                "ceiling, rounded to a customer. Distribution and transmission are that count times the "
+                "per-customer decrease, rounded to the dollar. T&D adds the two components. "
+                "Installations in 2027 through 2031 are not on this sheet."
+            )
+            if ranged
+            else (
+                "Floor and ceiling revenue reductions from CIEC-1(a) for the customers already enrolled, including "
+                "the 2026 installations. Distribution and transmission are the values already calculated there, "
+                "rounded to the dollar. This sheet does not recompute them. T&D adds the two components. "
+                "Installations in 2027 through 2031 are not on this sheet."
+            ),
             False,
         ),
         ("", False),
@@ -229,7 +272,7 @@ def _write_readme(wb: Workbook) -> None:
             "increase. The Rate Year count is an input, the average bills rendered for Rates 1, 5, and 7. "
             "Customers who remain are that count minus the customers who move. The scale is the customers who "
             "remain divided by the ResStock weight sum. Weighted kWh is the ResStock weighted kWh times that scale. "
-            "Floor and ceiling each have their own scale, because a different number of customers move.",
+            "Each step from the floor to the ceiling has its own scale, because a different number of customers move.",
             False,
         ),
         ("", False),
@@ -518,6 +561,138 @@ def _write_increase(wb: Workbook, n_years: int) -> None:
         ws.column_dimensions[get_column_letter(col)].width = 24
 
 
+def _check_per_customer(floor: RevenueRow, ceiling: RevenueRow, distribution: float, transmission: float) -> None:
+    if distribution < 0 or transmission < 0:
+        raise ValueError(f"per-customer decrease must be non-negative, got {distribution} and {transmission}")
+    if ceiling.customers < floor.customers:
+        raise ValueError(f"ceiling {ceiling.customers} is below floor {floor.customers}")
+    for row in (floor, ceiling):
+        dist = round(row.customers * distribution)
+        tx = round(row.customers * transmission)
+        if dist != row.distribution or tx != row.transmission:
+            raise ValueError(
+                f"{row.label} revenue {row.distribution} and {row.transmission} "
+                f"is not {row.customers} times the per-customer decrease"
+            )
+
+
+def _write_revenue_range(
+    wb: Workbook,
+    floor: RevenueRow,
+    ceiling: RevenueRow,
+    distribution: float,
+    transmission: float,
+) -> None:
+    ws = wb.create_sheet("revenue")
+    _heading(ws, 1, "Revenue reduction")
+    _note(
+        ws,
+        2,
+        "Annual revenue reduction for customers who would move from Rate 1 to Rate HP. "
+        "The floor and ceiling customer counts are inputs. The 20, 40, 60, and 80 percent "
+        "rows are that share of the distance between them, rounded to a customer. "
+        "Distribution and transmission are the customer count times the per-customer decrease, "
+        "rounded to the dollar. Later heat pump installations are excluded.",
+        5,
+        height=64,
+    )
+    _put(ws, RANGE_DIST_ROW, 1, "Per-customer distribution decrease", bold=True)
+    _put(ws, RANGE_DIST_ROW, 2, distribution, input_=True, fmt="$#,##0.00", bold=True)
+    _put(ws, RANGE_TX_ROW, 1, "Per-customer transmission decrease", bold=True)
+    _put(ws, RANGE_TX_ROW, 2, transmission, input_=True, fmt="$#,##0.00", bold=True)
+    _headers(ws, RANGE_HEADER, ["Share of the range", "Customers", "Distribution", "Transmission", "T&D"])
+    for i, (label, fraction) in enumerate(RANGE_STEPS):
+        row = RANGE_FIRST + i
+        customers = _customer_count(RANGE_FIRST, RANGE_LAST, fraction)
+        _put(ws, row, 1, label)
+        if customers is None:
+            count = floor.customers if fraction is None and i == 0 else ceiling.customers
+            _put(ws, row, 2, count, input_=True, fmt=FMT_COUNT)
+        else:
+            _put(ws, row, 2, customers, fmt=FMT_COUNT)
+        _put(ws, row, 3, f"=ROUND(B{row}*$B${RANGE_DIST_ROW},0)", fmt=FMT_REVENUE)
+        _put(ws, row, 4, f"=ROUND(B{row}*$B${RANGE_TX_ROW},0)", fmt=FMT_REVENUE)
+        _put(ws, row, 5, f"=C{row}+D{row}", fmt=FMT_REVENUE)
+    ws.freeze_panes = "A8"
+    ws.column_dimensions["A"].width = 42
+    for col in range(2, 6):
+        ws.column_dimensions[get_column_letter(col)].width = 22
+
+
+def _write_payers_range(wb: Workbook, rate_year_customers: float) -> None:
+    ws = wb.create_sheet("payers")
+    _heading(ws, 1, "Customers who move and customers who pay")
+    _note(
+        ws,
+        2,
+        "One row per step from the floor to the ceiling. Heat pump customers who move are the customer "
+        "count on revenue. Customers who remain are the Rate Year count minus the customers who move. "
+        "The scale divides the customers who remain by the ResStock weight sum on nonhp_kwh. Weighted kWh "
+        "multiplies the ResStock weighted kWh by that scale.",
+        5,
+        height=64,
+    )
+    _put(ws, PAYERS_RATE_YEAR_ROW, 1, "Rate Year residential customers", bold=True)
+    _put(ws, PAYERS_RATE_YEAR_ROW, 2, rate_year_customers, input_=True, fmt=FMT_COUNT, bold=True)
+    _put(ws, PAYERS_RAW_CUSTOMERS_ROW, 1, "ResStock non-HP customers", bold=True)
+    _put(ws, PAYERS_RAW_CUSTOMERS_ROW, 2, f"=nonhp_kwh!B{KWH_CUSTOMERS_ROW}", fmt=FMT_WEIGHT, bold=True)
+    _put(ws, PAYERS_RAW_KWH_ROW, 1, "ResStock non-HP kWh", bold=True)
+    _put(ws, PAYERS_RAW_KWH_ROW, 2, f"=nonhp_kwh!B{KWH_TOTAL_ROW}", fmt=FMT_KWH, bold=True)
+    _headers(
+        ws,
+        RANGE_HEADER,
+        ["Share of the range", "HP customers", "Non-HP customers", "Scale", "Weighted kWh"],
+    )
+    for i in range(len(RANGE_STEPS)):
+        row = RANGE_FIRST + i
+        _put(ws, row, 1, f"=revenue!A{row}")
+        _put(ws, row, 2, f"=revenue!B{row}", fmt=FMT_COUNT)
+        _put(ws, row, 3, f"=$B${PAYERS_RATE_YEAR_ROW}-B{row}", fmt=FMT_COUNT)
+        _put(ws, row, 4, f"=C{row}/$B${PAYERS_RAW_CUSTOMERS_ROW}", fmt=FMT_WEIGHT)
+        _put(ws, row, 5, f"=$B${PAYERS_RAW_KWH_ROW}*D{row}", fmt=FMT_KWH)
+    ws.freeze_panes = "B8"
+    ws.column_dimensions["A"].width = 42
+    for col in range(2, 6):
+        ws.column_dimensions[get_column_letter(col)].width = 24
+
+
+def _write_increase_range(wb: Workbook) -> None:
+    ws = wb.create_sheet("increase")
+    _heading(ws, 1, "Rate 1 charge increase")
+    _note(
+        ws,
+        2,
+        "Each increase is that step's revenue reduction divided by that step's weighted kWh on payers. "
+        "Distribution and transmission are separate, and T&D adds them. % of T&D divides the combined "
+        "increase by the T&D rate. % of T&D and generation divides it by T&D plus average generation.",
+        6,
+    )
+    _headers(
+        ws,
+        RANGE_HEADER,
+        [
+            "Share of the range",
+            "Distribution ($/kWh)",
+            "Transmission ($/kWh)",
+            "T&D ($/kWh)",
+            "% of T&D",
+            "% of T&D and generation",
+        ],
+    )
+    for i in range(len(RANGE_STEPS)):
+        row = RANGE_FIRST + i
+        _put(ws, row, 1, f"=revenue!A{row}")
+        _put(ws, row, 2, f"=revenue!C{row}/payers!E{row}", fmt=FMT_RATE)
+        _put(ws, row, 3, f"=revenue!D{row}/payers!E{row}", fmt=FMT_RATE)
+        _put(ws, row, 4, f"=B{row}+C{row}", fmt=FMT_RATE)
+        _put(ws, row, 5, f"=D{row}/rates!$C${RATES_TD_ROW}", fmt=FMT_PCT)
+        _put(ws, row, 6, f"=D{row}/rates!$C${RATES_FULL_ROW}", fmt=FMT_PCT)
+    ws.freeze_panes = "B8"
+    ws.column_dimensions["A"].width = 42
+    for col in range(2, 7):
+        ws.column_dimensions[get_column_letter(col)].width = 24
+
+
 def build_workbook(
     floor: Sequence[RevenueRow],
     ceiling: Sequence[RevenueRow],
@@ -527,17 +702,39 @@ def build_workbook(
     transmission: float,
     generation_monthly: Mapping[str, float],
     rate_year_customers: float,
+    per_customer_distribution: float | None = None,
+    per_customer_transmission: float | None = None,
 ) -> Workbook:
-    """Assemble the CIEC-3(c) workpaper. Inputs are values; the results are formulas."""
+    """Assemble the CIEC-3(c) workpaper. Inputs are values; the results are formulas.
+
+    Pass ``per_customer_distribution`` and ``per_customer_transmission`` with one
+    floor row and one ceiling row to write the 20 percent steps between them.
+    """
     _check_revenue(floor, ceiling)
     _check_rate_year(rate_year_customers, floor, ceiling)
     generation = _check_rates(distribution, transmission, generation_monthly)
     rows = _buildings(buildings)
+    ranged = per_customer_distribution is not None or per_customer_transmission is not None
+    if ranged and (per_customer_distribution is None or per_customer_transmission is None):
+        raise ValueError("per-customer distribution and transmission are set together")
+    if ranged:
+        if len(floor) != 1:
+            raise ValueError("the enrollment range is one floor and one ceiling")
+        assert per_customer_distribution is not None and per_customer_transmission is not None
+        _check_per_customer(floor[0], ceiling[0], per_customer_distribution, per_customer_transmission)
     wb = Workbook()
-    _write_readme(wb)
-    _write_revenue(wb, floor, ceiling)
-    _write_kwh(wb, rows)
-    _write_payers(wb, len(floor), rate_year_customers)
-    _write_rates(wb, distribution, transmission, generation)
-    _write_increase(wb, len(floor))
+    _write_readme(wb, ranged=ranged)
+    if ranged:
+        assert per_customer_distribution is not None and per_customer_transmission is not None
+        _write_revenue_range(wb, floor[0], ceiling[0], per_customer_distribution, per_customer_transmission)
+        _write_kwh(wb, rows)
+        _write_payers_range(wb, rate_year_customers)
+        _write_rates(wb, distribution, transmission, generation)
+        _write_increase_range(wb)
+    else:
+        _write_revenue(wb, floor, ceiling)
+        _write_kwh(wb, rows)
+        _write_payers(wb, len(floor), rate_year_customers)
+        _write_rates(wb, distribution, transmission, generation)
+        _write_increase(wb, len(floor))
     return wb

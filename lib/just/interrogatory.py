@@ -725,6 +725,9 @@ SCAFFOLD = """---
 title: "Interrogatory Responses"
 execute:
   echo: false
+format:
+  html:
+    include-in-header: ../.style/interrogatory-preview.html   # sets quoted testimony apart in the HTML preview
 
 # Fill in every field below. They become the header printed at the top of every
 # page of every response. `just interrogatories` stops and lists anything still

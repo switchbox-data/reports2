@@ -51,7 +51,7 @@ a. Confirm something."""
     assert "**Velez Direct, printed p. 27, lines 3–8**" in out  # noqa: RUF001
     assert "testimony-passage" not in out
     assert "custom-style" not in out
-    assert "27:3\t" in out
+    assert "27:3\u2003\u2003" in out
 
 
 def test_nested_referenced_testimony_inside_question() -> None:
@@ -90,3 +90,26 @@ def test_verify_referenced_testimony_against_velez() -> None:
 
 a. Confirm something."""
     assert verify_referenced_testimony(question, VELEZ, "CIEC-6") == []
+
+
+def test_numbered_list_markers_and_indent_are_kept() -> None:
+    """The recommendations list (6:13-7:12) keeps its numbers and hanging indent, across the page break."""
+    out = insert_referenced_testimony_block(
+        "Please refer to Velez Direct Testimony at page 6, lines 13-23; page 7, lines 1-8.", VELEZ
+    ).replace("\u2007", "")  # figure spaces only pad the line references to a common width
+    gap, nb = "\u2003\u2003", "\u00a0"
+    # The marker is indented; runon lines of the item are indented further.
+    assert f"6:13{gap}{nb * 2}1. Create a new residential rate schedule" in out
+    assert f"6:14{gap}{nb * 6}a heat pump for heating." in out
+    assert f"6:20{gap}{nb * 2}3. Set a lower Transmission Service Rate" in out
+    # The extract drops the list prefix at the page break; the item still continues.
+    assert f"7:1{gap}{nb * 6}Transmission Service Rate should be 75% lower" in out
+    assert f"7:3{gap}{nb * 2}4. Auto-enroll all electric customers" in out
+
+
+def test_passage_lines_are_one_single_spaced_paragraph() -> None:
+    """Lines inside a passage are joined by hard breaks (a trailing backslash), not blank lines."""
+    out = insert_referenced_testimony_block("Please refer to Velez Direct Testimony at page 6, lines 11-14.", VELEZ)
+    lines = [ln for ln in out.splitlines() if ln.startswith("6:1")]
+    assert [ln.endswith("\\") for ln in lines] == [True, True, True, False]
+    assert "" not in out.splitlines()[out.splitlines().index(lines[0]) : out.splitlines().index(lines[-1])]

@@ -59,8 +59,9 @@ The search page is ASP.NET WebForms. Required POST fields:
    viewer page (`btnOpenPdfFile`). Match both quote styles:
 
    ```python
-   r'data-pdf="([^"]+)"'   # double quotes
-   r"data-pdf='([^']+)'"   # single quotes
+   r'data-pdf="([^"]+)"'  # double quotes
+
+   r"data-pdf='([^']+)'"  # single quotes
    ```
 
 2. **Search results may not use `data-pdf` on the first match** — the ML button
@@ -86,12 +87,14 @@ BASE = "http://webpscxb.pscmaryland.com"  # https is Cloudflare-challenged
 ML = "218934"
 OUT = Path("context/sources/md_hp_rates/mdpuc_218934_pc44_rate_design_final_report.pdf")
 
+
 def data_pdf(html: str) -> str | None:
     for pat in (r'data-pdf="([^"]+)"', r"data-pdf='([^']+)'"):
         m = re.search(pat, html)
         if m:
             return m.group(1)
     return None
+
 
 def hidden_fields(html: str) -> dict[str, str]:
     out = {}
@@ -100,6 +103,7 @@ def hidden_fields(html: str) -> dict[str, str]:
         if m:
             out[name] = m.group(1)
     return out
+
 
 with requests.Session() as s:
     s.headers["User-Agent"] = (

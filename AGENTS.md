@@ -98,6 +98,7 @@ report_vars["pct_natgas_save_default"] = save_w / total_w
 
 # analysis.qmd — final cell
 import pickle
+
 Path("../cache/report_variables.pkl").write_bytes(pickle.dumps(report_vars))
 ```
 
@@ -105,10 +106,13 @@ Path("../cache/report_variables.pkl").write_bytes(pickle.dumps(report_vars))
 # index.qmd — setup cell
 import pickle
 from types import SimpleNamespace
+
 v = SimpleNamespace(**pickle.loads(Path("cache/report_variables.pkl").read_bytes()))
+
 
 def dollar(x, accuracy=0):
     return f"${x:,.{accuracy}f}"
+
 
 def pct(x, accuracy=0):
     return f"{x * 100:,.{accuracy}f}%"
@@ -803,12 +807,7 @@ Importing `theme_switchbox` automatically configures matplotlib for SVG text-as-
 Apply `+ theme_switchbox()` to every plot. The theme implements a **three-tier text hierarchy** — do not override font sizes, families, or colors with ad-hoc `+ theme(element_text(size=...))`. The only per-plot `+ theme(...)` you should set is `figure_size`:
 
 ```python
-(
-    ggplot(df, aes("x", "y"))
-    + geom_col(fill=SB_COLORS["sky"])
-    + theme_switchbox()
-    + theme(figure_size=(10.5, 4.5))
-)
+(ggplot(df, aes("x", "y")) + geom_col(fill=SB_COLORS["sky"]) + theme_switchbox() + theme(figure_size=(10.5, 4.5)))
 ```
 
 **Chart typography guide** (baked into `theme_switchbox`):
@@ -1157,26 +1156,26 @@ These are real mistakes that waste time. Memorize them or look them up every tim
 **`theme()` vs `theme_minimal()`**: `figure_size` belongs in `theme()`, not in `theme_minimal()`. `theme_minimal()` accepts no custom arguments beyond what its parent `theme` class defines. Always do:
 
 ```python
-+ theme_minimal()
-+ theme(figure_size=(14, 6))
++theme_minimal()
++theme(figure_size=(14, 6))
 ```
 
 Never:
 
 ```python
-+ theme_minimal(figure_size=(14, 6))  # TypeError
++theme_minimal(figure_size=(14, 6))  # TypeError
 ```
 
 **`element_text()` margin format**: The `margin` parameter in `element_text()` takes a dict with a `"units"` key, not a tuple. Correct:
 
 ```python
-plot_title=element_text(margin={"b": -10, "units": "pt"})
+plot_title = element_text(margin={"b": -10, "units": "pt"})
 ```
 
 Incorrect:
 
 ```python
-plot_title=element_text(margin=(0, 0, -10, 0))  # AttributeError
+plot_title = element_text(margin=(0, 0, -10, 0))  # AttributeError
 ```
 
 **`coord_flip()` swaps everything**: When using `coord_flip()`, the x aesthetic becomes the vertical axis and y becomes horizontal. This means:

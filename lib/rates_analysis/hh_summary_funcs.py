@@ -455,7 +455,7 @@ def plot_bill_delta_direction_by_cooling_coverage(share_df: pl.DataFrame, label_
         )
         # Full coverage-level names (e.g. "100% Conditioned") wrap/collide with 7 x categories
         # side by side; the short COOLING_COVERAGE_LABELS forms (e.g. "100%") fit on one line.
-        + scale_x_discrete(labels=lambda cats: [COOLING_COVERAGE_LABELS.get(c, c) for c in cats])
+        + scale_x_discrete(labels=lambda cats: [str(COOLING_COVERAGE_LABELS.get(c, c)) for c in cats])
         + scale_y_continuous(labels=lambda ls: [f"{v:.0%}" for v in ls], expand=(0, 0, 0.02, 0))
         + labs(x="Cooling coverage", y="Share of homes", fill="Bill change")
         + theme_switchbox()

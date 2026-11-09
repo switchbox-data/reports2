@@ -19,9 +19,9 @@ theme(dpi=300 from Quarto)        No width/height on <img>        Scales to cont
 If no `figure_size` is set in the plotnine code, matplotlib's default is used. Quarto sets this default via its Python kernel setup (`/Applications/quarto/share/jupyter/lang/python/setup.py`):
 
 ```python
-plt.rcParams['figure.figsize'] = (fig_width, fig_height)
-plt.rcParams['figure.dpi'] = fig_dpi
-plt.rcParams['savefig.dpi'] = "figure"
+plt.rcParams["figure.figsize"] = (fig_width, fig_height)
+plt.rcParams["figure.dpi"] = fig_dpi
+plt.rcParams["savefig.dpi"] = "figure"
 ```
 
 For HTML output with no `fig-width`/`fig-height` in `_quarto.yml`, the defaults are (7, 5) inches. `fig-dpi` comes from YAML (300 in ny_hp_rates).
@@ -162,8 +162,8 @@ Example: at `figure_size=(10, 5)` in a 1050px container, 12pt text appears at ~1
 In plotnine, override the base size on the theme:
 
 ```python
-+ theme_switchbox(base_size=17)
-+ theme(figure_size=(14, 5))
++theme_switchbox(base_size=17)
++theme(figure_size=(14, 5))
 ```
 
 And scale `geom_text(size=...)` by the same factor.
@@ -209,7 +209,7 @@ format:
 Quarto's `#| fig-width:` and `#| fig-height:` cell options **do not work for Jupyter/Python cells** — they only work for Knitr (R). For Python, always set size in code:
 
 ```python
-+ theme(figure_size=(10, 5))
++theme(figure_size=(10, 5))
 ```
 
 ### Column classes in `index.qmd`

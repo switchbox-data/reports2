@@ -211,16 +211,16 @@ MCOS_LOCAL_FACILITIES_MO = 24.51
 mcos_connection_yr = 12 * (MCOS_CUSTOMER_MO + MCOS_LOCAL_FACILITIES_MO)
 customer_charge_yr = 12 * fc.original_fixed_charge
 
-# Exhibit CLP-RATES-2 Rate Year billed residential sales, as in notebooks/incremental_fair_default.qmd.
+# Rate Year billed sales (MWh), all on one basis: Exhibit CLP-RATES-2 at 3 (CLP-RATES-2.1).
+# Rate 1 matches notebooks/incremental_fair_default.qmd. Total Retail is billed sales, not the
+# 20,485,894 MWh of forecasted sales on p. 181, which includes the primary-metering credit.
 CLASS_BILLED_MWH = 8_716_958.14
-rate_year_kwh_per_customer = CLASS_BILLED_MWH * 1000 / fc.class_customers
-
-# Rate Year sales (MWh): company total from Exhibit CLP-RATES-2.12; residential classes from CLP-RATES-2.4.
-RDM_TOTAL_MWH = 20_485_894
 RATE5_MWH = 1_593_008.20
 RATE7_MWH = 9_126.89
+RDM_TOTAL_MWH = 20_457_507
 residential_mwh = CLASS_BILLED_MWH + RATE5_MWH + RATE7_MWH
 nonres_kwh_share = 1 - residential_mwh / RDM_TOTAL_MWH
+rate_year_kwh_per_customer = residential_mwh * 1000 / c1.rate_year_customers
 
 # CIEC-11: Company 2025 class-average loads vs ResStock, and ResStock vs EIA-861 (2018).
 c11_r1 = {row["month"]: row for row in c11.monthly_rate_1}
@@ -346,7 +346,7 @@ a. Estimates are provided below and in CIEC-1 Attachment 1 (Excel, formulas inta
 
 b. Between **`{python} num(floor_existing)`** and **`{python} num(ceiling_existing)`** existing heat pump customers, or `{python} pct(floor_existing / c1.rate_year_customers, 2)` to `{python} pct(ceiling_existing / c1.rate_year_customers)` of the residential customers the Company filed for the Rate Year.[^1b-customers]
 
-   [^1b-customers]: `{python} num(c1.rate_year_customers)` customers, the Rate Year average bills rendered for Rates 1, 5 and 7. Davis-Parsons Direct, Exhibit CLP-RATES-2.10 [@clp_Docket260510Exhibit_2026g] **[TK: pinpoint and public copy; the CLP-RATES-2 extract has no page markers]**.
+   [^1b-customers]: `{python} num(c1.rate_year_customers)` customers, the Rate Year average number of bills rendered for Rates 1, 5 and 7. Davis-Parsons Direct, Exhibit CLP-RATES-2 at 45, 48, 51 [@clp_Docket260510Exhibit_2026g] **[TK: no public copy to link yet]**.
 
    - The Company could not supply this number, so the estimate is a range built from the Company's own partial count and a survey share.[^1b-no-tracking]
 
@@ -492,7 +492,9 @@ d. Not in the testimony; the testimony does not address the reconciling mechanis
 
      [^2d-rdm]: Davis-Parsons Direct, Exhibit CLP-RATES-1 at 22:21 ("the rate will be set at a flat kWh rate across all rate classes") [@clp_Docket260510Exhibit_2026f].
 
-     [^2d-nonres-share]: One minus the residential share of Rate Year billed sales: Rate 1 (`{python} num(CLASS_BILLED_MWH)` MWh), Rate 5 (`{python} num(RATE5_MWH)` MWh) and Rate 7 (`{python} num(RATE7_MWH)` MWh), out of `{python} num(RDM_TOTAL_MWH)` MWh for the Company. Davis-Parsons Direct, Exhibits CLP-RATES-2.4 and CLP-RATES-2.12 [@clp_Docket260510Exhibit_2026g] **[TK: pinpoints and public copy; the CLP-RATES-2 extract has no page markers and omits CLP-RATES-2.12]**.
+     [^2d-nonres-share]: One minus the residential share of Rate Year billed sales: Rate 1 (`{python} num(CLASS_BILLED_MWH)` MWh), Rate 5 (`{python} num(RATE5_MWH)` MWh) and Rate 7 (`{python} num(RATE7_MWH)` MWh), out of `{python} num(RDM_TOTAL_MWH)` MWh of billed sales for all retail classes. Davis-Parsons Direct, Exhibit CLP-RATES-2 at 3 [@clp_Docket260510Exhibit_2026g] **[TK: no public copy to link yet]**.
+
+   - Transmission: the Transmission Adjustment Clause is fully reconciling. Class transmission rates are set from each class's allocated share of transmission cost, but the reconciliation is computed for the Company as a whole.[^2d-tac] In the 2023 annual review, for example, the Authority found a single company-wide 2022 over-collection of \$4,603,708 and carried it into the TAC balance.[^2d-tac-2023] The carried-forward balance is added to the next year's company-wide transmission revenue requirement, which is then allocated to classes by their average demand at the Company's twelve monthly system peaks. So a transmission under-collection is spread to every class the following year, about `{python} pct(1 - (1_652_552.5 + 338_287.6) / 3_785_696.4)` of it to non-residential classes on the 2026 allocation.[^2d-tac-2026]
 
      [^2d-tac-2026]: Docket No. 26-01-03, CL&P Rates Filing, Attachment 1, Exhibit 4 at 1, lines 20, 29 (the "Ending Balance as of December 31, 2025 (Over-Collection)/ Shortfall" of \$90,839,804 is included in the "Forecast 2026 Transmission Revenue Requirement without GET" of \$850,333,003), 4 (allocating the revenue target by "Average rate class KW demands coincident to the Company's 12 monthly system peaks": 1,652,552.5 kW for Rates 1 and 7 and 338,287.6 kW for Rate 5, out of 3,785,696.4 kW) (Feb. 17, 2026) **[NOT INGESTED]**; Docket No. 26-01-03, Interim Decision at 25, Table 5 (Apr. 22, 2026) (approving the 2025 under-collection as part of the 2026 revenue requirement) **[NOT INGESTED]**.
 
@@ -861,8 +863,7 @@ c. Estimates. Workpapers: `ciec_requests/ciec_request_6.qmd`, provided as CIEC-6
      - _From existing heat pump customers:_ an increase of `{python} cents(c6.floor_per_kwh)` to `{python} cents(c6.ceiling_per_kwh)` per kWh (CIEC-3(c)), or `{python} dollar(c6.floor_mean)` to `{python} dollar(c6.ceiling_mean)` a year for the average customer (median `{python} dollar(c6.floor_median)` to `{python} dollar(c6.ceiling_median)`), at the floor and ceiling enrollment estimates.
      - **[ANALYSIS: Alex Lee: same weight-scale issue as CIEC-3(c); rescaled, the ceiling average would be `{python} est("bill_impact_ceiling_rescaled")`. Rerun `ciec_request_6.qmd` before filing.]**
    - (ii) Non-residential customers, including Rates 39 and 57: `{python} dollar(c6.nonres_bill_impact)`, with the steps recommended in CIEC-2(c). Rate HP changes no non-residential rate and no class's share of the revenue requirement.
-   - If the existing-customer reduction were instead left to the RDM (contrary to Mr. Velez's recommendation), non-residential customers would pay about `{python} pct(nonres_kwh_share)` of it: `{python} million(nonres_kwh_share * short_floor['dist'])` to `{python} million(nonres_kwh_share * short_ceiling['dist'])` a year of the distribution part, at a flat rate per kWh.[^6c-share] **[TK: Alex Lee: confirm the share from Exhibit CLP-RATES-2.12 and 2.4]**
-
+   - If the existing-customer reduction were instead left to the RDM (contrary to Mr. Velez's recommendation), non-residential customers would pay about `{python} pct(nonres_kwh_share)` of it: `{python} million(nonres_kwh_share * short_floor['dist'])` to `{python} million(nonres_kwh_share * short_ceiling['dist'])` a year of the distribution part, at a flat rate per kWh.[^6c-share]
      [^6c-share]: The non-residential share of Rate Year billed sales, as derived in CIEC-2(d), times the existing-customer distribution shortfall in CIEC-1(a).
 
 :::
@@ -1427,7 +1428,7 @@ a. ResStock's simulated loads were compared against two benchmarks, and the numb
 
    - Calibration: ResStock assigns `{python} num(eia_cust['resstock_customers'])` households to the Company's territory. The weights were scaled to the `{python} num(c1.rate_year_customers)` residential customers the Company filed for the Rate Year.[^11a-customers] The scaling is uniform, so it changes totals, not per-customer bills or shares.
 
-     [^11a-customers]: Joint Direct Testimony of Edward Davis and Kimberly R. Parsons on behalf of The Connecticut Light and Power Company d/b/a Eversource Energy ("Davis-Parsons Direct"), Exhibit CLP-RATES-2.10 (July 14, 2026) [@clp_Docket260510Exhibit_2026g] **[TK: no public copy to link yet; sheet pinpoint]**; Exhibit JPV-2, Section 1.
+     [^11a-customers]: Joint Direct Testimony of Edward Davis and Kimberly R. Parsons on behalf of The Connecticut Light and Power Company d/b/a Eversource Energy ("Davis-Parsons Direct"), Exhibit CLP-RATES-2 at 45, 48, 51 (July 14, 2026) [@clp_Docket260510Exhibit_2026g] **[TK: no public copy to link yet]**; Exhibit JPV-2, Section 1.
 
    - Check 1, EIA-861 (2018, matching ResStock's weather year): the ResStock average Eversource home uses `{python} num(resstock_kwh_per_customer)` kWh a year, against `{python} num(eia_kwh_per_customer)` kWh per residential customer in EIA-861, `{python} pct(eia_kwh['kwh_pct_diff'] / 100, 1)`.[^11a-eia]
 
@@ -1442,7 +1443,7 @@ b. Comparison of modeled and actual average usage before heat pump installation.
 
    - Company average, all residential customers: `{python} num(rate_year_kwh_per_customer)` kWh a year in the Rate Year forecast.[^11b-rate-year] ResStock average, all Eversource homes: `{python} num(resstock_kwh_per_customer)` kWh in 2018 weather.
 
-     [^11b-rate-year]: `{python} num(CLASS_BILLED_MWH)` MWh of Rate Year billed residential sales divided by `{python} num(fc.class_customers)` customers. Davis-Parsons Direct, Exhibit CLP-RATES-2 [@clp_Docket260510Exhibit_2026g] **[TK: sheet pinpoints]**.
+     [^11b-rate-year]: `{python} num(residential_mwh)` MWh of Rate Year billed sales for Rates 1, 5 and 7, divided by their `{python} num(c1.rate_year_customers)` customers (CIEC-1(b)). Davis-Parsons Direct, Exhibit CLP-RATES-2 at 3 [@clp_Docket260510Exhibit_2026g] **[TK: no public copy to link yet]**.
 
    - Fossil fuel-heated homes against Rate 1: the Company's average Rate 1 customer used `{python} num(c11_r1['Annual']['company_kwh'])` kWh in 2025; the ResStock homes heated with gas, delivered fuels or other fuels use `{python} num(c11_r1['Annual']['resstock_kwh'])` kWh. The Company figure is `{python} pct(c11_r1['Annual']['pct_diff'], 1)` higher.
    - By month, the Rate 1 gap is largest in July (`{python} pct(c11_r1['Jul']['pct_diff'])`), June (`{python} pct(c11_r1['Jun']['pct_diff'])`) and December through February (`{python} pct(min(c11_r1[mo]['pct_diff'] for mo in ['Dec', 'Jan', 'Feb']))` to `{python} pct(max(c11_r1[mo]['pct_diff'] for mo in ['Dec', 'Jan', 'Feb']))`), and within ±`{python} pct(max(abs(c11_r1[mo]['pct_diff']) for mo in ['Mar', 'Apr', 'Aug', 'Sep', 'Oct']))` in March, April and August through October.
@@ -1880,7 +1881,7 @@ a. Exhibit JPV-2, Section 6 gives the full derivation.[^15a-n85] An Excel versio
 
 b. Rate HP, with Rate 1 set in the same rate case to recover the residential revenue requirement net of Rate HP revenue, is such a design. The residential class recovers the same T&D revenue requirement with or without Rate HP.
 
-> **[COUNSEL]** The testimony does not say in so many words that Rate 1 is set to recover the remainder; it says Rate HP should be recalibrated in later rate cases (Velez Direct at 7:9–12) and describes a "tech-specific rate" as having a lever that "any rate that must be revenue neutral with respect to the residential class as a whole" lacks (98:10–12). This response, CIEC-1(a) and CIEC-2(c) state it as Mr. Velez's recommendation. The Company itself treats Rates 1 and 7 as one revenue class and Rate 5 as another (CL&P Response to CLF-SC-035, at 1; Davis-Parsons Direct, Exhibit CLP-RATES-2.1), so "the residential class" should read "Rate 1 and Rate 7" or "the residential classes" where precision matters. Rate HP is built on Rate 1, so it would sit in the Rate 1 and 7 revenue class. **[TK: JPV: how to treat Rate 5 heat pump customers who enroll in Rate HP; their move shifts revenue from the Rate 5 class to the Rate 1 and 7 class, and Rate 5 is not mentioned in the testimony's recovery recommendation]**
+> **[COUNSEL]** The testimony does not say in so many words that Rate 1 is set to recover the remainder; it says Rate HP should be recalibrated in later rate cases (Velez Direct at 7:9–12) and describes a "tech-specific rate" as having a lever that "any rate that must be revenue neutral with respect to the residential class as a whole" lacks (98:10–12). This response, CIEC-1(a) and CIEC-2(c) state it as Mr. Velez's recommendation. The Company itself treats Rates 1 and 7 as one revenue class and Rate 5 as another (CL&P Response to CLF-SC-035, at 1; Davis-Parsons Direct, Exhibit CLP-RATES-2 at 3), so "the residential class" should read "Rate 1 and Rate 7" or "the residential classes" where precision matters. Rate HP is built on Rate 1, so it would sit in the Rate 1 and 7 revenue class. **[TK: JPV: how to treat Rate 5 heat pump customers who enroll in Rate HP; their move shifts revenue from the Rate 5 class to the Rate 1 and 7 class, and Rate 5 is not mentioned in the testimony's recovery recommendation]**
 
    - Any rate that eliminates the overpayment must collect less from heat pump customers than Rate 1 does, because the overpayment is the amount Rate 1 collects above each customer's pre-heat-pump bill plus incremental marginal cost.
    - New heat pump customers: collecting less from them than Rate 1 would requires nothing from anyone else. They still pay more than they did before installing, so no part of the residential revenue requirement goes unrecovered.

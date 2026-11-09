@@ -1560,7 +1560,7 @@ def plot_weighted_bill_change_hist(
         + plt.scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
         + plt.scale_x_continuous(
             breaks=list(range(_tick_lo, _tick_hi + _tick_step, _tick_step)),
-            labels=lambda xs: [f"${x:,.0f}" if x >= 0 else f"-${abs(x):,.0f}" for x in xs],
+            labels=lambda xs: [f"${float(x):,.0f}" if float(x) >= 0 else f"-${abs(float(x)):,.0f}" for x in xs],
         )
         + plt.coord_cartesian(xlim=(hist_x_lo, hist_x_hi))
         + plt.labs(x=x_label, y="Weighted households", title=title)
@@ -1651,7 +1651,7 @@ def plot_weighted_hist_by_group(
         + plt.facet_wrap(group_col, scales="free")
         + plt.coord_cartesian(xlim=(hist_x_lo, hist_x_hi))
         + plt.scale_x_continuous(
-            breaks=lambda _limits, lo=hist_x_lo, hi=hist_x_hi: breaks_fn((lo, hi)),
+            breaks=lambda _limits, lo=hist_x_lo, hi=hist_x_hi: list(breaks_fn((lo, hi))),
             labels=lambda xs: [f"{x:,.0f}" for x in xs],
         )
         + plt.labs(x=x_label, y="Weighted households", title=title)
@@ -1694,7 +1694,7 @@ def plot_ratedesign_monthly_hist(
         + plt.labs(x="Change in monthly energy bill ($)", y="Count of households")
         + plt.scale_x_continuous(
             breaks=lambda limits: list(range((int(limits[0]) // 5) * 5, int(limits[1]) + 5, 5)),
-            labels=lambda xs: [f"${x:,.0f}" if x >= 0 else f"-${abs(x):,.0f}" for x in xs],
+            labels=lambda xs: [f"${float(x):,.0f}" if float(x) >= 0 else f"-${abs(float(x)):,.0f}" for x in xs],
             minor_breaks=[],
         )
         + theme_switchbox()
@@ -1754,7 +1754,7 @@ def plot_ratedesign_cdf(
         + plt.scale_x_continuous(
             breaks=lambda limits: list(range((int(limits[0]) // 5) * 5, int(limits[1]) + 5, 5)),
             minor_breaks=lambda limits: list(range(int(limits[0]), int(limits[1]) + 1, 1)),
-            labels=lambda xs: [f"${x:,.0f}" if x >= 0 else f"-${abs(x):,.0f}" for x in xs],
+            labels=lambda xs: [f"${float(x):,.0f}" if float(x) >= 0 else f"-${abs(float(x)):,.0f}" for x in xs],
         )
         + plt.scale_y_continuous(
             breaks=[i / 10 for i in range(11)],
@@ -3302,7 +3302,7 @@ def monthly_bill_from_profile(
     frames: list[pl.DataFrame] = []
     for component_name, spec in rate_components.items():
         unit = spec["charge_unit"]
-        raw_rates: dict[str, float] = spec["monthly_rates"]  # type: ignore[assignment]
+        raw_rates: dict[str, float] = spec["monthly_rates"]  # ty: ignore[invalid-assignment]
         label_rates = {_RATE_YAML_MONTH_TO_LABEL[k]: v for k, v in raw_rates.items()}
 
         if unit == "$/kWh":

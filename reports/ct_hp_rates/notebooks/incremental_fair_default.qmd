@@ -263,6 +263,70 @@ print("✓ Cost reflectivity: retrofit increment matches marginal cost")
 print("✓ Revenue neutrality: class revenue unchanged")
 ```
 
+## Revenue-neutrality validation
+
+As an independent check, we bill the entire residential class twice, once under
+filed Rate 1 and once under the redesigned tariff. The redesigned tariff scales
+each targeted per-kWh charge by λ\* and sets the fixed charge to F\*. Every
+residential customer is assumed to be on the redesigned rate, and class billing
+determinants are held fixed. Generation charges are the same under both tariffs,
+so they're left out.
+
+```{python}
+#| label: revenue-neutrality-validation
+
+_targeted_charges = {
+    **_dist_sub_charges,
+    "transmission_charge": _drr["transmission_charge"],
+}
+
+
+def _class_revenue(fixed_charge: float, rate_multiplier: float) -> pl.DataFrame:
+    rows = [
+        {
+            "component": name,
+            "revenue": sum(
+                rate_multiplier * rate * class_monthly_kwh
+                for rate in charge["monthly_rates"].values()
+            ),
+        }
+        for name, charge in _targeted_charges.items()
+    ]
+    rows.append({"component": "fixed_charge", "revenue": fixed_charge * CLASS_ANNUAL_BILLS})
+    return pl.DataFrame(rows)
+
+
+validation = (
+    _class_revenue(BASE_FIXED_CHARGE, 1.0)
+    .rename({"revenue": "filed_rate_1"})
+    .join(
+        _class_revenue(result.fixed_charge, result.implied_lambda).rename(
+            {"revenue": "redesigned"}
+        ),
+        on="component",
+    )
+    .with_columns((pl.col("redesigned") - pl.col("filed_rate_1")).alias("change"))
+)
+
+filed_total = validation["filed_rate_1"].sum()
+redesigned_total = validation["redesigned"].sum()
+revenue_gap = redesigned_total - filed_total
+
+assert abs(revenue_gap) / filed_total < 1e-9, (
+    f"Class revenue not neutral: filed=${filed_total:,.0f}, "
+    f"redesigned=${redesigned_total:,.0f}, gap=${revenue_gap:,.2f}"
+)
+
+report_vars["validation_class_revenue_filed"] = filed_total
+report_vars["validation_class_revenue_redesigned"] = redesigned_total
+report_vars["validation_revenue_gap"] = revenue_gap
+
+print(f"Filed Rate 1 class T&D revenue: ${filed_total:,.0f}")
+print(f"Redesigned class T&D revenue:   ${redesigned_total:,.0f}")
+print(f"Gap:                            ${revenue_gap:,.2f}")
+validation
+```
+
 ## Export report variables
 
 ```{python}

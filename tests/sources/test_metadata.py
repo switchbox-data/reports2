@@ -68,6 +68,12 @@ def test_long_pennsylvania_docket_numbers_are_read_whole():
         assert not any("Docket <number>" in p or "needs the title" in p for p in problems(card))
 
 
+def test_connecticut_sub_docket_numbers_are_read_whole():
+    for docket in ("17-12-03RE11", "26-05-10SP01"):
+        card = make_card(title=f"Docket {docket}: Decision Modifying the Low-Income Discount Rate", docket=docket)
+        assert not any("Docket <number>" in p or "needs the title" in p for p in problems(card))
+
+
 def test_publisher_must_not_repeat_the_author():
     assert any("repeats the author" in p for p in problems(make_card(publisher="MA DPU")))
     assert not any("repeats the author" in p for p in problems(make_card(publisher="Commonwealth of Massachusetts")))

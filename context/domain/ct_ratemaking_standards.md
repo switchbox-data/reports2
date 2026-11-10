@@ -121,6 +121,29 @@ These come from reading the statute text during verification and from the memo's
 | **Docket 17-12-03RE10 legislative report**          | Already in our bibliography as `pura_PURAInvestigationDistribution_2024` (Feb. 2024); same investigation as the 2024 low-income decision.                                                                                                                                                                                                                                                                                                                                                            | `reports/references.yaml`                                                         |
 | **Global Warming Solutions Act, § 22a-200a**        | Cited inside § 16-244aa(b)(1); the memo brackets it as "the GWSA" but doesn't discuss it. Supports a GHG-reduction rationale for heat pump rates.                                                                                                                                                                                                                                                                                                                                                    | [ch. 446c](https://www.cga.ct.gov/current/pub/chap_446c.htm)                      |
 
+## Gap analysis against Velez Direct Testimony (Docket 26-05-10) (Switchbox note, 2026-11-10)
+
+After filing direct testimony, we reviewed it against the standards in this memo to check whether any important ratemaking principles were missed. The testimony's core arguments — cost causation, intra-class equity, and building electrification policy — are thoroughly covered and grounded in Bonbright, the RAP manual, and the Company's own MCOS witness. The CIEC interrogatories (Set CIEC-02) do not surface any statutory-principle gaps. Assessment by priority:
+
+### One genuinely important gap: § 16-19e(b)
+
+The testimony's central argument is that incremental heat pump load should be priced at (closer to) marginal cost, and Section VIII argues that Rate 6's block design places a disproportionate burden on lower-income customers. **§ 16-19e(b) is a statute that directs PURA to do exactly both of those things** — investigate "long run incremental cost of marginal cost pricing" and "peak load or time of day pricing," and determine whether rate structures "place an undue burden upon those persons of poverty status." It is the most direct statutory basis for the kind of rate design innovation proposed in Rate HP, and it is not cited anywhere in the testimony.
+
+**Where to use it.** If the Company's rebuttal argues that the Commission has no basis for adopting marginal-cost-based rate design, or that Rate HP is a novel departure from established ratemaking, § 16-19e(b) is a clean surrebuttal point. Either way, it belongs in the post-hearing brief, where the evidentiary record is tied to the legal standards the Commission applies. (It's a statute, not a factual claim, so it doesn't need to be in the evidentiary record to be cited in a brief.)
+
+### Two secondary items worth knowing
+
+**§ 16-2(m) — "decisions shall be guided by" DEEP plans and policies.** The testimony cites the substantive policies (GWSA, DEEP's GHG inventory, the New England Heat Pump Accelerator) but does not invoke the statute that makes them binding on PURA's rate decisions. The argument is all there; the statutory command isn't explicitly invoked. Worth adding in surrebuttal if the Company argues heat pump adoption is outside PURA's ratemaking lane, and in briefing regardless.
+
+**PBR Decision (Docket 21-05-15) goals and outcomes.** PURA adopted "GHG reduction," "social equity," and "affordable service" as priority outcomes, and "public policy achievement" and "reasonable, equitable, and affordable rates" as regulatory goals. The testimony never cites the PBR decision. These are PURA's own articulated standards, useful for framing Rate HP in the Commission's own vocabulary — particularly in briefing.
+
+### Items considered and not gaps
+
+- **§ 16-19e(a)(6) — non-discrimination against renewable energy customers.** Heat pumps are not "renewable energy sources" in the statutory sense (aimed at solar/cogen). Citing it would be a stretch.
+- **§ 16-244(4) — cross-subsidization among customer classes.** This is about inter-class subsidies; our argument is intra-class. The testimony wisely avoids claiming it as direct authority and instead relies on Bonbright and the Company's own MCOS witness.
+- **§ 16-19oo and § 16-19zz.** Procedural hooks (PURA _can_ approve policy-driven rate amendments). Useful if jurisdiction is challenged, but that hasn't happened.
+- **Revenue neutrality / who bears the revenue loss.** CIEC hammers this (questions 2, 3, 6, 7, 16). This is an implementation question the testimony deliberately left open (argue the overcharge should be eliminated; don't specify who absorbs it). A strategic choice, not a gap in principles.
+
 ## Open items
 
 - Ask CLF whether the § 16-2(m) quotation was taken from an older version of the statute, and whether they have DEEP/CES/IRP language supporting heat pump deployment.

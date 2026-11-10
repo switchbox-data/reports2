@@ -958,32 +958,31 @@ def makeup_table(rows: Sequence[tuple[str, str, Mapping[str, float]]]) -> str:
 def read_energizect_installations(path: Path) -> pl.DataFrame:
     """EnergizeCT heat pump export as ``heat_pump_type``, ``year``, ``installations``.
 
-    The export is Power BI's "data with current layout" of the dashboard's
-    installations table: a header row of years, one row per heat pump type
-    under the sector total, then a grand total row. Blank cells are zero
-    installations. Each year's types must add up to the export's own total.
+    Reads the workbook's Detail sheet, one row per company, sector, heat pump
+    type, sub-program and year. The Export sheet is SUMIFS formulas over
+    Detail with no cached values, so openpyxl reads it as blank. Sub-programs
+    are summed within each type and year. The sheet must hold a single
+    company and sector, so a broader export can't be counted as Eversource
+    residential.
     """
     import openpyxl
 
-    sheet = openpyxl.load_workbook(path, data_only=True)["Export"]
-    rows = [row for row in sheet.iter_rows(values_only=True) if any(cell is not None for cell in row)]
-    if rows[0][0] != "Year" or rows[0][-1] != "Total":
-        raise ValueError(f"{path} does not start with a Year ... Total header row")
-    years = [int(cast(int, year)) for year in rows[0][3:-1]]
-    totals = next(row for row in rows if row[0] == "Total")
-    types = [row for row in rows if row[2] not in (None, "Total") and row[0] is None]
-    long = pl.DataFrame(
-        [
-            {"heat_pump_type": str(row[2]), "year": year, "installations": int(cast(int, cell or 0))}
-            for row in types
-            for year, cell in zip(years, row[3:-1], strict=True)
-        ]
+    sheet = openpyxl.load_workbook(path, data_only=True)["Detail"]
+    header, *rows = sheet.iter_rows(values_only=True)
+    detail = pl.DataFrame(
+        [row for row in rows if any(cell is not None for cell in row)],
+        schema=[str(name) for name in header],
+        orient="row",
     )
-    by_year = long.group_by("year").agg(pl.col("installations").sum()).sort("year")
-    expected = [int(cast(int, cell)) for cell in totals[3:-1]]
-    if by_year["installations"].to_list() != expected:
-        raise ValueError(f"{path}: types sum to {by_year['installations'].to_list()}, export total is {expected}")
-    return long
+    for column in ("Company", "Sector"):
+        values = detail[column].unique().to_list()
+        if len(values) != 1:
+            raise ValueError(f"{path}: Detail has more than one {column}: {values}")
+    return (
+        detail.group_by(pl.col("Heat Pump Type").alias("heat_pump_type"), pl.col("Year").cast(pl.Int64).alias("year"))
+        .agg(pl.col("Installations").cast(pl.Int64).sum().alias("installations"))
+        .sort("heat_pump_type", "year")
+    )
 
 
 def energizect_households(

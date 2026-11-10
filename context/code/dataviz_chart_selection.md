@@ -32,11 +32,11 @@ Each check below changes which chart is right. Run them on the actual data. A co
 In polars, most of these are one line each (the tool-agnostic checks above are what matter; this is just a shortcut):
 
 ```python
-df.schema                                                    # roles start here, but verify them
-df.select(pl.all().n_unique())                               # distinct values per column
-df.group_by(group_cols).len().describe()                     # rows per group: one, or several?
+df.schema  # roles start here, but verify them
+df.select(pl.all().n_unique())  # distinct values per column
+df.group_by(group_cols).len().describe()  # rows per group: one, or several?
 df.group_by(child).agg(pl.col(parent).n_unique().alias("k")).filter(pl.col("k") > 1).height == 0  # nested?
-df.select(pl.struct(a, b).n_unique()).item() == df[a].n_unique() * df[b].n_unique()            # complete grid?
+df.select(pl.struct(a, b).n_unique()).item() == df[a].n_unique() * df[b].n_unique()  # complete grid?
 ```
 
 ## 2. Recognize the data's shape

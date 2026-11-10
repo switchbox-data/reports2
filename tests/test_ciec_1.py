@@ -233,7 +233,7 @@ def test_scaled_nonhp_sales_uses_each_rows_customers_who_remain() -> None:
     assert stats["mean"] == pytest.approx(revenue / one["customers"])
 
 
-def _write_energizect_export(path: Path, total_2018: int) -> None:
+def _write_energizect_export(path: Path, sector_2018: str = "Residential") -> None:
     import openpyxl
 
     wb = openpyxl.Workbook()
@@ -241,34 +241,36 @@ def _write_energizect_export(path: Path, total_2018: int) -> None:
     assert ws is not None
     ws.title = "Export"
     ws.append(["Year", None, None, 2017, 2018, "Total"])
-    ws.append(["Company", "Sector", "Heat Pump Type", "Installations", "Installations", "Installations"])
-    ws.append(["Eversource Electric", "Total", None, 30, total_2018, 30 + total_2018])
-    ws.append([None, "Residential", "Total", 30, total_2018, 30 + total_2018])
-    ws.append([None, None, "Air Source Mini-Split Heat Pump", 20, 40, 60])
-    ws.append([None, None, "Heat Pump Water Heater", 10, 5, 15])
-    ws.append([None, None, "VRF Heat Pump", None, 1, 1])
-    ws.append(["Total", None, None, 30, total_2018, 30 + total_2018])
-    ws.append([])
-    ws.append(["Applied filters:\nprimary_display is Residential"])
+    ws.append([None, None, "Air Source Mini-Split Heat Pump", "=SUMIFS(Detail!F:F)", None, None])
+    detail = wb.create_sheet("Detail")
+    detail.append(["Company", "Sector", "Heat Pump Type", "Sub Program", "Year", "Installations"])
+    detail.append(["Eversource Electric", "Residential", "Air Source Mini-Split Heat Pump", None, 2017, 20])
+    detail.append(["Eversource Electric", "Residential", "Air Source Mini-Split Heat Pump", "RES - HVAC", 2018, 30])
+    detail.append(["Eversource Electric", sector_2018, "Air Source Mini-Split Heat Pump", "RES - Retrofit", 2018, 10])
+    detail.append(["Eversource Electric", "Residential", "Heat Pump Water Heater", None, 2017, 10])
+    detail.append(["Eversource Electric", "Residential", "VRF Heat Pump", "RES - HVAC", 2018, 1])
     wb.save(path)
 
 
-def test_energizect_export_reads_blank_cells_as_zero_and_checks_totals(tmp_path: Path) -> None:
+def test_energizect_export_sums_sub_programs_from_detail(tmp_path: Path) -> None:
     path = tmp_path / "export.xlsx"
-    _write_energizect_export(path, total_2018=46)
+    _write_energizect_export(path)
     long = ciec.read_energizect_installations(path)
-    assert long.height == 6
-    vrf_2017 = long.filter((long["heat_pump_type"] == "VRF Heat Pump") & (long["year"] == 2017))
-    assert vrf_2017["installations"].to_list() == [0]
+    assert long.rows() == [
+        ("Air Source Mini-Split Heat Pump", 2017, 20),
+        ("Air Source Mini-Split Heat Pump", 2018, 40),
+        ("Heat Pump Water Heater", 2017, 10),
+        ("VRF Heat Pump", 2018, 1),
+    ]
 
-    _write_energizect_export(path, total_2018=47)
-    with pytest.raises(ValueError, match="types sum to"):
+    _write_energizect_export(path, sector_2018="Commercial")
+    with pytest.raises(ValueError, match="more than one Sector"):
         ciec.read_energizect_installations(path)
 
 
 def test_energizect_households_excludes_water_heaters_and_needs_every_ratio(tmp_path: Path) -> None:
     path = tmp_path / "export.xlsx"
-    _write_energizect_export(path, total_2018=46)
+    _write_energizect_export(path)
     long = ciec.read_energizect_installations(path)
     households = ciec.energizect_households(long, {"Air Source Mini-Split Heat Pump": 1.5, "VRF Heat Pump": 1.0})
     assert households["heat_pump_type"].to_list() == ["Air Source Mini-Split Heat Pump", "VRF Heat Pump"]

@@ -953,3 +953,66 @@ def makeup_table(rows: Sequence[tuple[str, str, Mapping[str, float]]]) -> str:
             *[row(group, bound, values) for group, bound, values in rows],
         ]
     )
+
+
+def read_energizect_installations(path: Path) -> pl.DataFrame:
+    """EnergizeCT heat pump export as ``heat_pump_type``, ``year``, ``installations``.
+
+    The export is Power BI's "data with current layout" of the dashboard's
+    installations table: a header row of years, one row per heat pump type
+    under the sector total, then a grand total row. Blank cells are zero
+    installations. Each year's types must add up to the export's own total.
+    """
+    import openpyxl
+
+    sheet = openpyxl.load_workbook(path, data_only=True)["Export"]
+    rows = [row for row in sheet.iter_rows(values_only=True) if any(cell is not None for cell in row)]
+    if rows[0][0] != "Year" or rows[0][-1] != "Total":
+        raise ValueError(f"{path} does not start with a Year ... Total header row")
+    years = [int(cast(int, year)) for year in rows[0][3:-1]]
+    totals = next(row for row in rows if row[0] == "Total")
+    types = [row for row in rows if row[2] not in (None, "Total") and row[0] is None]
+    long = pl.DataFrame(
+        [
+            {"heat_pump_type": str(row[2]), "year": year, "installations": int(cast(int, cell or 0))}
+            for row in types
+            for year, cell in zip(years, row[3:-1], strict=True)
+        ]
+    )
+    by_year = long.group_by("year").agg(pl.col("installations").sum()).sort("year")
+    expected = [int(cast(int, cell)) for cell in totals[3:-1]]
+    if by_year["installations"].to_list() != expected:
+        raise ValueError(f"{path}: types sum to {by_year['installations'].to_list()}, export total is {expected}")
+    return long
+
+
+def energizect_households(
+    installations: pl.DataFrame,
+    systems_per_home: Mapping[str, float],
+    exclude: Sequence[str] = ("Heat Pump Water Heater",),
+) -> pl.DataFrame:
+    """Installations and implied households for each heat pump type, all years.
+
+    One installation is one rebated system. Households are installations
+    divided by ``systems_per_home`` for that type. Every type that is not
+    excluded needs a ratio, so a new equipment type in the export fails here
+    rather than counting as one system per home by default.
+    """
+    totals = (
+        installations.filter(~pl.col("heat_pump_type").is_in(list(exclude)))
+        .group_by("heat_pump_type")
+        .agg(pl.col("installations").sum())
+    )
+    missing = sorted(set(totals["heat_pump_type"]) - set(systems_per_home))
+    if missing:
+        raise ValueError(f"no systems-per-home ratio for {missing}")
+    if any(ratio < 1 for ratio in systems_per_home.values()):
+        raise ValueError(f"systems per home must be at least 1, got {dict(systems_per_home)}")
+    ratios = pl.DataFrame(
+        {"heat_pump_type": list(systems_per_home), "systems_per_home": [float(v) for v in systems_per_home.values()]}
+    )
+    return (
+        totals.join(ratios, on="heat_pump_type", how="left")
+        .with_columns((pl.col("installations") / pl.col("systems_per_home")).alias("households"))
+        .sort("installations", descending=True)
+    )

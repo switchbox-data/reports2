@@ -34,10 +34,12 @@ from ciec_1 import (
     cohort_revenue_rows,
     cumulative_enrollment,
     dollar,
+    energizect_households,
     enrollment_table,
     num,
     presented_bills,
     rate_year_residential_customers,
+    read_energizect_installations,
     subclass_weights,
     sum_monthly_rates,
     with_winter_rates,
@@ -90,6 +92,37 @@ assert NEW_FLOOR == [CLM_ANNUAL] * len(YEARS)
 assert NEW_CEILING == [n * EVERSOURCE_PER_THOUSAND // 1000 for n in ISO_NE_ADDITIONS]
 floor_enrolled = cumulative_enrollment(EXISTING_FLOOR, NEW_FLOOR, YEARS)
 ceiling_enrolled = cumulative_enrollment(EXISTING_CEILING, NEW_CEILING, YEARS)
+
+# Customers EnergizeCT already knows: residential Eversource Electric heat pump installations,
+# 2017 through 2026 to date. Water heaters are not space heating, so they are left out.
+ENERGIZECT_EXPORT = Path("../../../context/sources/ct_hp_rates/clp_heat_pump_installations.xlsx")
+# One rebated mini-split is one outdoor unit (rebates were per single- or multi-zone system).
+# R1617's 90 surveyed participant homes had 123 outdoor units. The other types are counted as
+# one system per home, which overstates homes wherever a home has two.
+MINISPLIT_SYSTEMS_PER_HOME = 123 / 90
+SYSTEMS_PER_HOME = {
+    "Air Source Mini-Split Heat Pump": MINISPLIT_SYSTEMS_PER_HOME,
+    "Air Source, Ducted Heat Pump": 1.0,
+    "Ground Source Heat Pump": 1.0,
+    "Packaged Terminal Heat Pump": 1.0,
+    "VRF Heat Pump": 1.0,
+}
+# R1965 Table 4: statewide (Eversource and UI) mini-split program units, 2017-2019.
+R1965_MINISPLIT_UNITS = {2017: 2_599, 2018: 3_738, 2019: 4_479}
+energizect = read_energizect_installations(ENERGIZECT_EXPORT)
+energizect_by_type = energizect_households(energizect, SYSTEMS_PER_HOME)
+energizect_installations = int(energizect_by_type["installations"].sum())
+energizect_customers = round(float(energizect_by_type["households"].sum()), -3)
+_minisplit = energizect.filter(pl.col("heat_pump_type") == "Air Source Mini-Split Heat Pump")
+energizect_minisplit_share_of_r1965 = {
+    year: int(_minisplit.filter(pl.col("year") == year)["installations"].item()) / units
+    for year, units in R1965_MINISPLIT_UNITS.items()
+}
+if not all(0.7 < share < 0.95 for share in energizect_minisplit_share_of_r1965.values()):
+    raise RuntimeError(
+        f"Eversource mini-splits are {energizect_minisplit_share_of_r1965} of R1965's statewide units; "
+        "the export may not count the same unit as the program tracking data"
+    )
 
 _rates_yaml = yaml.safe_load(
     fetch_rdp_file(
@@ -283,6 +316,12 @@ _ciec_1_vars = {
     },
     "floor_enrolled": floor_enrolled,
     "ceiling_enrolled": ceiling_enrolled,
+    "energizect_years": (int(energizect["year"].min()), int(energizect["year"].max())),
+    "energizect_installations": energizect_installations,
+    "energizect_by_type": energizect_by_type.to_dicts(),
+    "energizect_customers": energizect_customers,
+    "minisplit_systems_per_home": MINISPLIT_SYSTEMS_PER_HOME,
+    "energizect_minisplit_share_of_r1965": energizect_minisplit_share_of_r1965,
     "hp_customers": existing["customers"],
     "state": STATE,
     "batch": BATCH,
@@ -384,6 +423,19 @@ The direct testimony recommends that the Company auto-enroll every known residen
 - **109,127** is the ceiling, and it is an estimate for the entire eligible group. It applies the share of Eversource households that heat primarily with a heat pump, 9% in Appendix E, Table 455 of the 2024 Connecticut Residential Appliance Saturation Survey, to the Rate Year customer count [@nmr_R2202ResidentialAppliance_2025a]. Reaching the customers in this group who are not already on an incentive list would require additional attestation.
 
 These bounds were checked against two other public counts. The New England Heat Pump Accelerator participation file records 4,999 Connecticut equipment claims with incentives paid through September 30, 2026 [@nehpa_InstantIncentiveProgram_2026]. The file includes United Illuminating and the municipal utilities, a household can account for more than one claim, and the same household can also receive an EnergizeCT rebate. EnergizeCT's installation export for Eversource Electric counts 21,765 residential ducted air-source and ground-source installations from 2017 through 2026 to date [@clp_HeatPumpInstallations_2026]. That count sits between the floor of 7,928 and the ceiling of 109,127. Since 2023, the same two equipment types total 18,799 installations, far above the 4,400 full-displacement rebates the Company reported for that period. The export does not explain the difference. The floor stays at the Company's count.
+
+The same export gives a rough count of the customers EnergizeCT already has on file. Leaving out water heaters, it counts `{python} num(energizect_installations)` residential space-heating heat pump installations for Eversource Electric from `{python} energizect["year"].min()` through `{python} energizect["year"].max()` to date. An installation is one rebated system, not one home. A mini-split installation is one outdoor unit: the program paid its rebate per single-zone or multi-zone system, and the export's Eversource mini-split counts for 2017 through 2019 are `{python} ", ".join(f"{share:.0%}" for share in energizect_minisplit_share_of_r1965.values())` of the statewide program units in the 2022 market study, roughly Eversource's share of the state. The 2019 ductless study's 90 surveyed participant homes had 123 outdoor units, `{python} f"{MINISPLIT_SYSTEMS_PER_HOME:.2f}"` per home. Dividing mini-split installations by that ratio, and counting every other installation as one home, gives about **`{python} num(energizect_customers)`** customers. That is an upper estimate: a home with two ducted systems, or one that installed equipment in two different years, is counted more than once.
+
+```{python}
+#| echo: false
+#| output: asis
+
+print("| Heat pump type | Installations | Systems per home | Homes |")
+print("| --- | ---: | ---: | ---: |")
+for _row in energizect_by_type.iter_rows(named=True):
+    print(f"| {_row['heat_pump_type']} | {num(_row['installations'])} | {_row['systems_per_home']:.2f} | {num(_row['households'])} |")
+print(f"| Total | {num(energizect_installations)} | | {num(energizect_by_type['households'].sum())} |")
+```
 
 ## CIEC-1(c)
 

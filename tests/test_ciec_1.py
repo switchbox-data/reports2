@@ -231,3 +231,50 @@ def test_scaled_nonhp_sales_uses_each_rows_customers_who_remain() -> None:
     stats = ciec.annual_bill_increase_stats(buildings, row["per_kwh"])
     revenue = row["distribution"] + row["transmission"]
     assert stats["mean"] == pytest.approx(revenue / one["customers"])
+
+
+def _write_energizect_export(path: Path, total_2018: int) -> None:
+    import openpyxl
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.title = "Export"
+    ws.append(["Year", None, None, 2017, 2018, "Total"])
+    ws.append(["Company", "Sector", "Heat Pump Type", "Installations", "Installations", "Installations"])
+    ws.append(["Eversource Electric", "Total", None, 30, total_2018, 30 + total_2018])
+    ws.append([None, "Residential", "Total", 30, total_2018, 30 + total_2018])
+    ws.append([None, None, "Air Source Mini-Split Heat Pump", 20, 40, 60])
+    ws.append([None, None, "Heat Pump Water Heater", 10, 5, 15])
+    ws.append([None, None, "VRF Heat Pump", None, 1, 1])
+    ws.append(["Total", None, None, 30, total_2018, 30 + total_2018])
+    ws.append([])
+    ws.append(["Applied filters:\nprimary_display is Residential"])
+    wb.save(path)
+
+
+def test_energizect_export_reads_blank_cells_as_zero_and_checks_totals(tmp_path: Path) -> None:
+    path = tmp_path / "export.xlsx"
+    _write_energizect_export(path, total_2018=46)
+    long = ciec.read_energizect_installations(path)
+    assert long.height == 6
+    vrf_2017 = long.filter((long["heat_pump_type"] == "VRF Heat Pump") & (long["year"] == 2017))
+    assert vrf_2017["installations"].to_list() == [0]
+
+    _write_energizect_export(path, total_2018=47)
+    with pytest.raises(ValueError, match="types sum to"):
+        ciec.read_energizect_installations(path)
+
+
+def test_energizect_households_excludes_water_heaters_and_needs_every_ratio(tmp_path: Path) -> None:
+    path = tmp_path / "export.xlsx"
+    _write_energizect_export(path, total_2018=46)
+    long = ciec.read_energizect_installations(path)
+    households = ciec.energizect_households(long, {"Air Source Mini-Split Heat Pump": 1.5, "VRF Heat Pump": 1.0})
+    assert households["heat_pump_type"].to_list() == ["Air Source Mini-Split Heat Pump", "VRF Heat Pump"]
+    assert households["households"].to_list() == pytest.approx([40.0, 1.0])
+
+    with pytest.raises(ValueError, match="no systems-per-home ratio"):
+        ciec.energizect_households(long, {"Air Source Mini-Split Heat Pump": 1.5})
+    with pytest.raises(ValueError, match="at least 1"):
+        ciec.energizect_households(long, {"Air Source Mini-Split Heat Pump": 0.5, "VRF Heat Pump": 1.0})

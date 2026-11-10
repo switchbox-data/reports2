@@ -1,6 +1,23 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 249-251 (printed pp. 247-249), Appendix A; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 249-251 (printed pp. 247-249) of the manual, Appendix A; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back. Footnote 250, which the first extraction split across the page's columns, is rejoined._
+
+[PDF pp. 1-248 not transcribed: front matter to Conclusion, in 00_front_matter.md to 29_conclusion.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 249 | printed p. 247]
+
 ## Appendix A: FERC Uniform System of Accounts
 
-ince about 1960, the Federal Energy Regulatory Commission has required electric utilities to follow its **S** Uniform System of Accounts. The system has accounts for both a utility’s balance sheet and its income statement.[^249]
+Since about 1960, the Federal Energy Regulatory Commission has required electric utilities to follow its Uniform System of Accounts. The system has accounts for both a utility’s balance sheet and its income statement.[^249]
 
 The balance sheet accounts include 100 to 299, with 300 to 399 providing more detail on utility plant and accounts 430 to 439 providing more detail on retained earnings. Income statement accounts are 400 to 499, excepting 430 to 439. Many of the accounts relevant to utility rate case filings and cost of service studies are identified below.
 
@@ -48,13 +65,13 @@ Accounts 301 to 303: intangible plant. Today, the costs cover mostly computer so
 
 [^249]: The information here comes from Title 18, Part 101 of the Code of Federal Regulations . Retrieved from https://www .ecfr .gov/cgi-bin/text-idx?c =ecfr&SID=054f2bfd518f9926aac4b73489f11c67&rgn=div5&view=t ext&node=18:1 .0 .1 .3 .34&idno=18 . For a useful summary, see Phan, D . (2015, August) . _Uniform System of Accounts_ [Presentation for NARUC] . Retrieved from https://pubs .naruc .org/pub .cfm?id=53720E26-2354D714-5100-3EBD02A2034E
 
-[^250]: Most states use a cash working capital calculation that encompasses the utility’s accounts receivable and accounts payable for utility service (not always uniformly) so that these items are not in rate base directly but are included in the cash working capital calculation . Arkansas is an exception,
-
-so this general discussion does not apply . Arkansas’ modified balance sheet approach puts most of the asset items in rate base and most of the liabilities (200-series accounts) in the capital structure as zero-cost capital .
+[^250]: Most states use a cash working capital calculation that encompasses the utility’s accounts receivable and accounts payable for utility service (not always uniformly) so that these items are not in rate base directly but are included in the cash working capital calculation . Arkansas is an exception, so this general discussion does not apply . Arkansas’ modified balance sheet approach puts most of the asset items in rate base and most of the liabilities (200-series accounts) in the capital structure as zero-cost capital .
 
 [^251]: Unlike customer advances for construction, contributions in aid of construction do not have a specific place in the Uniform System of Accounts but are simply subtracted from the amount of plant included in summary Account 109 and the detailed accounts 364 to 370 .
 
 [^252]: The 300-series accounts used for gas, water and so on are different from the electric accounts .
+
+[PDF p. 250 | printed p. 248]
 
 legacy items for paying for franchises. These costs are usually included with general and common plant as an overhead in cost allocation.
 
@@ -90,9 +107,7 @@ Account 408 (taxes other than income) is subdivided into accounts for property t
 
 Current and deferred income taxes are found in accounts 409 and 410 and are usually calculated with significant detail in revenue requirement studies.
 
-The remainder of these accounts do not appear directly in rate cases. Account 426 is noteworthy because it includes nonoperating expenses such as fines and penalties, lobbying, donations and so on. Revenue requirement analysts often try
-
-to assess whether costs booked to operating accounts instead belong in this account.
+The remainder of these accounts do not appear directly in rate cases. Account 426 is noteworthy because it includes nonoperating expenses such as fines and penalties, lobbying, donations and so on. Revenue requirement analysts often try [PDF p. 251 | printed p. 249] to assess whether costs booked to operating accounts instead belong in this account.
 
 Accounts 433 and 436 to 439 are retained earnings accounts. These accounts, which reflect profits not distributed to shareholders as dividends, do not appear in rate cases.
 
@@ -135,3 +150,5 @@ Sales and marketing expenses are accounts 911 to 916. They include an advertisin
 Administrative and general expenses are accounts 920 to 935. There are elements for administrative salaries (920) and nonlabor expenses (921) and contracts (923), as well as insurance (924 and 925), pensions and benefits (926), regulatory commission expenses (928), miscellaneous expenses (930) and rental of buildings and maintenance of general plant (931 to 935). They may include costs from holding companies. Costs in Account 922 are transferred out, either to capital or to other utility affiliates.
 
 In these areas, the FERC Uniform System of Accounts is not particularly uniform. For example, the costs for the same function, such as a key account representative, can appear in accounts 903, 908, 912 or administrative account 920, depending on the utility. Generation procurement expenses, which appear to belong in Account 557, can also end up in the administrative accounts 920 and 921.
+
+[PDF pp. 252-276 not transcribed: Appendix B to Glossary and back cover, in appendix_b_ct_costs.md to glossary.md of this folder]

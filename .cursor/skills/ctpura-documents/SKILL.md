@@ -26,8 +26,48 @@ Zotero, the public copy, the short link, the front matter and the index rows.
    `rg -n "<docket or set name>" context/README.md context/sources/ct_hp_rates/`,
    then `just sources-dedupe` on the PDF (see `ingest-source`). Earlier sets in
    the same docket give the naming and citation-key precedent.
-3. The PURA site is outside the sandbox allowlist: run fetch commands with
-   `required_permissions: ["full_network"]`.
+3. Know where you are running. PURA refuses connections from the dev server,
+   so on the server you read PURA in the browser and the user downloads the
+   files (next section).
+
+## PURA blocks the server: the user downloads
+
+PURA's site refuses connections from the dev server (AWS addresses), from
+Cursor's web fetch, and, as of November 2026, from the Internet Archive's
+Save Page Now (it answers 503). Neither the shell, `curl` nor
+`fetch_pura_filing.py` can reach it from the server. Do not retry, try
+other ports or protocols, set up proxies or tunnels, or ask the Internet
+Archive to capture PURA pages: the user has decided against all of these.
+
+What does work:
+
+- **Reading, in the Cursor browser.** It runs on the user's laptop, which
+  PURA accepts. Browse docket views, read filing pages and their attachment
+  lists, and read PDFs there (for example by running pdf.js in the page with
+  `Runtime.evaluate`) to decide what you need. The URL patterns in
+  [reference.md](reference.md) work the same way in the browser.
+- **Existing Internet Archive copies, from the shell.** Some PURA files were
+  archived before the block. Check with
+  `curl -s 'https://archive.org/wayback/available?url=<PURA URL>'`; if it
+  returns a snapshot, download the original bytes with
+  `curl -L -o <file> 'https://web.archive.org/web/<timestamp>id_/<PURA URL>'`
+  and check the `%PDF` header. This is read-only and needs no approval.
+- **Everything else, the user downloads.** The Cursor browser cannot save
+  files to the laptop (a download link clicked there saves nothing), so do
+  not build zips or download links in it. Instead, as soon as you know what
+  you need, say so plainly in chat ("I need you to download 6 PURA files"),
+  and give one list with, for each file: a direct link (the `$FILE` URL from
+  the filing page, so one click downloads it), its size if you know it, and
+  the inbox folder to put it in
+  (`~/.cache/switchbox_sources/inbox/<folder>/`). Tell the user to open the
+  links in their normal browser and drag the files into that folder in
+  Cursor's file explorer. Then stop and wait; when they say the files are
+  there, check each one (`%PDF` header or a valid `.xlsx`, size over 1 KB)
+  before going on.
+
+Subagents cannot ask the user. A subagent that needs PURA files lists them
+(link, folder, why) in its report and carries on with what it has; the parent
+agent collects the lists and makes one request to the user.
 
 ## The `$FILE` pitfall
 
@@ -56,7 +96,10 @@ Have a filing page URL (…?OpenDocument)?
 
 ## Fetching
 
-The helper uses only the standard library (plus `pypdf` for `--merge`):
+The helper uses only the standard library (plus `pypdf` for `--merge`). It
+works only on a network PURA accepts, such as a laptop; on the dev server use
+the browser and the handoff above, then `--merge` the uploaded files with
+`pypdf` if a set needs merging:
 
 ```bash
 S=.cursor/skills/ctpura-documents/scripts/fetch_pura_filing.py

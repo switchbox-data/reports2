@@ -1,6 +1,23 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 220-225 (printed pp. 218-223), Chapter 25; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 220-225 (printed pp. 218-223) of the manual, Chapter 25; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back. Footnote 240 had been extracted as plain text and is now footnote definition._
+
+[PDF pp. 1-219 not transcribed: front matter to Chapter 24, in 00_front_matter.md to 24_reconciling.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 220 | printed p. 218]
+
 ## 25. Cutting-Edge Marginal Cost Approaches
 
-he NERA method for calculating marginal costs, particularly for generation, **T** becomes less sustainable as the utility systems move toward major technological change and reductions in carbon. While the effect may be different in different regions of the country, the short-term avoided energy cost will reflect diminishing variable costs to the extent that natural gas is replaced with renewables and storage. Capacity costs may be moving toward batteries given that renewable integration can be achieved better with storage resources that can both use overgeneration and provide ramping and integration more effectively than fossil-fueled plants that do nothing about overgeneration. Thus, it is important to at least sketch out a new paradigm for marginal costs, even though many of the calculations on which it could be constructed have not been developed yet or integrated into a whole.
+The NERA method for calculating marginal costs, particularly for generation, becomes less sustainable as the utility systems move toward major technological change and reductions in carbon. While the effect may be different in different regions of the country, the short-term avoided energy cost will reflect diminishing variable costs to the extent that natural gas is replaced with renewables and storage. Capacity costs may be moving toward batteries given that renewable integration can be achieved better with storage resources that can both use overgeneration and provide ramping and integration more effectively than fossil-fueled plants that do nothing about overgeneration. Thus, it is important to at least sketch out a new paradigm for marginal costs, even though many of the calculations on which it could be constructed have not been developed yet or integrated into a whole.
 
 It is important to sketch out a new paradigm for marginal costs, even though many of the calculations on which it could be constructed have not been developed .
 
@@ -12,9 +29,7 @@ Although the theory is relatively easy to state, it has not been implemented for
 
 The basic theory presented here is the total system long-run incremental cost method that was developed in the telecommunications industry during its period of rapid technological change before deregulation. Under this method, all costs are variable but may be very different from historical costs. This is important when examining the generation system in particular, because the optimal system going forward is likely to have very few traditional variable costs.
 
-The TSLRIC is theoretically defined as the total cost of building and operating an optimal new system to serve the current load with changes that can be reasonably foreseen and changes to reflect environmental priorities (e.g., additional efficiency and demand response, changes to electrification for purposes of decarbonizing existing fossil fuel end uses and development of more loads with storage or other controls). The system will be different from the
-
-changes that would result from using a system constructed under TSLRIC.
+The TSLRIC is theoretically defined as the total cost of building and operating an optimal new system to serve the current load with changes that can be reasonably foreseen and changes to reflect environmental priorities (e.g., additional efficiency and demand response, changes to electrification for purposes of decarbonizing existing fossil fuel end uses and development of more loads with storage or other controls). The system will be different from the [PDF p. 221 | printed p. 219] changes that would result from using a system constructed under TSLRIC.
 
 #### 25.1.1 Generation
 
@@ -36,6 +51,8 @@ The role of natural gas-fired generation for reliability and bulk energy generat
 
 [^237]: Consider the abandonment of South Carolina Electric and Gas Co .’s Summer Nuclear Station and the cost overruns at Georgia Power’s Vogtle units 2 and 3, which cost $23 billion — or more than $10,000 per kW (Ondieki, 2017) .
 
+[PDF p. 222 | printed p. 220]
+
 - Combined cycle generation designed for flexible use that could also make up for any shortages in bulk energy if adverse weather conditions reduce output from hydro and renewables.
 
 - Potentially, gas turbine peakers. The modern gas turbine supplanted less-efficient older gas-fired steam units. But storage and demand response are likely to make even modern gas turbines less economic, particularly for reserves, needle peak use and ramping.[^238] Nevertheless, in some places, particularly where gas turbines are considerably cheaper than combined cycle units and where other flexible resources (such as hydro) are not widely available, there may be a dispatch range (for example, a 10% to 20% capacity factor) where gas turbines might be economic in an optimal system.
@@ -48,8 +65,6 @@ Assuming no major technological advances (e.g., superconductors), some changes i
 
 There may be other efficiencies associated with both better controls and with the possible use of strategically
 
-[^238]: In 2018, NV Energy executed contracts for four-hour battery storage at a cost of $73 per kW-year, less than the carrying cost plus nondispatch O&M for a peaker (Bade, 2018) .
-
 located storage devices if cheaper than both transmission lines and conventional RMR gas-fired generation. PG&E’s use of batteries to displace an RMR contract in an area south of San Jose (discussed in Section 18.3) suggests the potential of this outcome. It is also possible that a further analysis of a more optimal network of transmission lines may reveal significant portions of those lines are, in fact, related to offpeak use or contingencies that could occur at nonpeak times and should thus be spread over more than peak hours.
 
 #### 25.1.3 Shared Distribution
@@ -60,7 +75,11 @@ There are likely to be customers for whom usage is so low that they are better s
 
 Distribution is also likely to be bidirectional at least in some places, particularly if whole neighborhoods are served with distributed solar (or solar plus storage) resources. This change may require more expensive control systems in some
 
+[^238]: In 2018, NV Energy executed contracts for four-hour battery storage at a cost of $73 per kW-year, less than the carrying cost plus nondispatch O&M for a peaker (Bade, 2018) .
+
 [^239]: For example, capacity freed up on transmission lines bringing coal-fired electricity from Four Corners to Southern California Edison is now being used to deliver wind energy from New Mexico . (Southern California Edison, 2015, p . 4) .
+
+[PDF p. 223 | printed p. 221]
 
 places but is also likely to have a net effect of economizing on system sizing. Some primary distribution feeders (along with service lines and transformers) may need to be reconstructed if neighborhoods are converted from gas to electric space heating or if electric vehicles become ubiquitous, but those costs would be spread over more kWhs of load. Beneficial electrification of heating and transportation could increase total distribution costs, but because these technologies add energy loads, the costs per kWh may be stable or decline, and the amount of winter peaking load is likely to increase.
 
@@ -80,9 +99,7 @@ Customer accounting and service O&M will be reduced due to the continuation of g
 
 ### 25.2 Hourly Marginal Cost Methods
 
-Although the hourly marginal cost method has not been explicitly used (a variant is used in Nevada), the Energy and Environmental Economics long-run marginal cost study points to how such a method could be used. Rather than dividing costs into demand and energy costs and allocating by kWs, E3 assigns its various types of avoided costs to individual hours so that specific energy efficiency, demand response and distributed generation costs could be measured against the hourly costs given their operational patterns. When costs are assigned to hours, the allocation to classes can be based on customer loads in those hours without calling the
-
-costs “demand” or “energy” costs. As with hourly allocation embedded cost methods, this may be an approach that will serve the cost analyst as the utility system evolves to include widespread renewable and distributed resources.
+Although the hourly marginal cost method has not been explicitly used (a variant is used in Nevada), the Energy and Environmental Economics long-run marginal cost study points to how such a method could be used. Rather than dividing costs into demand and energy costs and allocating by kWs, E3 assigns its various types of avoided costs to individual hours so that specific energy efficiency, demand response and distributed generation costs could be measured against the hourly costs given their operational patterns. When costs are assigned to hours, the allocation to classes can be based on customer loads in those hours without calling the [PDF p. 224 | printed p. 222] costs “demand” or “energy” costs. As with hourly allocation embedded cost methods, this may be an approach that will serve the cost analyst as the utility system evolves to include widespread renewable and distributed resources.
 
 To convert the marginal costs calculated using a variant of the NERA method into hourly costs, and after considering the E3 hourly cost calculation, the following method could be used. This method still has some of the potential drawbacks of the NERA method discussed in detail above (possible mismatches in short-run and long-run analysis, failure to consider certain plant such as transmission interties, ambiguous treatment of replacement equipment, etc.). The NERA approach is also a fundamentally peak-oriented method, as opposed to the methods based on hours of use of capacity suggested in Chapter 17. Nevertheless, with some modification, it can be amenable to hourly calculations.
 
@@ -96,9 +113,7 @@ For transmission and distribution costs (except possibly for distribution costs 
 
 For each component (excluding the transmission components for utilities with fully FERC jurisdictional transmission), the total investment in capacity-related equipment including automation and controls — unlike the NERA method, which excludes them — would be calculated in real dollars and averaged over a period such as 10 years. This should perhaps include both forward-looking and historical data as with the NERA method. The costs should then be annualized using an RECC and with O&M and possibly replacements added (in real dollars per year). The O&M and replacement costs would be based on either averaged costs or forward-looking costs if changes from the average have been observed or are expected.
 
-Substation capacity needs are generally oriented to the peak loads of the equipment, although they are also related to the duration of heavy energy use, suggesting a broader allocation than a single coincident peak. An allocation of total dollar costs to time periods consistent with the NERA method’s emphasis on capacity could be based on some hybrid of the percentage of kVA of substation peaks in each season and time period and a PCAF, which has an energy component
-
-because all loads in excess of 80% of the peak are assigned some capacity value. The PCAF could be set differently for summer and winter peaking kVA if applicable. For rate design purposes, a super-peak period could also be carved out that recognizes stress on components and high marginal line losses during extreme loads.
+Substation capacity needs are generally oriented to the peak loads of the equipment, although they are also related to the duration of heavy energy use, suggesting a broader allocation than a single coincident peak. An allocation of total dollar costs to time periods consistent with the NERA method’s emphasis on capacity could be based on some hybrid of the percentage of kVA of substation peaks in each season and time period and a PCAF, which has an energy component [PDF p. 225 | printed p. 223] because all loads in excess of 80% of the peak are assigned some capacity value. The PCAF could be set differently for summer and winter peaking kVA if applicable. For rate design purposes, a super-peak period could also be carved out that recognizes stress on components and high marginal line losses during extreme loads.
 
 Transmission and subtransmission line marginal capacity under the NERA method involves a highly networked system, where at least some of the installed capacity is needed to meet contingencies that may occur at times other than during peak hours. The hourly causation and allocation of costs is likely to require further analysis that has not yet been conducted. But it could be some mix of peak loads (i.e., PCAF) and hourly loads (weighted into time periods when contingencies are most likely to occur to the extent possible).
 
@@ -112,4 +127,6 @@ O&M costs for substations and circuits generally should be allocated in the same
 
 If T&D replacement costs are included as recommended in Chapter 20, the costs should be allocated to hours either in a manner like the underlying allocation for plant of each type or based on all hours, reflecting that replacements are not based on peak demand. Some mix of the two methods may also be used.
 
-240 With an allocation to primary voltage customers based on maximum demand but excluding transformer costs .
+[^240]: With an allocation to primary voltage customers based on maximum demand but excluding transformer costs .
+
+[PDF pp. 226-276 not transcribed: Chapter 26 to Glossary and back cover, in 26_marginal_recommendations.md to glossary.md of this folder]

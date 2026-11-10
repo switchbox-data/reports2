@@ -12,6 +12,7 @@ filer: NSTAR Electric Company d/b/a Eversource Energy
 document_type: exhibit
 pages_total: 8
 extraction_scope: full
+citation_scheme: page
 source_url: https://fileservice.eea.comacloud.net/V3.1.0/FileService.Api/file/iidebgej?3X7PrIpduJ6bnSeObty2PmFJ0ioKRMXdZYr4j7j/42qk9v9pxUxyG6LkaCeWBSjqbmMlNqhcSkxPf0qUr1gASPKrYE1qejvebf677PtCVStUdHoHpEGELGLGjR+ZpYgt
 md5: "7fd103cdc89ecfac1b8989445261b112"
 validated: 2026-10-29
@@ -27,11 +28,11 @@ contents: 'Sec. 1.2: opt-out auto-enrollment of accounts with a Mass Save heat p
 **Date**: April 17, 2025
 **Author(s)**: Not named; submitted by NSTAR Electric Company d/b/a Eversource Energy to the Massachusetts Department of Public Utilities
 
-> _Extractor note (not source text):_ Text is transcribed verbatim; no typographical corrections were made. Apparent source typos are left as printed and flagged `[sic]`. The Exhibit file is labelled "Marketing and Outreach" in its filename, but the document's own title is "Residential Heat Pump Rate Implementation Plan." The running header on each page ("NSTAR Electric Company d/b/a Eversource Energy / D.P.U. 25-55 / Exhibit ES-HP-5 / April 17, 2025 / Page N of 8") is stripped and replaced by the page markers. The cover page carries a company logo image, which is not reproduced.
+> _Extractor note (not source text):_ Text is transcribed verbatim; no typographical corrections were made. Apparent source typos are left as printed and flagged `[sic]`. The Exhibit file is labelled "Marketing and Outreach" in its filename, but the document's own title is "Residential Heat Pump Rate Implementation Plan." The running header on each page ("NSTAR Electric Company d/b/a Eversource Energy / D.P.U. 25-55 / Exhibit ES-HP-5 / April 17, 2025 / Page N of 8") is stripped and replaced by the page markers (`[PDF p. N | printed p. M]`; the cover prints no page number). The exhibit prints no margin line numbers, so citations are by page. The cover page carries a company logo image, which is not reproduced.
 
 ---
 
-<!-- PDF page 1 (cover; no printed page number) -->
+[PDF p. 1]
 
 NSTAR Electric Company d/b/a Eversource Energy
 D.P.U. 25-55
@@ -50,7 +51,7 @@ Docket No. D.P.U. 25-55
 Submitted to:
 Massachusetts Department of Public Utilities
 
-<!-- PDF page 2 (printed page 2 of 8) -->
+[PDF p. 2 | printed p. 2]
 
 **Table of Contents**
 
@@ -63,7 +64,7 @@ Massachusetts Department of Public Utilities
 | 2.      | Tracking and Reporting        | 6    |
 | 3.      | Outreach and Marketing        | 7    |
 
-<!-- PDF page 3 (printed page 3 of 8) -->
+[PDF p. 3 | printed p. 3]
 
 ## 1. Heat-Pump Rate Implementation
 
@@ -86,7 +87,7 @@ The newly established Heat-Pump Rate will be available to all residential custom
 
 The Company proposes two intake avenues for enrolling customers into the Heat-Pump Rate within its customer billing system, as set forth below:
 
-<!-- PDF page 4 (printed page 4 of 8) -->
+[PDF p. 4 | printed p. 4]
 
 1. Auto-enrollment of accounts associated with a heat pump rebate via the Mass Save programs. Additionally, on a roll-forward basis, any new customers who receive Mass Save heat-pump rebates will be auto-enrolled to the extent this information is available to the Company. This proposal will limit reliance on contact center in-bound calls and processing time within the back-office, and provide a seamless customer experience, while eliminating the need for multiple intake verifications for new heat-pump customers.
 
@@ -98,7 +99,7 @@ The Company proposes two intake avenues for enrolling customers into the Heat-Pu
 
 For customers to have the Heat Pump Rate applied on their billing account upon application, they will be required to provide a form of verification of the heat pump for their account premises. Forms of evidence the Company will deem acceptable for a Heat Pump Rate
 
-<!-- PDF page 5 (printed page 5 of 8) -->
+[PDF p. 5 | printed p. 5]
 
 application include photos of equipment serial numbers; proof of payment or receipt of equipment purchase; or invoice or receipt from contractor installation.
 
@@ -116,7 +117,7 @@ For intake through the Company's website, customers will be directed to a portal
 
 **Contact Center:** Contact Center costs may include the hiring of incremental full-time equivalent employees ("FTEs") to manage the intake process via phone calls.
 
-<!-- PDF page 6 (printed page 6 of 8) -->
+[PDF p. 6 | printed p. 6]
 
 **Web Application and App Portal:** The Company will explore opportunities to build a web and phone application intake process, where customers can upload a copy of their receipt or picture of the heat-pump to provide a more seamless experience. This will be a new functionality that will require incremental time and resources, the estimated costs of which are not yet available.
 
@@ -136,7 +137,7 @@ The Company proposes to provide the following data, where available, with its an
 
 [^1]: 12 months of pre-installation monthly kWh would be based on the 12 months prior to heat pump installation and remain fixed in each annual filing.
 
-<!-- PDF page 7 (printed page 7 of 8) -->
+[PDF p. 7 | printed p. 7]
 
 a rebate through the Mass Save program since January 1, 2022;
 4. Number of customers who received a rebate through the Mass Save program since January 1, 2022, but have not opted into the Heat Pump Rate.
@@ -149,7 +150,7 @@ The Company will provide awareness and adoption of the new Heat Pump Rate throug
 
 The Company will also update all existing mandated bill inserts that list available rate plans to include the new Heat Pump Rate. Education may include an offer of the new pricing option accompanied by an estimate of bill savings potential. The Company tracks its customer accounts that have received incentives for heat pumps through its Mass Save energy efficiency programs. The Company will also conduct targeted outreach to electric customers who have received a heat pump rebate from Mass Save.
 
-<!-- PDF page 8 (printed page 8 of 8) -->
+[PDF p. 8 | printed p. 8]
 
 The Company will also include the new rate offering as a benefit to purchasing electric heat pumps. For customers considering heat pump installation, information on the heat pump rate pricing may be included in marketing materials, such as webpages and advertisements, that are related to the heat pump incentive programs delivered through the Mass Save program.
 

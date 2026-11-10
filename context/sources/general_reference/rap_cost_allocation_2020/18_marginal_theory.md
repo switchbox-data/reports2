@@ -1,10 +1,29 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 190-197 (printed pp. 188-195), Chapter 18; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 190-197 (printed pp. 188-195) of the manual, Chapter 18; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back. The end of section 18.3 and section 18.4 are put back in the PDF's order (the first extraction had scattered the summary's bullets around the pull quote), and stray bullet characters are removed._
+
+[PDF pp. 1-189 not transcribed: front matter to Works Cited in Part III, in 00_front_matter.md to 17_works_cited_part3.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 190 | printed p. 188]
+
 # Part IV: Marginal Cost of Service Studies
+
+[PDF p. 191 | printed p. 189]
 
 ## 18. Theory of Marginal Cost Allocation and Pricing
 
 Economic efficiency is served when prices reflect the true value of the resources being used to serve customers’ loads .
 
-he fundamental principle of marginal cost pricing is that economic efficiency is served **T** when prices reflect current or future costs — that is, the true value of the resources being used to serve customers’ loads — rather than historical embedded costs. This is a strong underpinning that most analysts agree on, but there are serious theoretical and computational complications associated with the development of marginal costs.
+The fundamental principle of marginal cost pricing is that economic efficiency is served when prices reflect current or future costs — that is, the true value of the resources being used to serve customers’ loads — rather than historical embedded costs. This is a strong underpinning that most analysts agree on, but there are serious theoretical and computational complications associated with the development of marginal costs.
 
 At one extreme, a true short-run marginal cost study will measure only a tiny fraction of the cost of service that varies from hour to hour with usage and holds all other aspects of the system constant. At the other extreme, a TSLRIC study measures the cost of replacing today’s power system with a new optimally designed and sized system that uses the newest technology. In between is a range of alternatives, many of which have been used in states like Maine, New York, Montana, Oregon and California to determine revenue allocation among classes. The major conceptual issue in these studies is using very short-run metrics for energy cost and longer-term metrics for capital costs (generation, transmission and distribution capacity and customer connection costs). Many studies use these mixed time horizons, but this is an error that should be avoided.
 
@@ -20,15 +39,11 @@ Marginal cost pricing generally is not connected to the utility’s revenue requ
 
 - The long term, such as with **long-run incremental costs** for the entire generation function; long-run generation capacity costs based on equilibrium conditions; and the rental of customer equipment in some marginal customer cost studies. The longest possible analysis would be a total service long-run incremental cost study where an optimal system is costed out.
 
-There is also no necessary connection between marginal cost pricing and cost allocation. To summarize the material discussed in more depth below, in its simplest hypothetical form, a marginal cost study computes marginal costs for different elements of service, and these are multiplied by the
-
-determinants for each class. This produces a class marginal cost revenue requirement and, when combined with other classes, a system MCRR. This is then reconciled with the allowed revenue requirement to determine revenue allocation by class. This part of this manual provides some examples of marginal cost studies and the revenue allocation resulting from them.
+There is also no necessary connection between marginal cost pricing and cost allocation. To summarize the material discussed in more depth below, in its simplest hypothetical form, a marginal cost study computes marginal costs for different elements of service, and these are multiplied by the [PDF p. 192 | printed p. 190] determinants for each class. This produces a class marginal cost revenue requirement and, when combined with other classes, a system MCRR. This is then reconciled with the allowed revenue requirement to determine revenue allocation by class. This part of this manual provides some examples of marginal cost studies and the revenue allocation resulting from them.
 
 A second important concept related to marginal cost pricing comes from the theory of general equilibrium: If costs are in equilibrium, short-run marginal costs equal long-run marginal costs. That is, to get one more unit from existing resources would require operating resources with high variable costs, at a cost equal to the cost of both building and operating newer, cheaper resources. However, it is hard to apply this theory in practice because developing and quantifying a system in equilibrium is extremely difficult. Until recently, assets tended to be developed in large sizes relative to the utility’s overall system needs, rendering equilibrium conditions unlikely. Equilibrium is also impossible in the real world, for three main reasons. First, loads and fuel prices can never be forecast exactly (and often cannot be forecast even closely). Technology also changes, and the use of specific resources ends up changing. Finally, long lead times to construct various resources (particularly large power plants and transmission lines) can exacerbate the consequences of forecasting errors.
 
 As a result, the marginal cost methods used today, such as those developed by National Economic Research Associates (now NERA Economic Consulting) — discussed in considerably more detail throughout Part IV — do not reflect equilibrium conditions. Moreover, with the current configuration of the electric system and changes over time, the trend has been toward overbuilding, so generation marginal cost ends up systematically below average cost, with ramifications for class allocation. In addition, as previously implemented in many jurisdictions, the definitions of marginal cost have mixed short-term and long-term elements in ways that are theoretically inconsistent.
-
-[^207]: National Economic Research Associates developed a series of papers on the topic . The most critical for this manual are _A Framework for Marginal Cost-Based Time-Differentiated Pricing in the United States_ (1977a) and _How to Quantify Marginal Costs_ (1977b) .
 
 ### 18.1 Development of Marginal Cost of Service Studies
 
@@ -46,7 +61,11 @@ Another practical consideration in analyzing marginal cost methods is that very 
 
 - Usually relatively short-term marginal energy costs (one to six years).
 
+[^207]: National Economic Research Associates developed a series of papers on the topic . The most critical for this manual are _A Framework for Marginal Cost-Based Time-Differentiated Pricing in the United States_ (1977a) and _How to Quantify Marginal Costs_ (1977b) .
+
 [^208]: Some utilities and consumer advocates have used shorter-term generation capacity costs . Consumer advocates often chose shorter-term generation costs when revenue allocation was done by function rather than in total . See Section 19 .3 .
+
+[PDF p. 193 | printed p. 191]
 
 One of the key concepts developed through this work was the real economic carrying charge. A RECC takes the revenue requirements or costs of a resource and reshapes them to reflect a stream of costs that increases with inflation and has the same present value as the revenue requirements. Inputs to a RECC are the same as those used for utility revenue requirements. They include the capital structure and cost of capital, a discount rate, income tax parameters (rates, depreciation and whether specific tax differences are normalized or flowed through), book depreciable life and costs of property taxes and insurance. The RECC is not unique to this method but can be used in conjunction with other methods, such as long-run incremental cost of generation (see Section 19.1) or total service long-run incremental cost (Section 25.1).
 
@@ -93,6 +112,8 @@ Table 41. Illustrative example of allocating marginal distribution demand costs 
 
 Sources: Southern California Edison. (2017). _Errata to Phase 2 of 2018 General Rate Case: Marginal Cost and Sales Forecast Proposals; 2018 General Rate Case Phase 2 Workpapers_ ; additional calculations by the authors
 
+[PDF p. 194 | printed p. 192]
+
 basis and, except for the customer-related costs, is divided into time periods and provided for the year as a whole.
 
 For the energy-related costs, the allocation is relatively straightforward, multiplying energy use in each time period by the energy cost in each time period. For the generation capacity costs related to reliability at peak, the allocation typically has not been done using the coincident peak methods most commonly used in embedded cost analysis (and discussed in Section 9.3). Instead, marginal costs are typically allocated over a larger number of hours. This allocation has been done using (1) loss-of-energy expectation,
@@ -104,6 +125,8 @@ For transmission and distribution costs, the methodology is not as settled, even
 [^209]: This method was developed in California after restructuring in the late 1990s for use in allocating certain transition costs, because generation was expected to be competitive and loss-of-load probability was expected not to exist in a competitive market . San Diego Gas & Electric used the top 100 hours method for allocation of generation costs until 2012 (Saxe, 2012, Chapter 3, pp . 4-5) . The company ultimately switched to loss-ofload expectation in 2014 (Barker, 2014) . The top 100 hours are still used for allocation of the remaining transition costs of all the major California utilities .
 
 [^210]: Pacific Gas & Electric uses these . Every hour in excess of 80% of the peak is assigned a contribution to peak based on the load minus 80% of the peak . The mathematics mean that the peak hour has an allocation that is 20 times the allocation of an hour that is 81% of the peak and twice the allocation of an hour that is 90% of the peak . In past cases, the company used the gross load curve for both generation and distribution; in 2016, it switched for generation to the load curve net of wind and solar generation while using gross load for distribution . See Pacific Gas & Electric (2016), chapters 9 and 10 .
+
+[PDF p. 195 | printed p. 193]
 
 substantially different outcomes (Southern California Edison, 2017a, 2017b, pp. 59-61 and Appendix B, with additional calculations by the authors).[^211] Data from Southern California Edison were used because the company currently employs a hybrid of both methods.
 
@@ -127,6 +150,8 @@ For a number of utilities, a short-run marginal cost — assuming the existence 
 
 [^211]: Loads are rounded off to the nearest 50 MWs in the table, leaving out small classes and granular detail for ease of exposition .
 
+[PDF p. 196 | printed p. 194]
+
 and lowering incentives for customer-side response through rate design. Examples include Duke Power and Carolina Power and Light Co. from 1982 to 1985, which assumed that future coal and nuclear plants would be built when evaluating PURPA projects (Marcus, 1984, pp. 10-23). Another example is the calculations by Ontario Hydro for evaluation of energy efficiency and private power prior to and during the 19901993 demand/supply plan hearings at the Environmental Assessment Board (Marcus, 1988, pp. 14-16). A third, from 1990-1991 hearings, is Manitoba Hydro’s analysis of energy efficiency using differential revenue requirement analyses assuming that the Conawapa hydro project would be constructed (Goodman and Marcus, 1990, pp. 132-133, F34-F45). Appendix E provides a mathematical discussion of this issue.[^212]
 
 Then, when excess capacity appeared, short-run marginal energy costs declined. The need for generation capacity also declined, although the extent to which that decline was recognized in short-run marginal cost methods varied across jurisdictions (see Section 19.3).
@@ -141,8 +166,6 @@ Low-cost wind and solar resources are being installed to provide economic and en
 
 These resources have already been reducing short-term market prices in virtually all ISOs/RTOs. Short-run energy market prices are even sometimes negative in off-peak hours, due to generation that cannot shut down and restart for the
 
-[^212]: Although not strictly a marginal cost issue, divergence between short-run and long-run marginal cost can be one reason for stranded costs (which tend to have been measured against an estimate of short-run cost over time) .
-
 next peak period and the renewable energy tax credits that make operating some resources profitable even if they need to pay for the market to absorb their energy output.
 
 The renewable transition makes the traditional marginal cost methodology less relevant. Capacity costs and shortrun marginal energy costs are low, while embedded costs remain high. Essentially a short-run marginal cost method sends price signals that energy is cheap because the fossilfueled component of energy is being used less frequently and is becoming less costly when it is used, while generation capacity costs are also low unless artificially increased.
@@ -155,23 +178,19 @@ Smart grid resources can also reduce the marginal cost of distribution capacity 
 
 In the near term, large-scale battery storage on the utility grid can be an economic substitute for peaking and relatively
 
+[^212]: Although not strictly a marginal cost issue, divergence between short-run and long-run marginal cost can be one reason for stranded costs (which tend to have been measured against an estimate of short-run cost over time) .
+
 [^213]: An explicit example is Xcel Energy’s program of substituting “steel for fuel” by replacing coal and gas with wind and solar generation (Xcel Energy, 2018) .
+
+[PDF p. 197 | printed p. 195]
 
 inefficient intermediate gas-fired generation — including generation now receiving reliability-must-run (RMR) contracts in transmission rates — while reducing the cost of ramping to meet daily peak loads (Maloney, 2018; see also California Public Utilities Commission, 2018). This could reduce both marginal energy costs and marginal capacity costs if it proves ultimately to be cheaper than a combustion turbine. In the longer term of a decarbonized system with large amounts of intermittent resources, batteries are likely to need to operate for more hours.
 
 The technology-based economic transition to a smarter grid and a greater role for intermittent and storage resources will change the marginal cost paradigm .
 
-have been designed for fossil-fueled systems, using economic dispatch. Renewable resources, storage and other resources tend to depress the short-run prices of fossil-fueled energy and existing fossil-fueled capacity. Treatment of renewables. With the substitution of renewables (relatively high capital costs but almost zero variable costs) for fossil fuel, short-run marginal energy costs are significantly below the cost of new generation, with significant implications for cost allocation. As an example, a wind plant that runs at 40% to 50% capacity factor (in the Southern Plains) depresses short-run marginal energy cost and may have no impact on capacity costs. Availability of storage. Storage is likely to have a lower cost of capacity than fossil-fueled capacity for at least some applications. It also provides more services than conventional peaking capacity depending on where it is sited — for example, it can provide some ancillary services (e.g., fast ramping service) and help with variable renewable energy integration. However, it may have the counterintuitive impact of depressing short-run marginal costs.
+- If installed elsewhere on the system, particularly on the distribution system, storage batteries can not only provide support for generation and transmission but remedy distribution overloads or mitigate outages on less reliable radial distribution lines, especially where other smart grid functions are not feasible. The effect would be to reduce marginal capacity costs — although some portion of the cost of the storage should be included as a distribution capacity resource. Behind the meter, storage can provide demand response for the utility as well as significant benefits to customers.
 
-•
-
-If installed elsewhere on the system, particularly on the distribution system, storage batteries can not only provide support for generation and transmission but remedy distribution overloads or mitigate outages on less reliable radial distribution lines, especially where other smart grid functions are not feasible. The effect would be to reduce marginal capacity costs — although some portion of the cost of the storage should be included as a distribution capacity resource. Behind the meter, storage can provide demand response for the utility as well as significant benefits to customers.
-
-•
-
-Demand response (e.g., air conditioner cycling, interruptible customers) typically has been used as an emergency capacity resource to avoid bulk generation outages. But it could also be used (when coupled with smart appliances) to mitigate transmission and distribution overloads when the customer is at an appropriate voltage level, reducing future marginal costs.
-
-In essence, the technology-based economic transition to a smarter grid and a greater role for intermittent and storage resources will ultimately change the marginal cost paradigm from that used for the last four decades while blurring the traditional distinctions among generation, transmission and distribution costs. The short-run marginal cost paradigm based primarily on variable costs of fossil-fueled generation is becoming less central to the fundamental economics of electricity service for which regulation must account. That change has not been fully analyzed within the structure of marginal cost rate-making, but a pathway for such analysis will be discussed in Chapter 25.
+- Demand response (e.g., air conditioner cycling, interruptible customers) typically has been used as an emergency capacity resource to avoid bulk generation outages. But it could also be used (when coupled with smart appliances) to mitigate transmission and distribution overloads when the customer is at an appropriate voltage level, reducing future marginal costs.
 
 ### 18.4 Summary
 
@@ -179,4 +198,12 @@ The key issues associated with marginal cost analysis on a generic basis are:
 
 - Mixed time horizons. Marginal cost methods often mix short-run, intermediate-term and long-run marginal costs in an inconsistent manner that has tended to have inequitable results over the last 30 years.
 
-- Obsolete technique given changing resource options. Whether short-run or long-run, marginal energy and generation capacity cost allocation methods essentially
+- Obsolete technique given changing resource options. Whether short-run or long-run, marginal energy and generation capacity cost allocation methods essentially have been designed for fossil-fueled systems, using economic dispatch. Renewable resources, storage and other resources tend to depress the short-run prices of fossil-fueled energy and existing fossil-fueled capacity.
+
+- Treatment of renewables. With the substitution of renewables (relatively high capital costs but almost zero variable costs) for fossil fuel, short-run marginal energy costs are significantly below the cost of new generation, with significant implications for cost allocation. As an example, a wind plant that runs at 40% to 50% capacity factor (in the Southern Plains) depresses short-run marginal energy cost and may have no impact on capacity costs.
+
+- Availability of storage. Storage is likely to have a lower cost of capacity than fossil-fueled capacity for at least some applications. It also provides more services than conventional peaking capacity depending on where it is sited — for example, it can provide some ancillary services (e.g., fast ramping service) and help with variable renewable energy integration. However, it may have the counterintuitive impact of depressing short-run marginal costs.
+
+In essence, the technology-based economic transition to a smarter grid and a greater role for intermittent and storage resources will ultimately change the marginal cost paradigm from that used for the last four decades while blurring the traditional distinctions among generation, transmission and distribution costs. The short-run marginal cost paradigm based primarily on variable costs of fossil-fueled generation is becoming less central to the fundamental economics of electricity service for which regulation must account. That change has not been fully analyzed within the structure of marginal cost rate-making, but a pathway for such analysis will be discussed in Chapter 25.
+
+[PDF pp. 198-276 not transcribed: Chapter 19 to Glossary and back cover, in 19_generation_marginal.md to glossary.md of this folder]

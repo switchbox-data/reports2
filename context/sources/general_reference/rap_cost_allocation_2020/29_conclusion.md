@@ -1,6 +1,23 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 247-248 (printed pp. 245-246), Conclusion; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 247-248 (printed pp. 245-246) of the manual, Conclusion; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back._
+
+[PDF pp. 1-246 not transcribed: front matter to Works Cited in Part V, in 00_front_matter.md to 28_works_cited_part5.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 247 | printed p. 245]
+
 ## Conclusion
 
-ost allocation is a complex exercise dependent on sound judgment. No less an authority than the U.S. **C** Supreme Court has made this point:
+Cost allocation is a complex exercise dependent on sound judgment. No less an authority than the U.S. Supreme Court has made this point:
 
 A separation of properties is merely a step in the determination of costs properly allocable to the various classes of services rendered by a utility. But where, as here, several classes of services have a common use of the same property, difficulties of separation are obvious. Allocation of costs is not a matter for the slide-rule. It involves judgment on a myriad of facts. It has no claim to an exact science.[^248]
 
@@ -23,6 +40,8 @@ Simply stated, this means that many of the cost allocation methods used in the p
 This manual has identified current best practices in cost allocation methodology. These will also need to evolve to keep up with the technological changes our electric system is experiencing. Perhaps the most important evolution in methodology recognizes that utility grids are built for the general purpose of providing electricity service. The largest single cost of building the grid is to ensure that it provides kWhs to customers during all hours of the day and night. Thus, similar to the way we price gasoline, groceries and clothing, most costs of the grid should be assigned on a usage basis, recovered in the sale of each kWh. In this same context, the cost of connecting to the grid may be a customer-specific cost. For items such as groceries and clothing, customers bear
 
 [^248]: Colorado Interstate Gas Co . v . Federal Power Commission, 324 U .S . 581, 589 (1945) .
+
+[PDF p. 248 | printed p. 246]
 
 the cost of “connecting to the grid,” by traveling to a retailer. The balance of the “grid” cost can and should be recovered in the price of each unit.
 
@@ -47,3 +66,5 @@ Not surprisingly, marginal cost methods also must change. Although these are use
 Whether the cost allocation method has changed or not, it is always important to present cost allocation data clearly, so that regulators can do their job. Most regulators expect quality technical analysis of costs but apply judgment in the application of those results. They may want to consider the results of multiple studies using different methods. Gradualism in the implementation of change has important value to avoid sudden impacts that may devastate residential, commercial or industrial customers. Data and analytical results should be presented in a way that informs regulators. We must still recognize, however, that “allocation of costs is not a matter for the slide-rule,” as Justice Douglas wrote nearly a century ago.
 
 This manual attempts to define methods that are relevant today and will be applicable into the future as the industry continues to evolve and as technology continues to drive changes in costs, investment and expenses. The reasoned analyst will always need to apply creativity and skill to the task of allocating costs.
+
+[PDF pp. 249-276 not transcribed: Appendix A to Glossary and back cover, in appendix_a_ferc_accounts.md to glossary.md of this folder]

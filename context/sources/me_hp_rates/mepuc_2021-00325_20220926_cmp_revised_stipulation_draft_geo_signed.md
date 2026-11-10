@@ -12,6 +12,7 @@ filer: CENTRAL MAINE POWER COMPANY
 document_type: filing
 pages_total: 11
 extraction_scope: full
+citation_scheme: page
 source_url: https://mpuc-cms.maine.gov/CQM.Public.WebUI/MatterManagement/MatterFilingItem.aspx?FilingSeq=116692&CaseNumber=2021-00325
 md5: "21e827edeae4b63b943a584d6842d279"
 validated: 2026-10-29
@@ -27,11 +28,11 @@ contents: 'Eleven pages: Paragraph 6 restates the earlier terms (Rate A-LM opene
 **Date**: "September __, 2022" (printed; blank day). Governor's Energy Office signature dated September 26, 2022.
 **Author(s)**: The Stipulating Parties (signature blocks listed on PDF pages 8-11)
 
-_Extractor note (not source text): Text is transcribed verbatim from the PDF text layer; no typographical corrections were made (apparent source errors are flagged `[sic]`). The page footer "-n-" is stripped; PDF page markers are kept (printed page numbers equal PDF page numbers). The document has no footnotes, tables or figures. Only one signature block (PDF page 9, an image of a handwritten signature by Dan Burgess, Director, Governor's Energy Office; see the note there) is executed; all other signature and date lines are blank in this draft. Lettered sub-items in paragraph 6 are shown as printed._
+_Extractor note (not source text): Text is transcribed verbatim from the PDF text layer; no typographical corrections were made (apparent source errors are flagged `[sic]`). The page footer "-n-" is stripped. Each PDF page begins with a `[PDF p. N | printed p. M]` marker (printed page numbers equal PDF page numbers); the document prints no margin line numbers, so citations are by page. The document has no footnotes, tables or figures. Only one signature block (PDF page 9, an image of a handwritten signature by Dan Burgess, Director, Governor's Energy Office; see the note there) is executed; all other signature and date lines are blank in this draft. Lettered sub-items in paragraph 6 are shown as printed._
 
 ---
 
-<!-- PDF page 1 -->
+[PDF p. 1 | printed p. 1]
 
 STATE OF MAINE
 PUBLIC UTILITIES COMMISSION
@@ -56,7 +57,7 @@ The undersigned, being parties to this proceeding, agree as follows:
 
 2. An initial case conference in this matter was held on Tuesday, January 4, 2022. The interventions of the following parties were granted without objection: the Governor's Energy Office ("GEO"), the Office of the Public Advocate ("OPA"), Competitive Energy Services ("CES"), Natural Resources Council of Maine, Conservation Law Foundation ("CLF"), Acadia Center, Efficiency Maine Trust ("EMT"), Northeast Clean Energy Council, Maine Renewable Energy Association, Biddeford, Saco and Old Orchard Beach Transit Committee ("BSOOB")
 
-<!-- PDF page 2 -->
+[PDF p. 2 | printed p. 2]
 
 and Greater Portland Transit District ("METRO"). Industrial Energy Consumer Group ("IECG"), Casco Bay Island Transit District ("Casco Bay Lines"), and ChargePoint Inc. ("ChargePoint") were subsequently granted intervention. By Procedural Order dated January 4, 2022, the following initial schedule was adopted:
 
@@ -71,7 +72,7 @@ and Greater Portland Transit District ("METRO"). Industrial Energy Consumer Grou
 
 5. On April 26, 2022, the Hearing Examiners issued a Procedural Order (Converting Workshop into Settlement Conference), through which the workshop/technical conference previously scheduled for April 29, 2022 was converted to a settlement conference. A subsequent settlement conference was held on May 13, 2022. Based on discussions at those settlement conferences, the Stipulating Parties (CMP, the OPA, Efficiency Maine Trust,
 
-<!-- PDF page 3 -->
+[PDF p. 3 | printed p. 3]
 
 Governor's Energy Office, Competitive Energy Services, LLC, Conservation Law Foundation, Acadia Center, Greater Portland Transit District, Biddeford, Saco and Old Orchard Beach Transit Committee, Casco Bay Island Transit District, ChargePoint Inc., and Natural Resources Council of Maine and IECG) have agreed to the terms set forth in this Revised Stipulation.
 
@@ -85,7 +86,7 @@ Governor's Energy Office, Competitive Energy Services, LLC, Conservation Law Fou
 
    d. The Company shall implement a phased expansion of the B-DCFC Rate. In the first phase, effective October 1, 2022, the B-DCFC rate will eliminate the vintage eligibility restriction such that all electric vehicle charging stations, not just those that became operational on or after February 25, 2020, are eligible to take service under the rate.
 
-<!-- PDF page 4 -->
+[PDF p. 4 | printed p. 4]
 
 In the second phase, effective July 1, 2023, the B-DCFC rate will be renamed B-CPT (Coincident Peak Transmission) and the tariff language will be updated to reflect the language included in the Company's January 27, 2022 B-CPT tariff filing in this proceeding. The methodology for calculating distribution rates for the B-CPT Rate shall be the same methodology used for the B-DCFC Rate. Under the B-CPT Rate, the end-use restrictions of the B-DCFC Rate will be removed such that all MGS, IGS, and LGS customers taking service at secondary or primary voltage levels will be eligible to take service under this optional, whole-facility rate. The B-CPT Rate shall not have a termination date.
 
@@ -99,7 +100,7 @@ g. Device Level Metering for Billing and Settlement Purposes
 
       ii. The Parties agree that this issue merits further consideration including, but not limited to, evaluation of data, interoperability of hardware, communications devices, information systems, software, data protocols utilized by different devices, cybersecurity, measurement and verification access, and the customer experience. These factors, among others, may influence the design of such a system(s) as well as the cost for utility communications, data management and data integration issues. The parties acknowledge that EMT has considered embedded metering functionality in past and current programs to improve the management of EV charging. A Residential Distributed Energy Resource (DER) Load Management Innovation Pilot tested load shaping interventions in a variety of networked DERs in 2019-2020. EMT has leveraged findings from this residential DER initiative in subsequent programs for managed residential charging, including a pilot for EV smart charging hardware and a pilot for onboard technology solutions. Beginning in FY 2023, a Load Shifting Initiative approved in EMT's most recent Triennial Plan will provide incentives to promote load management using EV smart chargers on a statewide level. The Parties are also aware of pilots in a few jurisdictions utilizing embedded metering in networked EV chargers and EV devices that
 
-<!-- PDF page 5 -->
+[PDF p. 5 | printed p. 5]
 
       may provide useful information. The Parties are also aware that there are load management programs for EVs and other DERs that do not use embedded metering, including, among other programs, Avangrid's OptimizEV EV managed charging pilot in Ithaca, NY.
 
@@ -115,7 +116,7 @@ h. Continued Stakeholder Discussion on Advanced Rate Designs
 
 7. On August 25, 2022, IECG informed the Hearing Examiners and parties to this proceeding via email that it was in opposition to the Prior Stipulation and sought an opportunity to file comments. On August 26, 2022, the Hearing Examiners issued a Procedural Order (Comments on CMP Stipulation), which provided that IECG and any other parties that have not signed the Prior Stipulation were invited to file written comments describing their objections to the Prior Stipulation, with these comments due on or before September 7, 2022. The Procedural Order provided that reply comments could be filed by any party that supports the Prior Stipulation on or before September 14, 2022. IECG submitted comments in opposition to
 
-<!-- PDF page 6 -->
+[PDF p. 6 | printed p. 6]
 
 the Prior Stipulation on September 7, 2022 and CMP submitted reply comments on September 14, 2022.
 
@@ -127,7 +128,7 @@ the Prior Stipulation on September 7, 2022 and CMP submitted reply comments on S
 
 11. The Stipulating Parties intend that this Revised Stipulation be considered by the Commission for adoption as an integrated solution to the issues addressed herein which arose in the above-captioned proceeding and as otherwise presented in this Revised Stipulation. The
 
-<!-- PDF page 7 -->
+[PDF p. 7 | printed p. 7]
 
 Stipulating Parties also intend that this Revised Stipulation shall be null and void, and not bind the Stipulating Parties in the above-captioned proceeding, in the event the Commission does not adopt this Revised Stipulation without material modification.
 
@@ -141,7 +142,7 @@ Stipulating Parties also intend that this Revised Stipulation shall be null and 
 
 IN WITNESS WHEREOF, the Stipulating Parties have caused this Revised Stipulation to be executed by their respective attorneys or representatives, or have caused their lack of objection to be noted by the signature of their respective attorneys or representatives. [signatures on following page]
 
-<!-- PDF page 8 -->
+[PDF p. 8 | printed p. 8]
 
 CENTRAL MAINE POWER COMPANY
 Dated: __________________________
@@ -161,7 +162,7 @@ By: ______________________________
 
 EFFICIENCY MAINE TRUST
 
-<!-- PDF page 9 -->
+[PDF p. 9 | printed p. 9]
 
 Dated: _September 26, 2022_
 By: [handwritten signature]
@@ -170,7 +171,7 @@ GOVERNOR'S ENERGY OFFICE
 
 _Extractor note (not source text): in the rendered signature pages each entity name is printed above its own "Dated / By" line (e.g. "CENTRAL MAINE POWER COMPANY" above its Dated/By lines on PDF page 8). Read that way, the heading "EFFICIENCY MAINE TRUST" at the foot of page 8 is followed by the only executed block (dated September 26, 2022, signed by Dan Burgess, Director, Governor's Energy Office, whose name and title are printed beneath the signature line), and the heading "GOVERNOR'S ENERGY OFFICE" is followed by the first (blank) Dated/By lines on page 10. The PDF filename and manifest describe this copy as "GEO signed"; the printed layout does not settle which entity's block carries the signature, so see the original PDF page 9 if that matters._
 
-<!-- PDF page 10 -->
+[PDF p. 10 | printed p. 10]
 
 Dated: __________________________
 By: ______________________________
@@ -209,7 +210,7 @@ BIDDEFORD, SACO AND OLD ORCHARD BEACH TRANSIT COMMITTEE
 Dated: __________________________
 By: ______________________________
 
-<!-- PDF page 11 -->
+[PDF p. 11 | printed p. 11]
 
 CASCO BAY ISLAND TRANSIT DISTRICT
 Dated: __________________________

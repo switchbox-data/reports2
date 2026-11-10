@@ -1,8 +1,27 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 231-241 (printed pp. 229-239), Chapter 27; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 231-241 (printed pp. 229-239) of the manual, Chapter 27; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back. Footnote 242 had been extracted as plain text and is now footnote definition. Footnote 243, which the first extraction split across the page's columns, is rejoined._
+
+[PDF pp. 1-230 not transcribed: front matter to Works Cited in Part IV, in 00_front_matter.md to 26_works_cited_part4.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 231 | printed p. 229]
+
 # Part V: After the Cost of Service Study
+
+[PDF p. 232 | printed p. 230]
 
 ## 27. Using Study Results to Allocate the Revenue Requirement
 
-ltimately, the purpose of a cost of service study is to inform utility regulators about the relative contri- **U** bution to costs by the various customer classes as one element in the decision on how to apportion the revenue requirement among classes. In most states, regulators have a great deal of discretion about how they use the results of cost allocation studies. Therefore, the way the results are presented is important because the regulators will want to see important impacts clearly to use their time efficiently.
+Ultimately, the purpose of a cost of service study is to inform utility regulators about the relative contri- bution to costs by the various customer classes as one element in the decision on how to apportion the revenue requirement among classes. In most states, regulators have a great deal of discretion about how they use the results of cost allocation studies. Therefore, the way the results are presented is important because the regulators will want to see important impacts clearly to use their time efficiently.
 
 Embedded cost of service studies and marginal cost of service studies approach this very differently, and we discuss each separately in this chapter. After that, we discuss approaches regulators use to implement, or diverge from, the results of these studies.
 
@@ -52,6 +71,8 @@ Table 45 on the next page shows an illustrative example of the computation of th
 
 [^241]: These computations may use historical revenues and costs or projected revenues and costs .
 
+[PDF p. 233 | printed p. 231]
+
 Table 45. Computing class rate of return in an embedded cost study
 
 |                                                         | Total          | Residential    | Small<br>(up to<br>20 kWs) | Medium<br>(20 to<br>250 kWs) | Large<br>(more than<br>250 kWs) | Large<br>primary | Other       |
@@ -78,6 +99,8 @@ These metrics show a very different picture of interclass equity. The residentia
 regulator considered reasonable the range of revenue-cost ratio from 93% to 107%, it is possible a regulator might find that the residential class is producing a reasonable level of revenue but that small general service customers should be paying a somewhat higher share of system costs than 87.79% and the “other” class (which might be mostly street lighting) should be paying somewhat less than 109.51%.
 
 The cost allocation process usually assumes that all classes and all assets impose the same cost of capital. The results in Table 45 reflect that assumption, effectively stating that an equal return is the goal. In some cases, the regulator may determine that different customer classes impose different financing costs in percentage terms — for example, to reflect the higher undiversifiable risks of serving industrial loads through the economic cycle. In addition, some assets are riskier than others; generation is generally riskier than T&D, while nuclear and coal generation are often regarded as being riskier than other generation. In this situation, the cost of service study could be modified to reflect the differential risks (different required rates of return can be applied to different classes of customers or different categories of utility plant). Or the cost of service study results could be presented in a manner that allows the user to compare the achieved return to the class target return.
+
+[PDF p. 234 | printed p. 232]
 
 To summarize, presenting embedded cost of service study results in multiple ways is often helpful to regulators. The revenue-cost ratio is probably the easiest way for regulators to understand and use the results of cost of service studies in determining the fair, just and reasonable apportionment of costs. It is important to note that the result of this allocation process is to determine a level of revenue that the regulator deems cost-related. The regulator will often apply other non-cost criteria to establish the level of revenue that each customer class will pay.
 
@@ -120,6 +143,8 @@ Table 47. Illustrative load research data for marginal cost of service study
 | Off-peak                   | kWhs           | 614,000,000   | 252,600,000             | 442,200,000           |
 | All periods                | kWhs           | 1,473,600,000 | 1,473,600,000           | 1,473,600,000         |
 | **Class load factor**      |                | 55%           | 51%                     | 65%                   |
+
+[PDF p. 235 | printed p. 233]
 
 Table 48. Illustrative marginal cost revenue requirement
 
@@ -167,6 +192,8 @@ Table 50. EPMC adjustment where revenue requirement more than marginal cost
 | **Ratio of embedded cost to marginal cost** |              |                         |                       | 110%         |
 | **Reconciled revenue requirement**          | $206,918,135 | $218,338,549            | $174,743,315          | $600,000,000 |
 
+[PDF p. 236 | printed p. 234]
+
 are adjusted by the ratio of the embedded cost revenue requirement to the system MCRR, resulting in the amount of the embedded cost revenue requirement that each class is responsible for. In Table 49, the cost responsibility for each class is reduced 8% below the marginal cost of service.
 
 It is important to note that the result of this allocation process is to determine a level of revenue that the regulator deems cost-reflective. The regulator often will apply other non-cost criteria to establish the level of revenue that each customer class will pay.
@@ -178,6 +205,8 @@ jurisdictions where power supply is a competitive non-utility service. Assume fo
 The illustrative functionalized EPMC results in Table 51 are close to the total EPMC results but slightly higher for
 
 Table 51. Illustrative functionalized equal percentage of marginal cost results
+
+[PDF p. 237 | printed p. 235]
 
 |                                             | Residential  | Secondary<br>commercial | Primary<br>industrial | Total        |
 | ------------------------------------------- | ------------ | ----------------------- | --------------------- | ------------ |
@@ -251,6 +280,8 @@ Table 54. Residential embedded cost responsibility across four scenarios
 | **Total EPMC results**          | $206,918,135                                     | $213,567,477                                    |
 | **Functionalized EPMC results** | $209,794,006                                     | $210,707,823                                    |
 
+[PDF p. 238 | printed p. 236]
+
 As discussed in Chapter 24, it is based on Ramsey pricing, an economic theory that efficiency is enhanced when the elements of the rate that are “elastic” with respect to price are set equal to some measure of marginal cost, and that adjustments to reconcile the revenue requirement should be applied to the least elastic component or components in order to maximize economic efficiency. This approach was popular during the era when marginal costs were significantly higher than average costs reflected in the revenue requirement.[^242] For that reason, we show the application of the inverse elasticity rule only for a situation where the revenue requirement is lower than system marginal costs.
 
 The least elastic element of utility service is often deemed to be the connection to the grid: the customer-related component of costs such as billing and collection, and the secondary service lines to individual structures. Evidence suggests this to be true historically. Whether utilities assess a monthly customer charge of $5 or $35, nearly all residences and
@@ -275,9 +306,11 @@ Table 55. Use of inverse elasticity rule
 | **Ratio of embedded cost to adjusted**<br>**marginal cost** |              |                         |                       | 98%          |
 | **Reconciled revenue requirement**                          | $164,254,647 | $180,638,178            | $155,107,176          | $500,000,000 |
 
-242 Until the early 1980s, for example, Oregon excluded customer and joint costs from the marginal cost reconciliation process on the theory that these were highly inelastic components of customer demand — to simply
-
 be connected to the system . When overall rates rose and later costs declined, Oregon moved to an EPMC approach (Jenks, 1994, p . 12) .
+
+[^242]: Until the early 1980s, for example, Oregon excluded customer and joint costs from the marginal cost reconciliation process on the theory that these were highly inelastic components of customer demand — to simply
+
+[PDF p. 239 | printed p. 237]
 
 ### 27.4 Gradualism and Non-Cost Considerations
 
@@ -290,8 +323,6 @@ It is quite common for regulators to consider the results of multiple cost of se
 - Considering both embedded cost of service studies as an indicator of current costs and marginal cost of service studies as an indicator of cost trajectories in setting a reasonable cost allocation.
 
 For example, in one docket, the Washington Utilities and Transportation Commission compared results of four cost of service studies before making a decision on cost allocation, with the results shown in Table 56 (1984, p. 46).[^243]
-
-[^243]: Similarly, the Wisconsin Public Service Commission has routinely reviewed multiple cost of service studies and selected a revenue allocation without specifically relying on any one study . See Wisconsin Public Service Commission (2016, pp . 31-32): “As a result, the Commission finds that it is reasonable to continue its long-standing practice of relying on multiple models, as well as other factors, such
 
 Table 56. Consideration of multiple cost of service studies
 
@@ -309,9 +340,11 @@ Based on multiple studies using widely different methodologies for the classific
 
 Gradualism is the movement only partway toward the results of cost of service studies in apportioning the revenue requirement based on an accepted cost study. If a cost of service study indicates that a class is paying much less than its fair share of the revenue requirement, immediately moving it to pay its full share of allocated costs may result in excessive financial pain and dislocation for the affected customers. Regulators sometimes impose generic limits on rate changes (such as limiting the increase for any class to 150% of the system average increase) and often impose ad hoc limits, based on the facts of the case.[^244]
 
-> as customer bill impacts, when determining the final allocation of the revenue requirement .”
+[^243]: Similarly, the Wisconsin Public Service Commission has routinely reviewed multiple cost of service studies and selected a revenue allocation without specifically relying on any one study . See Wisconsin Public Service Commission (2016, pp . 31-32): “As a result, the Commission finds that it is reasonable to continue its long-standing practice of relying on multiple models, as well as other factors, such as customer bill impacts, when determining the final allocation of the revenue requirement .”
 
 [^244]: Where this sort of guideline takes the form of “no class will be assigned more than twice the rate increase applied to any other class,” it is known as 2:1 gradualism .
+
+[PDF p. 240 | printed p. 238]
 
 There are several reasons a regulator will move gradually,
 
@@ -331,12 +364,12 @@ Each of these factors may represent a reasonable basis for deviating from precis
 
 In addition to the principles of gradualism discussed in this section, many regulators consider non-cost factors in determining a fair apportionment of costs, including:
 
-- Retention of load that cannot (or will not) pay for its fully allocated cost but can pay more than its incremental cost and thus can reduce the revenue requirement borne by other classes. Examples include electric space heat customers in summer-peaking utilities, irrigation customers in winter-peaking utilities and industrial customers facing global competition. Utilities frequently develop load retention tariffs to keep those customers on the system, contributing to paying off embedded costs. Charging full embedded cost to those tariff classes could result in higher, not lower, bills for other customers if the price-sensitive customers depart the system. The objective in those cases is to maximize the benefits to the customers paying full cost, without any particular concern about the interest of the class paying the reduced rate. If faced with the potential loss of a major industry, a regulator may opt to offer a rate significantly below the cost basis that would otherwise apply. Some, for example, have relied on an embedded cost of service study to determine the general allocation of costs among classes but relied on a short-run marginal cost of service study to determine a “load retention” or “economic development” rate to retain or attract a major customer. This is often done in recognition that failure to do so would
-
-result in the loss of sales, not to mention broader harms (e.g., increased unemployment) to the jurisdiction. The loss of sales could trigger a difficult regulatory decision on whether to apportion the surplus capacity that results among the remaining customers or to impose a regulatory disallowance on the utility, forcing utility investors to absorb the stranded asset costs.
+- Retention of load that cannot (or will not) pay for its fully allocated cost but can pay more than its incremental cost and thus can reduce the revenue requirement borne by other classes. Examples include electric space heat customers in summer-peaking utilities, irrigation customers in winter-peaking utilities and industrial customers facing global competition. Utilities frequently develop load retention tariffs to keep those customers on the system, contributing to paying off embedded costs. Charging full embedded cost to those tariff classes could result in higher, not lower, bills for other customers if the price-sensitive customers depart the system. The objective in those cases is to maximize the benefits to the customers paying full cost, without any particular concern about the interest of the class paying the reduced rate. If faced with the potential loss of a major industry, a regulator may opt to offer a rate significantly below the cost basis that would otherwise apply. Some, for example, have relied on an embedded cost of service study to determine the general allocation of costs among classes but relied on a short-run marginal cost of service study to determine a “load retention” or “economic development” rate to retain or attract a major customer. This is often done in recognition that failure to do so would [PDF p. 241 | printed p. 239] result in the loss of sales, not to mention broader harms (e.g., increased unemployment) to the jurisdiction. The loss of sales could trigger a difficult regulatory decision on whether to apportion the surplus capacity that results among the remaining customers or to impose a regulatory disallowance on the utility, forcing utility investors to absorb the stranded asset costs.
 
 - Serving loads that would otherwise impose higher environmental costs of alternative fuels. Examples include shore-service rates to discourage ships from running their high-emitting onboard generation while in port, special rates to displace on-site diesel generation and special rates for irrigators that would otherwise use diesel-powered pumps.
 
 - Protection of vulnerable customers, for their own sake. Utilities, regulators and even legislatures seek to reduce the burden on groups of customers that are financially stressed. Most frequently, the target group is low-income residential customers, but the same approach is applied in some places for agricultural customers, important employers facing competition from outside the service territory and the like.
 
 It is beyond the scope of this manual to attempt to identify the entire variety of non-cost factors a regulator may consider. The process of cost allocation does not occur in a vacuum but rather in the context of broader social and political currents.
+
+[PDF pp. 242-276 not transcribed: Chapter 28 to Glossary and back cover, in 28_cost_allocation_rate_design.md to glossary.md of this folder]

@@ -1,0 +1,549 @@
+---
+title: "Responses to Connecticut Industrial Energy Consumers, CIEC-1"
+subtitle: "Docket No. 26-05-10"
+author: "Conservation Law Foundation and Sierra Club"
+date: 2026-11-04
+bibliography: ../../references.yaml
+csl: ../../chicago-author-date-switchbox.csl
+reference-location: margin
+citation-location: document
+execute:
+  warning: false
+  message: false
+format:
+  html:
+    theme: ../../.style/switchbox.scss
+    page-layout: article
+    toc: false
+---
+
+```{python}
+#| echo: false
+
+from __future__ import annotations
+
+import pickle
+from pathlib import Path
+
+import yaml
+import polars as pl
+from ciec_1 import (
+    annual_bill,
+    bill_table,
+    cohort_reduction_table,
+    cohort_revenue_rows,
+    cumulative_enrollment,
+    dollar,
+    enrollment_table,
+    num,
+    presented_bills,
+    rate_year_residential_customers,
+    subclass_weights,
+    sum_monthly_rates,
+    with_winter_rates,
+)
+from lib.rdp import fetch_rdp_file
+from lib.rates_analysis.rate_case_funcs import (
+    extract_tariff_rates,
+    load_billing_kwh_8760,
+    load_tariff_json,
+    segment_name,
+    segment_upgrade,
+    weighted_avg_monthly,
+)
+
+STATE = "CT"
+BATCH = "ct_20261015_a"
+RDP_REF = "e97a3ca"
+UTILITY = "ct_eversource"
+RELEASE = "res_2024_amy2018_2_sb"
+SCENARIO = "default_ry1_r1_uncalibrated"
+WINTER_MONTHS = ["Jan", "Feb", "Mar", "Nov", "Dec"]
+WINTER_KEYS = ["2025-01", "2025-02", "2025-03", "2025-11", "2025-12"]
+BILL_ORDER = ["Customer Charge", "Distribution", "Transmission", "Generation", "Total"]
+
+# Rate HP winter rates from the representative-home cache. Distribution includes
+# the unchanged riders. Transmission is the service rate. These are the unrounded
+# rates behind Table 4 of the direct testimony.
+_rep_home = pickle.loads(Path("../cache/representative_home_vars.pkl").read_bytes())
+WINTER_DIST = float(_rep_home["fair_hp_winter_rate_dist"])
+WINTER_TX = float(_rep_home["fair_hp_winter_rate_tx"])
+
+# Enrollment bounds written out in CIEC-1(b) and CIEC-1(c) below.
+EXISTING_FLOOR = 7_928
+EXISTING_CEILING = 109_127
+NEW_FLOOR = [3_460, 3_460, 3_460, 3_460, 3_460]
+NEW_CEILING = [6_272, 7_056, 7_840, 9_408, 10_976]
+YEARS = [2027, 2028, 2029, 2030, 2031]
+# The pieces of those bounds. The workpaper calculates the bounds from these.
+REBATES_SINCE_2023 = 4_400
+CLM_2026 = 3_528
+HP_SHARE_PERCENT = 9
+CLM_ANNUAL = 3_460
+EVERSOURCE_PER_THOUSAND = 784
+ISO_NE_ADDITIONS = [8_000, 9_000, 10_000, 12_000, 14_000]
+# Average bills rendered for Rates 1, 5, and 7, Rate Year ending June 30, 2028.
+rate_year_customers = rate_year_residential_customers()
+assert REBATES_SINCE_2023 + CLM_2026 == EXISTING_FLOOR
+assert round(rate_year_customers * HP_SHARE_PERCENT / 100) == EXISTING_CEILING
+assert NEW_FLOOR == [CLM_ANNUAL] * len(YEARS)
+assert NEW_CEILING == [n * EVERSOURCE_PER_THOUSAND // 1000 for n in ISO_NE_ADDITIONS]
+floor_enrolled = cumulative_enrollment(EXISTING_FLOOR, NEW_FLOOR, YEARS)
+ceiling_enrolled = cumulative_enrollment(EXISTING_CEILING, NEW_CEILING, YEARS)
+
+_rates_yaml = yaml.safe_load(
+    fetch_rdp_file(
+        "rate_design/hp_rates/ct/config/rev_requirement/top-ups/monthly_rates/"
+        "ct_eversource_rate1_proposed_monthly_rates_ry1.yaml",
+        ref=RDP_REF,
+    )
+)
+_drr = _rates_yaml["add_to_drr"]["charges"]
+_already = _rates_yaml["already_in_drr"]["charges"]
+_srr = _rates_yaml["add_to_srr"]["charges"]
+_dist_sub_charges = [
+    _already["core_delivery_rate"],
+    _drr["electric_system_improvements_esi"],
+    _drr["revenue_decoupling_mechanism_rdm"],
+    _drr["competitive_transition_assessment_cta"],
+    _drr["non_bypassable_fmcc_delivery"],
+    _drr["conservation_adjustment_mechanism_cam"],
+    _drr["renewable_energy_investment_clean_energy_fund"],
+    _drr["system_benefits_charge_sbc"],
+]
+rate1 = {
+    "Customer Charge": {
+        "charge_unit": "$/month",
+        "monthly_rates": _already["customer_charge"]["monthly_rates"],
+    },
+    "Distribution": {"charge_unit": "$/kWh", "monthly_rates": sum_monthly_rates(*_dist_sub_charges)},
+    "Transmission": {
+        "charge_unit": "$/kWh",
+        "monthly_rates": _drr["transmission_charge"]["monthly_rates"],
+    },
+    "Generation": {
+        "charge_unit": "$/kWh",
+        "monthly_rates": _srr["supply_commodity_bundled"]["monthly_rates"],
+    },
+}
+rate_hp = with_winter_rates(rate1, WINTER_DIST, WINTER_TX, WINTER_KEYS)
+
+_icos = extract_tariff_rates(
+    load_tariff_json(STATE, UTILITY, "ct_eversource_icos_fair_seasonal", RDP_REF)
+)
+_icos_winter = min(_icos["period_rates"].values())
+assert abs((WINTER_DIST + WINTER_TX) - _icos_winter) < 1e-5
+
+_core = float(_already["core_delivery_rate"]["monthly_rates"]["2025-01"])
+_dist_with_riders = float(rate1["Distribution"]["monthly_rates"]["2025-01"])
+_riders = _dist_with_riders - _core
+_tx = float(rate1["Transmission"]["monthly_rates"]["2025-01"])
+if len(set(rate1["Distribution"]["monthly_rates"].values())) != 1:
+    raise RuntimeError("Rate 1 distribution is not flat across months")
+if len(set(rate1["Transmission"]["monthly_rates"].values())) != 1:
+    raise RuntimeError("Rate 1 transmission is not flat across months")
+rate1_delivery = _dist_with_riders + _tx
+rate1_dist_energy_label = f"{_core * 100:.3f}"
+rate1_tx_label = f"{_tx * 100:.3f}"
+rate_hp_dist_energy_label = f"{(WINTER_DIST - _riders) * 100:.3f}"
+rate_hp_tx_label = f"{WINTER_TX * 100:.3f}"
+assert rate_hp_dist_energy_label == "3.533"
+assert rate_hp_tx_label == "1.258"
+
+def _segment_for(upgrade: str) -> str:
+    """CAIRO segment for one ResStock upgrade, checked against the upgrade stored on the run."""
+    stage = {"00": "precalc", "02": "calibrated"}[upgrade]
+    segment = segment_name(SCENARIO, stage)
+    found = segment_upgrade(STATE, BATCH, segment)
+    if found != int(upgrade):
+        raise RuntimeError(f"Segment {segment} is upgrade {found}, expected {int(upgrade)}")
+    return segment
+
+
+def _matched_weights(weights: pl.DataFrame, kwh: pl.LazyFrame) -> pl.DataFrame:
+    """Cast building ids to the load file's type and require every building to have a curve."""
+    id_dtype = kwh.select("bldg_id").head(1).collect()["bldg_id"].dtype
+    weights = weights.with_columns(pl.col("bldg_id").cast(id_dtype))
+    matched = (
+        kwh.select("bldg_id")
+        .unique()
+        .join(weights.lazy().select("bldg_id"), on="bldg_id", how="inner")
+        .select(pl.len().alias("n"))
+        .collect()
+    )
+    n = int(matched["n"][0])
+    if n != weights.height:
+        raise RuntimeError(f"Load curves matched {n} of {weights.height} buildings")
+    return weights
+
+
+def _summarize(monthly: pl.DataFrame, weights: pl.DataFrame) -> dict:
+    """Weighted-average bill and the cent-rounded Rate HP decrease for one population."""
+    presented = presented_bills(
+        {"rate1": annual_bill(monthly, rate1), "rate_hp": annual_bill(monthly, rate_hp)},
+        BILL_ORDER,
+    )
+    if presented["decrease"]["Customer Charge"] != 0.0 or presented["decrease"]["Generation"] != 0.0:
+        raise RuntimeError("Rate HP changed the customer charge or the generation charge")
+    if presented["decrease"]["Total"] != round(
+        presented["decrease"]["Distribution"] + presented["decrease"]["Transmission"], 2
+    ):
+        raise RuntimeError("the decrease does not add")
+    return {
+        "n_buildings": weights.height,
+        "annual_kwh": float(monthly["kwh"].sum()),
+        "winter_kwh": float(monthly.filter(pl.col("month_label").is_in(WINTER_MONTHS))["kwh"].sum()),
+        "bills": presented,
+        "dec_dist": presented["decrease"]["Distribution"],
+        "dec_tx": presented["decrease"]["Transmission"],
+        "dec_total": presented["decrease"]["Total"],
+        "customers": float(weights["weight"].sum()),
+    }
+
+
+# Customers already enrolled: upgrade 00 homes that have a heat pump, on their baseline load.
+_segment_00 = _segment_for("00")
+_kwh_existing = load_billing_kwh_8760(STATE, UTILITY, BATCH, _segment_00)
+_weights_existing = _matched_weights(
+    subclass_weights(RELEASE, STATE, UTILITY, "00", has_hp=True),
+    _kwh_existing,
+)
+_monthly_existing = weighted_avg_monthly(_kwh_existing, _weights_existing["bldg_id"].to_list(), _weights_existing)
+existing = _summarize(_monthly_existing, _weights_existing)
+
+# Customers who enroll in 2027-2031: upgrade 00 homes without a heat pump, on their upgrade 02 load.
+_segment_02 = _segment_for("02")
+_kwh_new = load_billing_kwh_8760(STATE, UTILITY, BATCH, _segment_02)
+_weights_new = _matched_weights(
+    subclass_weights(RELEASE, STATE, UTILITY, "00", has_hp=False),
+    _kwh_new,
+)
+_monthly_new = weighted_avg_monthly(_kwh_new, _weights_new["bldg_id"].to_list(), _weights_new)
+new = _summarize(_monthly_new, _weights_new)
+
+n_bldg = existing["n_buildings"]
+annual_kwh = existing["annual_kwh"]
+winter_kwh = existing["winter_kwh"]
+dec_dist = existing["dec_dist"]
+dec_tx = existing["dec_tx"]
+dec_total = existing["dec_total"]
+n_bldg_new = new["n_buildings"]
+annual_kwh_new = new["annual_kwh"]
+winter_kwh_new = new["winter_kwh"]
+new_dec_dist = new["dec_dist"]
+new_dec_tx = new["dec_tx"]
+new_dec_total = new["dec_total"]
+
+bill_table_md = bill_table(existing["bills"], BILL_ORDER)
+bill_table_new_md = bill_table(new["bills"], BILL_ORDER)
+enrollment_table_md = enrollment_table(floor_enrolled, ceiling_enrolled)
+floor_reduction_table_md = cohort_reduction_table(
+    floor_enrolled, dec_dist, dec_tx, new_dec_dist, new_dec_tx
+)
+ceiling_reduction_table_md = cohort_reduction_table(
+    ceiling_enrolled, dec_dist, dec_tx, new_dec_dist, new_dec_tx
+)
+
+
+def _rate_year_revenue(enrolled: list[tuple[int, int]]) -> list[dict[str, float]]:
+    """Revenue reduction for each rate year. The first enrollment point is the 2026 stock."""
+    return cohort_revenue_rows(enrolled, dec_dist, dec_tx, new_dec_dist, new_dec_tx)[1:]
+
+
+floor_revenue = _rate_year_revenue(floor_enrolled)
+ceiling_revenue = _rate_year_revenue(ceiling_enrolled)
+if [int(row["year"]) for row in floor_revenue] != YEARS:
+    raise RuntimeError(f"floor revenue years {[int(row['year']) for row in floor_revenue]} != {YEARS}")
+if [int(row["year"]) for row in ceiling_revenue] != YEARS:
+    raise RuntimeError(f"ceiling revenue years {[int(row['year']) for row in ceiling_revenue]} != {YEARS}")
+
+# CIEC-3 reads this cache instead of recomputing the bill and the enrollment bounds.
+_ciec_1_vars = {
+    "dec_dist": dec_dist,
+    "dec_tx": dec_tx,
+    "dec_total": dec_total,
+    "new_dec_dist": new_dec_dist,
+    "new_dec_tx": new_dec_tx,
+    "new_dec_total": new_dec_total,
+    "n_bldg": n_bldg,
+    "annual_kwh": annual_kwh,
+    "winter_kwh": winter_kwh,
+    "n_bldg_new": n_bldg_new,
+    "annual_kwh_new": annual_kwh_new,
+    "winter_kwh_new": winter_kwh_new,
+    "years": YEARS,
+    "rate_year_customers": rate_year_customers,
+    "floor_revenue": floor_revenue,
+    "ceiling_revenue": ceiling_revenue,
+    "rate1_dist": _dist_with_riders,
+    "rate1_tx": _tx,
+    "rate1_delivery": rate1_delivery,
+    "rate1_gen_monthly": {
+        month: float(rate) for month, rate in rate1["Generation"]["monthly_rates"].items()
+    },
+    "floor_enrolled": floor_enrolled,
+    "ceiling_enrolled": ceiling_enrolled,
+    "hp_customers": existing["customers"],
+    "state": STATE,
+    "batch": BATCH,
+    "utility": UTILITY,
+    "release": RELEASE,
+    "upgrade": "00",
+    "segment": _segment_00,
+}
+_ciec_1_path = Path("../cache/ciec_1_vars.pkl")
+_ciec_1_path.write_bytes(pickle.dumps(_ciec_1_vars))
+```
+
+**Witness:** Juan-Pablo Velez\
+**Request from:** Connecticut Industrial Energy Consumers\
+**Date issued:** October 29, 2026
+
+## CIEC-1(a)
+
+### Question
+
+Please provide Mr. Velez's estimate of the total annual reduction in (i) distribution revenue and (ii) transmission revenue that the Company would collect under Rate HP, relative to Rate 1, for each of the first five years after Rate HP takes effect. Provide all workpapers in Excel format with formulas intact.
+
+### Response
+
+These are the ranges of customers who would be enrolled in Rate HP, starting from the existing customers with heat pumps today through the fifth rate year. The floor and the ceiling are the bounds in CIEC-1(b) and CIEC-1(c).
+
+```{python}
+#| echo: false
+#| output: asis
+
+print(enrollment_table_md)
+```
+
+In November through March, Rate HP lowers distribution from `{python} rate1_dist_energy_label` ¢/kWh to `{python} rate_hp_dist_energy_label` ¢/kWh and transmission from `{python} rate1_tx_label` ¢/kWh to `{python} rate_hp_tx_label` ¢/kWh. Summer rates, riders, generation, and the customer charge stay at Rate 1.
+
+A customer who already has a heat pump would pay **`{python} dollar(dec_total, accuracy=2)`** less per year under Rate HP than under Rate 1: **`{python} dollar(dec_dist, accuracy=2)`** in distribution and **`{python} dollar(dec_tx, accuracy=2)`** in transmission. The customer charge and the generation charge are unchanged.
+
+This bill is calculated using the representative Eversource home with a heat pump in the ResStock baseline, using that home's baseline load. It uses `{python} num(annual_kwh)` kWh a year, and `{python} num(winter_kwh)` of those kWh come from November through March. The detailed calculation is shown below.
+
+```{python}
+#| echo: false
+#| output: asis
+
+print(bill_table_md)
+```
+
+A customer who enrolls after installing a heat pump would pay **`{python} dollar(new_dec_total, accuracy=2)`** less per year: **`{python} dollar(new_dec_dist, accuracy=2)`** in distribution and **`{python} dollar(new_dec_tx, accuracy=2)`** in transmission.
+
+This bill is calculated using the representative Eversource home without a heat pump in the baseline, using those homes' loads after the heat pump upgrade. It uses `{python} num(annual_kwh_new)` kWh a year, and `{python} num(winter_kwh_new)` of those kWh come from November through March. The detailed calculation is shown below.
+
+```{python}
+#| echo: false
+#| output: asis
+
+print(bill_table_new_md)
+```
+
+The existing row is the first bill's revenue reduction times the customers already enrolled, rounded to the dollar. Each later row keeps that amount and adds the second bill's revenue reduction times the cumulative number of new customers who install a heat pump in 2027 through that year, also rounded to the dollar.
+
+Floor:
+
+```{python}
+#| echo: false
+#| output: asis
+
+print(floor_reduction_table_md)
+```
+
+Ceiling:
+
+```{python}
+#| echo: false
+#| output: asis
+
+print(ceiling_reduction_table_md)
+```
+
+Each row is a full year of bills for the customers enrolled by that year. The existing row is included in each of 2027 through 2031.
+
+Assumptions:
+
+- **Timing.** Five rate years, beginning July of 2027 through 2031. Each figure is a full year of bills. A calendar year's installations are assigned to the rate year that begins that July, as in CIEC-1(c). The 2026 installations are included in the existing-customer count.
+- **Load.** Customers already enrolled, including the 2026 installations, are billed as the weighted-average Eversource home that has a heat pump in the ResStock baseline. Customers who enroll in 2027 through 2031 are billed as the weighted-average Eversource home without a heat pump in the baseline, on that home's load after the heat pump upgrade. Both loads, and the rates, are held constant across years.
+- **Enrollment.** Floor and ceiling counts are from CIEC-1(b) and CIEC-1(c). Every heat pump installer enrolls, none opt out, and enrollment persists.
+
+## CIEC-1(b)
+
+### Question
+
+Please provide Mr. Velez's estimate of the number of existing heat pump customers who would be automatically enrolled in Rate HP, and identify the source of that estimate.
+
+### Response
+
+Between **7,928** and **109,127** customers, or 0.65% to 9% of the `{python} num(rate_year_customers)` residential customers Eversource filed for the Rate Year [@clp_Docket260510Exhibit_2026g].
+
+The direct testimony recommends that the Company auto-enroll every known residential customer who has already installed a heat pump. The customers it treats as readily identifiable are those who previously received a heat pump incentive through EnergizeCT or another state or utility program [@velez_Docket260510Direct_2026, p. 93, lines 7–12]. Customers who installed a heat pump outside those programs would be identified by attestation [@velez_Docket260510Direct_2026, p. 96, lines 9–11].
+
+- **7,928** is the floor. It is the 4,400 customers the Company reports have received rebates since 2023 for a heat pump that fully displaced the prior heating system [@clp_Docket260510Responses_2026b], plus the 3,528 residential customers its sales forecast expects to install a heat pump through the Conservation and Load Management program in 2026 [@clp_Docket260510Responses_2026b]. Those 2026 installations would already be in place when Rate HP takes effect. The Company states that the rebate count is not every heat pump customer and that it does not track heating source [@clp_Docket260510Responses_2026b].
+- **109,127** is the ceiling, and it is an estimate for the entire eligible group. It applies the share of Eversource households that heat primarily with a heat pump, 9% in Appendix E, Table 455 of the 2024 Connecticut Residential Appliance Saturation Survey, to the Rate Year customer count [@nmr_R2202ResidentialAppliance_2025a]. Reaching the customers in this group who are not already on an incentive list would require additional attestation.
+
+These bounds were checked against two other public counts. The New England Heat Pump Accelerator participation file records 4,999 Connecticut equipment claims with incentives paid through September 30, 2026 [@nehpa_InstantIncentiveProgram_2026]. The file includes United Illuminating and the municipal utilities, a household can account for more than one claim, and the same household can also receive an EnergizeCT rebate. EnergizeCT's installation export for Eversource Electric counts 21,765 residential ducted air-source and ground-source installations from 2017 through 2026 to date [@clp_HeatPumpInstallations_2026]. That count sits between the floor of 7,928 and the ceiling of 109,127. Since 2023, the same two equipment types total 18,799 installations, far above the 4,400 full-displacement rebates the Company reported for that period. The export does not explain the difference. The floor stays at the Company's count.
+
+## CIEC-1(c)
+
+### Question
+
+Please provide Mr. Velez's estimate of the number of customers who would be newly enrolled in Rate HP in each of the first five years after it takes effect, and identify all assumptions used.
+
+### Response
+
+Between **3,460** and **10,976** customers a year, or **17,300** to **41,552** over five years.
+
+| Year | Floor (customers) | Floor share | Ceiling (customers) | Ceiling share |
+| --- | ---: | ---: | ---: | ---: |
+| 2027 | 3,460 | 0.29% | 6,272 | 0.52% |
+| 2028 | 3,460 | 0.29% | 7,056 | 0.58% |
+| 2029 | 3,460 | 0.29% | 7,840 | 0.65% |
+| 2030 | 3,460 | 0.29% | 9,408 | 0.78% |
+| 2031 | 3,460 | 0.29% | 10,976 | 0.91% |
+| Five-year total | 17,300 | 1.43% | 41,552 | 3.43% |
+
+The floor, 3,460 customers a year, is the Company's forecast of residential heat pump installations through its Conservation and Load Management program in 2027. The Company provided no forecast beyond 2027, so that count is held flat for each later year. It excludes installations outside the program [@clp_Docket260510Responses_2026b].
+
+The ceiling is ISO New England's forecast of Connecticut residential heat pump additions: 8, 9, 10, 12, and 14 thousand housing units in 2027 through 2031 [@isone_Final2026Heat_2026]. Those statewide counts are multiplied by Eversource's 78.4% share of the households served by Eversource and United Illuminating, from Table 6 of the RASS report [@nmr_R2202ResidentialAppliance_2025]. The Accelerator publishes no installation forecast for these years. Its Connecticut air-source claims for 2026 total 4,537, from the February opening through October 19, with incentives paid through September 30 [@nehpa_InstantIncentiveProgram_2026]. The file includes United Illuminating and the municipal utilities. That partial-year total is of similar magnitude as the 2027 projections above: 8,000 housing units statewide and 6,272 for Eversource.
+
+The figure below displays the cumulative estimated number of customers on Rate HP, starting from the existing customers with heat pumps today through the fifth rate year. It combines the estimate of existing customers from CIEC-1(b) with the estimate of new customers from CIEC-1(c), for both the floor and the ceiling. The right axis divides the count by the `{python} num(rate_year_customers)` residential customers filed for the Rate Year, the average bills rendered for Rates 1, 5, and 7.
+
+```{python}
+#| echo: false
+#| label: fig-enrollment
+#| fig-cap: "Cumulative customers on Rate HP. The 2026 point is the stock already enrolled. Each later year adds that year's installations. The right axis is the count as a share of Rate Year residential customers."
+#| fig-cap-location: margin
+
+import polars as pl
+from plotnine import (
+    aes,
+    element_blank,
+    geom_line,
+    geom_point,
+    ggplot,
+    labs,
+    scale_color_manual,
+    scale_x_continuous,
+    scale_y_continuous,
+    theme,
+)
+from lib.plotnine import SB_COLORS, theme_switchbox
+from lib.quarto import display_figure
+
+enrollment = pl.DataFrame(
+    {
+        "year": [year for year, _ in floor_enrolled] + [year for year, _ in ceiling_enrolled],
+        "customers": [customers for _, customers in floor_enrolled] + [customers for _, customers in ceiling_enrolled],
+        "bound": ["Floor"] * len(floor_enrolled) + ["Ceiling"] * len(ceiling_enrolled),
+    }
+)
+fig = (
+    ggplot(enrollment, aes("year", "customers", color="bound"))
+    + geom_line(size=1)
+    + geom_point(size=2.5)
+    + scale_color_manual(
+        values={"Floor": SB_COLORS["sky"], "Ceiling": SB_COLORS["midnight"]},
+        limits=["Floor", "Ceiling"],
+    )
+    + scale_x_continuous(breaks=enrollment["year"].unique().sort().to_list())
+    + scale_y_continuous(limits=(0, None), expand=(0, 0, 0.08, 0), labels=lambda breaks: [f"{b:,.0f}" for b in breaks])
+    + labs(title="Customers on Rate HP", x="", y="Customers")
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4.5), legend_position="top", legend_title=element_blank())
+).draw()
+
+_left = fig.axes[0]
+_tick = _left.get_yticklabels()[0]
+_right = _left.twinx()
+_right.set_ylim(_left.get_ylim())
+_right.set_yticks(_left.get_yticks())
+_right.set_yticklabels([f"{tick / rate_year_customers * 100:.1f}%" for tick in _left.get_yticks()])
+_right.set_ylabel("Share of residential customers")
+_right.yaxis.label.set_fontname(_left.yaxis.label.get_fontname())
+_right.yaxis.label.set_fontsize(_left.yaxis.label.get_fontsize())
+_right.yaxis.label.set_color(_left.yaxis.label.get_color())
+for _label in _right.get_yticklabels():
+    _label.set_fontname(_tick.get_fontname())
+    _label.set_fontsize(_tick.get_fontsize())
+    _label.set_color(_tick.get_color())
+_right.tick_params(axis="y", colors=_tick.get_color())
+_right.spines["right"].set_color(_left.spines["bottom"].get_edgecolor())
+
+display_figure(fig)
+```
+
+Assumptions:
+
+- **Timing.** The first five years are 2027 through 2031. The Rate Year begins July 1, 2027 [@clp_Docket260510Exhibit_2026f]. The Company's 2026 installations are counted with existing customers in CIEC-1(b).
+- **Enrollment.** Every customer who installs a heat pump enrolls, and none opt out.
+- **Shares** use the `{python} num(rate_year_customers)` Rate Year residential customers, the average bills rendered for Rates 1, 5, and 7 in Exhibit CLP-RATES-2 at 45, 48, and 51 [@clp_Docket260510Exhibit_2026g].
+
+```{python}
+#| echo: false
+#| output: false
+
+from lib.rates_analysis.rate_case_funcs import sum_8760_to_monthly, weighted_avg_hourly
+from build_ciec_1a_workbook import (
+    DRIVE_FOLDER_ID,
+    DRIVE_NAME,
+    Case,
+    EnrollmentInputs,
+    build_workbook,
+    charges_from_groups,
+    upload_xlsx,
+)
+
+
+def _hourly_profile(kwh: pl.LazyFrame, weights: pl.DataFrame, monthly: pl.DataFrame) -> pl.DataFrame:
+    """Weighted-average hours. Their monthly sum has to match the bill."""
+    hourly = weighted_avg_hourly(kwh, weights["bldg_id"].to_list(), weights)
+    summed = sum_8760_to_monthly(hourly)
+    check = monthly.join(summed, on="month_label", suffix="_hourly")
+    gap = max(float(value) for value in (check["kwh"] - check["kwh_hourly"]).abs().to_list())
+    if hourly.height != 8760 or gap > 1e-6:
+        raise RuntimeError(f"hourly average is {hourly.height} hours and differs from the monthly bill by {gap}")
+    return hourly
+
+
+_hourly = _hourly_profile(_kwh_existing, _weights_existing, _monthly_existing)
+_hourly_new = _hourly_profile(_kwh_new, _weights_new, _monthly_new)
+_case = Case(
+    hourly=_hourly,
+    hourly_new=_hourly_new,
+    charges=charges_from_groups(_already, _drr, _srr),
+    winter_dist=WINTER_DIST,
+    winter_tx=WINTER_TX,
+    n_buildings=_weights_existing.height,
+    n_buildings_new=_weights_new.height,
+    total_weight=float(_weights_existing["weight"].sum()),
+    total_weight_new=float(_weights_new["weight"].sum()),
+    enrollment=EnrollmentInputs(
+        rebates_since_2023=REBATES_SINCE_2023,
+        clm_2026=CLM_2026,
+        hp_share_percent=HP_SHARE_PERCENT,
+        rate_year_customers=rate_year_customers,
+        clm_annual=CLM_ANNUAL,
+        eversource_per_thousand=EVERSOURCE_PER_THOUSAND,
+        years=YEARS,
+        statewide_additions=ISO_NE_ADDITIONS,
+    ),
+)
+_wb = build_workbook(_case)
+_xlsx_path = Path("../cache") / DRIVE_NAME
+_wb.save(_xlsx_path)
+_link = upload_xlsx(_xlsx_path, DRIVE_FOLDER_ID, DRIVE_NAME)
+_xlsx_path.unlink()
+print(f"Uploaded {DRIVE_NAME}: {_link}")
+```
+
+## CIEC-1(d)
+
+### Question
+
+If Mr. Velez has not prepared the estimates requested in parts (a) through (c), please explain why not.
+
+### Response
+
+The estimates requested in parts (a) through (c) are provided above.

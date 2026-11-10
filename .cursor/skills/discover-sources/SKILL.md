@@ -14,7 +14,7 @@ Search, download, de-duplicate and recommend. **Do not write to Zotero, Document
 ## Steps
 
 1. **Pin down the request**: topic, project (see `uv run python -m lib.sources.cli projects`), jurisdictions, years, document types, and **what the sources are for**: the question, testimony, report section or argument they will serve. Ingest needs this for each source's "why it's here" (see `context/code/source_metadata_conventions.md`, Index rows and descriptions), and this is the moment it is known. If the project or the purpose is unclear, ask once.
-2. **Search.** Use web search and the source's own sites (commission dockets, agency libraries, Google Scholar, OSTI, SSRN). Prefer the primary document over a summary of it. For Maryland PSC filings use the `mdpuc-documents` skill's fetch recipes. For Oregon PUC orders and eDocket filings use the `orpuc-documents` skill (no browser needed; it downloads straight into the inbox).
+2. **Search.** Use web search and the source's own sites (commission dockets, agency libraries, Google Scholar, OSTI, SSRN). Prefer the primary document over a summary of it. For Maryland PSC filings use the `mdpuc-documents` skill's fetch recipes. For Oregon PUC orders and eDocket filings use the `orpuc-documents` skill (no browser needed; it downloads straight into the inbox). For Connecticut PURA filings use the `ctpura-documents` skill: PURA blocks the server, so you read filings in the Cursor browser and the user downloads the files you pick.
 3. **Download to the scratch inbox**, never into the repo:
 
    ```text
@@ -31,5 +31,6 @@ Search, download, de-duplicate and recommend. **Do not write to Zotero, Document
 ## Rules
 
 - Do not download paywalled material by working around the paywall; list it with its landing page for the user to fetch.
+- When a site blocks the server but opens in the browser (PURA, for one), do not build workarounds. Tell the user plainly that they need to download files, and list each one with a direct link and the inbox folder it goes in. Subagents put that list in their report instead.
 - A candidate is not a recommendation to cite it. Relevance notes say what the document contains, not what it proves.
 - Leave the inbox folder in place; the user cleans it.

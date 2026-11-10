@@ -1,6 +1,23 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 226-227 (printed pp. 224-225), Chapter 26; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 226-227 (printed pp. 224-225) of the manual, Chapter 26; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back._
+
+[PDF pp. 1-225 not transcribed: front matter to Chapter 25, in 00_front_matter.md to 25_cutting_edge.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 226 | printed p. 224]
+
 ## 26. Summary of Recommendations for Marginal Cost of Service Studies
 
-his chapter provides recommendations on two sets of issues: how to make incremental improvements **T** to the predominantly used NERA method and how to work toward developing an hourly TSLRIC method, which has not yet been implemented.
+This chapter provides recommendations on two sets of issues: how to make incremental improvements to the predominantly used NERA method and how to work toward developing an hourly TSLRIC method, which has not yet been implemented.
 
 ### 26.1 Improving Marginal Cost Methods
 
@@ -26,12 +43,12 @@ Nine key items are distilled from Part IV as to how to improve marginal cost met
 
 ### 26.2 Moving Toward Broader Reform
 
-TSLRIC will require both vision and research to be implemented for all utility functions. How a TSLRIC approach might look different from simply using replacement cost new
-
-for existing facilities was sketched out in Section 25.1.
+TSLRIC will require both vision and research to be implemented for all utility functions. How a TSLRIC approach might look different from simply using replacement cost new [PDF p. 227 | printed p. 225] for existing facilities was sketched out in Section 25.1.
 
 The first place where a TSLRIC approach could be used is for generation, where it could be built up from a lower-carbon long-run incremental cost. Other resources may also be available to assist in constructing the TSLRIC of generation. They include the low-carbon grid study for the Western grid and similar studies that build out potential future resource plans (Brinkman, Jorgenson, Ehlen and Caldwell, 2016, and Marcus, 2016). This is a data-intensive approach that will require envisioning and costing out future systems and determining the resilience of the cost estimates to various assumptions. TSLRIC for generation probably suggests starting with a “cost by hours of use” approach, since
 
 there is only a limited amount of resources with fossil fuel that may not be dispatched in all hours. This means that price shapes based on short-run marginal cost may no longer make sense. This method would end up giving batteries and storage negative energy costs when they are charging and positive costs when discharging. Distributed generation would require functionalization.
 
 Developing TSLRIC for transmission and distribution would require considerable amounts of engineering analysis to determine how the various cost drivers would work when developing a more optimal system and would likely involve a longer process.
+
+[PDF pp. 228-276 not transcribed: Works Cited in Part IV to Glossary and back cover, in 26_works_cited_part4.md to glossary.md of this folder]

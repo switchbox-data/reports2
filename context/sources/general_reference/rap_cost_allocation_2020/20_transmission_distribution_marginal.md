@@ -1,6 +1,25 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 204-208 (printed pp. 202-206), Chapter 20; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 204-208 (printed pp. 202-206) of the manual, Chapter 20; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back, and the first section heading, which had been run into that paragraph, is a heading again._
+
+[PDF pp. 1-203 not transcribed: front matter to Chapter 19, in 00_front_matter.md to 19_generation_marginal.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 204 | printed p. 202]
+
 ## 20. Transmission and Shared Distribution in Marginal Cost of Service Studies
 
-**20.1 Marginal Transmission Costs** arginal transmission costs have not received the attention that marginal generation and **M** distribution costs have received, because in large parts of the country transmission is partly if not wholly under FERC jurisdiction. Thus, California utilities only calculate marginal transmission costs as an input to the process of calculating the contribution to margin of economic development rates, rather than for cost allocation and rate design. Nevada calculates marginal transmission costs using the NERA method. But since there is no joint product (such as generation energy and capacity, or distribution lines and customer connections) and Nevada allocates costs by functions (see Chapter 24), there is little controversy. Southern California Edison breaks its transmission costs into transmission (115 kV and above) and subtransmission (69 kV and below) because specific factors relating to the physical layout of its system left its subtransmission system under Public Utilities Commission regulation, where it is treated as part of the company’s distribution marginal costs.[^224]
+### 20.1 Marginal Transmission Costs
+
+Marginal transmission costs have not received the attention that marginal generation and distribution costs have received, because in large parts of the country transmission is partly if not wholly under FERC jurisdiction. Thus, California utilities only calculate marginal transmission costs as an input to the process of calculating the contribution to margin of economic development rates, rather than for cost allocation and rate design. Nevada calculates marginal transmission costs using the NERA method. But since there is no joint product (such as generation energy and capacity, or distribution lines and customer connections) and Nevada allocates costs by functions (see Chapter 24), there is little controversy. Southern California Edison breaks its transmission costs into transmission (115 kV and above) and subtransmission (69 kV and below) because specific factors relating to the physical layout of its system left its subtransmission system under Public Utilities Commission regulation, where it is treated as part of the company’s distribution marginal costs.[^224]
 
 The NERA method for marginal transmission costs involves some analysis of the relationship between transmission system design and peak loads. Although the original method involves regression analysis between cumulative investment in load-related transmission (calculated in real, inflation-adjusted dollars) and cumulative increases to peak load, two other methods have been developed. The first, the total investment method, examines total investment divided by the change in peak load. The second, the discounted total investment method, uses discounted total investment divided by the discounted change in peak load. This assigns lower weights to investments occurring later in a projected analysis period relative to
 
@@ -15,6 +34,8 @@ O&M costs are added to the annualized capital costs. There are two conceptual me
 The NERA method essentially ignores large parts of the transmission system and therefore generally ends up with marginal transmission costs well below embedded costs. It also fails to recognize that peaking resources and storage are
 
 [^224]: California utilities calculate a marginal cost of transmission as an element of cost when determining how much contribution to margin is provided by loads such as economic development rates, but it is not used for allocation of costs to customer classes (which is done by FERC) and is therefore not reviewed carefully in rate cases .
+
+[PDF p. 205 | printed p. 203]
 
 often strategically located near loads where transmission is constrained to reduce the need for transmission. For example, the city of Burbank, California, incurred additional costs to locate the Lake generating unit in the heart of the urban area; an offsetting benefit was avoidance of transmission costs.
 
@@ -34,9 +55,7 @@ The most controversial issue for the calculation of marginal distribution costs 
 
 The NERA method for marginal distribution capacity costs unrelated to customer connections is similar to that for marginal transmission costs, involving an analysis of the relationship between distribution system design and peak loads. Again, the three methods used are regression analysis, the total investment method and discounted total investment method, all discussed in Section 20.1. The investment cost is annualized by multiplying by the RECC.
 
-The marginal cost of distribution capacity can be developed for the distribution system as a whole, as well as separately for lines and substations. A number of utilities (including Southern California Edison, San Diego Gas & Electric and the Nevada utilities) have separate calculations for distribution substations and lines. PG&E uses regional costs. It calculates costs individually for more than 200 distribution planning areas for purposes of economic development rates and aggregates them up to 17 utility
-
-divisions for purposes of marginal cost calculation for cost allocation and rate design (Pacific Gas & Electric, 2016, chapters 5 and 6). Using all of the distribution planning areas (as was proposed in the 199os) is so granular that it would be difficult to examine and audit the relationship of costs to cost drivers. This is true in part because costs are dependent on the amount of excess capacity in local areas. In addition, customers who are large relative to the distribution system may never pay for capacity needed to serve them in some cases. And customers in slow-growing areas are charged less than those where load is growing faster, even if those customers are using a significant portion of the distribution system.
+The marginal cost of distribution capacity can be developed for the distribution system as a whole, as well as separately for lines and substations. A number of utilities (including Southern California Edison, San Diego Gas & Electric and the Nevada utilities) have separate calculations for distribution substations and lines. PG&E uses regional costs. It calculates costs individually for more than 200 distribution planning areas for purposes of economic development rates and aggregates them up to 17 utility [PDF p. 206 | printed p. 204] divisions for purposes of marginal cost calculation for cost allocation and rate design (Pacific Gas & Electric, 2016, chapters 5 and 6). Using all of the distribution planning areas (as was proposed in the 199os) is so granular that it would be difficult to examine and audit the relationship of costs to cost drivers. This is true in part because costs are dependent on the amount of excess capacity in local areas. In addition, customers who are large relative to the distribution system may never pay for capacity needed to serve them in some cases. And customers in slow-growing areas are charged less than those where load is growing faster, even if those customers are using a significant portion of the distribution system.
 
 O&M costs are added to the annualized capital costs. As with transmission, there are two conceptual methods for doing this. The original NERA method averages O&M costs (in real terms) divided by kWs of load over a period containing both historical and forecast years. The alternative would calculate O&M costs as a percentage of plant and include it as an adder only to new plant.[^225]
 
@@ -53,6 +72,8 @@ Pacific Power’s Oregon rate cases have a “commitment-related” component to
 The NERA method again ignores replacement costs, which constitute the majority of new distribution plant for many utilities’ systems, in addition to ignoring costs of improving reliability. A good argument can be made that replacement costs are truly marginal costs and that the utility needs to make replacements to serve its existing load safely and reliably. First, regardless of the workings of the RECC method, assuming that replacement costs are automatically committed when a new piece of distribution equipment is built is a monopoly-based argument and does not work in a truly competitive market. The marginal cost relates to both incremental and decremental demand. A replacement is needed to assure that demand does not decline but is instead
 
 [^225]: This is PG&E’s method because the company claims that O&M costs are not marginal once the plant is installed (Pacific Gas & Electric, 2016, Chapter 5, p . 11) .
+
+[PDF p. 207 | printed p. 205]
 
 served reliably. The fact that replacements are a marginal cost can be analogized to other industries, such as trucking. A more detailed theoretical exposition is given in Appendix D.
 
@@ -74,6 +95,10 @@ If a transformer cost is considered part of the customer connection function, a 
 
 [^226]: If a capacitor is deemed to have a generation function, it is not a marginal cost at all under the NERA method .
 
+[PDF p. 208 | printed p. 206]
+
 minimum costs would be inframarginal costs of providing energy and capacity rather than customer connection costs. However, these extra costs have been difficult to measure in past cases. Also, many utilities claim that the new energy standards for line transformers mean they no longer need to optimize transformer costs against losses and they only
 
 need to meet but not exceed the federal standard. Capacitors and voltage regulators are also not part of transformer costs for either customer connection or secondary distribution demand but instead should be quantified together with other primary distribution costs.
+
+[PDF pp. 209-276 not transcribed: Chapter 21 to Glossary and back cover, in 21_customer_marginal.md to glossary.md of this folder]

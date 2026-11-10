@@ -1,6 +1,23 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 103-105 (printed pp. 101-103), Chapter 8; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 103-105 (printed pp. 101-103) of the manual, Chapter 8; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back. Footnote 81, which the first extraction split across the page's columns, is rejoined._
+
+[PDF pp. 1-102 not transcribed: front matter to Chapter 7, in 00_front_matter.md to 07_21st_century_issues.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 103 | printed p. 101]
+
 ## 8. Choosing Appropriate Costing Methods
 
-n general, facilities shared among multiple users, as well as expenses and investments benefiting all **I** ratepayers, should be apportioned based on measures of shared usage. Facilities that are uniquely serving individual customers should be sized to their individual needs, and the costs should be directly associated with those customers. Overhead costs, such as A&G expenses and general plant,
+In general, facilities shared among multiple users, as well as expenses and investments benefiting all ratepayers, should be apportioned based on measures of shared usage. Facilities that are uniquely serving individual customers should be sized to their individual needs, and the costs should be directly associated with those customers. Overhead costs, such as A&G expenses and general plant,
 
 are not costs that are subject to a “technically correct” allocation.[^81] Pragmatically, these costs can be fairly divided among classes based on a measure of usage or even revenue since there is not necessarily a link between system cost drivers and these costs.
 
@@ -38,9 +55,9 @@ The appropriate choice of a detailed allocation approach and the most appropriat
 
 Each of these questions bears on the most appropriate cost allocation approach. A mix of resources requires a method that appropriately treats that variety of resources differently in classification and allocation. Variable resources require a method that assigns their costs to the hours in which they produce benefits. The location of supply resources determines whether the method must apportion transmission costs among multiple purposes.
 
-[^81]: Bonbright described some distribution costs as strictly unallocable: “But if the hypothetical cost of a minimum-sized distribution system is properly excluded from the demand-related costs for the reason just given, while it is also denied a place among the customer costs for the reason stated previously, to which cost function does it then belong? The only defensible
+[^81]: Bonbright described some distribution costs as strictly unallocable: “But if the hypothetical cost of a minimum-sized distribution system is properly excluded from the demand-related costs for the reason just given, while it is also denied a place among the customer costs for the reason stated previously, to which cost function does it then belong? The only defensible answer, in my opinion, is that it belongs to none of them . Instead, it should be recognized as a strictly unallocable portion of total costs . And this is the disposition that it would probably receive in an estimate of long-run marginal costs” (1961, p . 348) . The same “unallocable” characteristic may apply to other system costs in an evolving industry .
 
-answer, in my opinion, is that it belongs to none of them . Instead, it should be recognized as a strictly unallocable portion of total costs . And this is the disposition that it would probably receive in an estimate of long-run marginal costs” (1961, p . 348) . The same “unallocable” characteristic may apply to other system costs in an evolving industry .
+[PDF p. 104 | printed p. 102]
 
 equity considerations or rather on efficiency considerations? Is the system an optimal system or a suboptimal system for today’s needs? Most advocates of using embedded cost studies point to the direct link with the revenue requirement and spreading that revenue requirement among multiple customers. Although there is a wide range of embedded cost methods, all of them apportion the existing revenue requirement, and rates based on the results should produce the allowed amount of total revenue.
 
@@ -68,6 +85,8 @@ But electric utilities are almost never in equilibrium, for several reasons:
 
 [^82]: Canadian hockey great Wayne Gretzky is widely quoted as having said: “I skate to where the puck is going to be, not where it has been .”
 
+[PDF p. 105 | printed p. 103]
+
 the fixed and variable costs of a new efficient generating unit. A system with marginal running costs high enough to justify new construction will tend to have a relatively low reserve margin.
 
 - In other markets, short-run costs can be allowed to rise, with the tightening available supply rationed by pricing, and the short-run cost becomes the price of outbidding other users. For electricity, that approach would lead to blackouts.
@@ -81,3 +100,5 @@ A state of disequilibrium can severely affect some customer classes if a margina
 will severely affect large-volume customer classes; if a surplus exists, it will severely affect residential and small commercial customers.
 
 In the following chapters, we address in detail how each type of cost should be considered in different approaches to cost allocation. The methods will be different for every utility because every utility has a different history and a different mix of resources, loads, costs, issues and opportunities. The appropriate method for each utility may be slightly different. It is driven by the mix of customers, the nature of the service territory, the type of resources employed and the underlying history that guided the evolution of the system. No single method is appropriate for every utility, and no single method is likely to produce a noncontroversial result. Many regulators will seek consistent methods to be applied to all utilities in their state, which may require compromise from the most appropriate method for each individual utility. In Chapter 27, we discuss how regulators can use the results of quantitative cost studies to actually determine a fair allocation of costs among classes.
+
+[PDF pp. 106-276 not transcribed: Works Cited in Part II to Glossary and back cover, in 08_works_cited_part2.md to glossary.md of this folder]

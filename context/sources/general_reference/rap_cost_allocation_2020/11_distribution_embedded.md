@@ -1,6 +1,23 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 144-163 (printed pp. 142-161), Chapter 11; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 144-163 (printed pp. 142-161) of the manual, Chapter 11; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back. Footnotes 140, 141, 142, 143, 144, 145, 146, 147, 148 had been extracted as plain text and are now footnote definitions. Footnotes 135, 138, 144, 159, 161, which the first extraction split across the page's columns, are rejoined._
+
+[PDF pp. 1-143 not transcribed: front matter to Chapter 10, in 00_front_matter.md to 10_transmission_embedded.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 144 | printed p. 142]
+
 ## 11. Distribution in Embedded Cost of Service Studies
 
-istribution costs are all incurred to deliver energy to customers and are primarily investment-related **D** costs that do not vary in response to load in the short term. Different rate analysts approach these costs in very different ways. These costs are often divided into two categories.
+Distribution costs are all incurred to deliver energy to customers and are primarily investment-related costs that do not vary in response to load in the short term. Different rate analysts approach these costs in very different ways. These costs are often divided into two categories.
 
 1. Shared distribution, which typically includes at least:
 
@@ -32,21 +49,17 @@ One important issue in cost allocation is the determination of the portion of di
 
 Some plant accounts and associated expenses are easily subfunctionalized. Substations (which are all primary equipment) have their own FERC accounts (plant accounts 360 to 362, expense accounts 582 and 592). In addition, distribution substations take power from transmission lines and feed it into the distribution system at primary voltage. All distribution substations deliver only primary power and therefore should be subfunctionalized as 100% primary.
 
-[^135]: The Uniform System of Accounts treats meters as distribution plant and the costs of keeping the meters operable as distribution expenses, even though all other metering and billing costs are treated as customer accounts or A&G plant or expenses . Traditional meters that tally only customer usage are not really necessary for the operation of the distribution system, only for the billing function . As a result, references to meters in this chapter are quite limited, and the costs of meters are
-
-> discussed with meter reading and billing in the next chapter .
+[^135]: The Uniform System of Accounts treats meters as distribution plant and the costs of keeping the meters operable as distribution expenses, even though all other metering and billing costs are treated as customer accounts or A&G plant or expenses . Traditional meters that tally only customer usage are not really necessary for the operation of the distribution system, only for the billing function . As a result, references to meters in this chapter are quite limited, and the costs of meters are discussed with meter reading and billing in the next chapter .
 
 [^136]: These capabilities require additional supporting technology, some of which is also required to provide remote meter reading . These costs should be spread among a variety of functions, including distribution and retail services, as discussed in Section 11 .5 .
+
+[PDF p. 145 | printed p. 143]
 
 However, many other types of distribution investments pose more difficult questions. The FERC accounts do not differentiate lines, poles or conduit between primary and secondary equipment, and many utilities do not keep records of distribution plant cost by voltage level. This means any subfunctionalization requires some sort of special analysis, such as the review of the cost makeup of distribution in areas constituting a representative sample of the system.
 
 Traditionally, most cost of service studies have functionalized a portion of distribution poles as secondary plant, to be allocated only to classes taking service at secondary voltage. This approach is based on misconceptions regarding the joint and complementary nature of various types of poles. Although distribution poles come in all sorts of sizes and configurations, the important distinction for functionalization is what sorts of lines the poles carry: only primary, both primary and secondary or only secondary. The proper functionalization of the first category — poles that carry only primary lines — is not controversial; they are required for all distribution load, the sum of load served at primary and the load for which power is subsequently stepped down to secondary.[^137]
 
 For the second category — poles carrying both primary and secondary lines — some cost of service studies have treated a portion of the pole cost as being due to all distribution load and the remainder as being due to secondary loads, to be allocated only to classes served at secondary voltage. There is no cost basis for allocating any appreciable portion of these joint poles to secondary. The incremental pole cost for adding secondary lines to a pole carrying primary is generally negligible. The height of the pole is determined by the voltage of the primary circuits it carries, the number of primary phases and circuits and the local topography. Much of the equipment on the poles (cross arms, insulators, switches and other monitoring and control equipment) is used only for the primary lines. The required strength of the pole (determined by the diameter and material) is determined by the weight of the lines and equipment and by the leverage exerted by that weight (which increases with the height of the equipment
-
-[^137]: The class loads should be measured at primary voltage, including losses, which will be higher for power metered at secondary .
-
-[^138]: There is one situation in which secondary distribution can add to the cost of poles . A very large pole-mounted transformer (perhaps over 75 kVA)
 
 and the breadth of the cross arms, again due to primary lines).[^138] Equipment used in holding secondary lines has a very low cost compared with those used for primary lines. If the poles currently used for both secondary and primary lines had been designed without secondary lines, the reduction in costs would be very small. Thus, the costs of the joint poles are essentially all due to primary distribution.
 
@@ -58,7 +71,11 @@ Where only secondary lines are needed, the utility typically saves on pole costs
 
 As a result, the vast majority of pole costs (other than for
 
-> may require a stronger pole, which would be a secondary distribution cost . A highly detailed analysis of pole subfunctionalization might thus result in a portion of the cost of those few poles being treated as an extra cost of secondary service, offset to some extent by the savings from some poles being designed to carry only secondary lines .
+[^137]: The class loads should be measured at primary voltage, including losses, which will be higher for power metered at secondary .
+
+[^138]: There is one situation in which secondary distribution can add to the cost of poles . A very large pole-mounted transformer (perhaps over 75 kVA) may require a stronger pole, which would be a secondary distribution cost . A highly detailed analysis of pole subfunctionalization might thus result in a portion of the cost of those few poles being treated as an extra cost of secondary service, offset to some extent by the savings from some poles being designed to carry only secondary lines .
+
+[PDF p. 146 | printed p. 144]
 
 larger and additional primary conductors) and increasing primary distribution line capacity. Capacitors can be functionalized as some mix of generation, transmission and primary distribution; in any case they should be functionalized separately from line transformers. Overhead and underground conductors as well as conduit must be subfunctionalized between primary and secondary using special studies of the composition of the utility’s distribution system, since secondary conductors are mostly incremental to primary lines. Estimates of the percentage of these investments that are secondary equipment typically range from 20% to 40%.
 
@@ -80,6 +97,8 @@ Some utilities subfunctionalize single- and three-phase conductors, treating the
 
 [^139]: As noted above, some utilities may be able to attribute some upgrades in pole class to line transformers; that increment is appropriately functionalized to secondary service . On the other hand, the secondary classes may be due a small credit to reflect the fact that they allow the use of some less expensive poles .
 
+[PDF p. 147 | printed p. 145]
+
 ### 11.2 Distribution Classification
 
 Newly evolving methods can fairly allocate a substantial portion of distribution costs on an energy basis .
@@ -100,25 +119,25 @@ three groups:
 
 The basic customer method for classification is by far the most equitable solution for the vast majority of utilities.
 
-- 140 Alternatively, all service drops may be treated as customer-related and the sharing of service drops can be reflected in the allocation factor . As discussed in Section 5 .2, treating multifamily housing as a separate class facilitates crediting those customers with the savings from shared service drops, among other factors .
+[^140]: Alternatively, all service drops may be treated as customer-related and the sharing of service drops can be reflected in the allocation factor . As discussed in Section 5 .2, treating multifamily housing as a separate class facilitates crediting those customers with the savings from shared service drops, among other factors .
 
-- 141 The Arkansas Public Service Commission found that “accounts 364-368 should be allocated to the customer classes using a 100% demand methodology and … that [large industrial consumer parties] do not provide sufficient evidence to warrant a determination that these accounts reflect a customer component necessary for allocation purposes” (2013, p . 126) .
+[^141]: The Arkansas Public Service Commission found that “accounts 364-368 should be allocated to the customer classes using a 100% demand methodology and … that [large industrial consumer parties] do not provide sufficient evidence to warrant a determination that these accounts reflect a customer component necessary for allocation purposes” (2013, p . 126) .
 
-- 142 California classifies all lines (accounts 364 through 367) as demandrelated for the calculation of marginal costs, while classifying transformers (Account 368) as customer-related with different costs per customer for each customer class, reflecting the demands of the various classes .
+[^142]: California classifies all lines (accounts 364 through 367) as demandrelated for the calculation of marginal costs, while classifying transformers (Account 368) as customer-related with different costs per customer for each customer class, reflecting the demands of the various classes .
 
-- 143 In 2018, the state utility commission affirmed a decision by an administrative law judge that rejected the **zero-intercept approach** and classified FERC accounts 364 through 368 as 100% demand-related (Colorado Public Utilities Commission, 2018, p . 16) .
+[^143]: In 2018, the state utility commission affirmed a decision by an administrative law judge that rejected the **zero-intercept approach** and classified FERC accounts 364 through 368 as 100% demand-related (Colorado Public Utilities Commission, 2018, p . 16) .
 
-- 144 “As it has in the past, … the [Illinois Commerce] Commission rejects the minimum distribution or zero-intercept approach for purposes of allocating distribution costs between the customer and demand functions in this case . In our view, the coincident peak method is consistent with the fact that distribution systems are designed primarily to serve electric demand . The Commission believes that attempts to separate the costs of connecting customers to the electric distribution system from the
+[^144]: “As it has in the past, … the [Illinois Commerce] Commission rejects the minimum distribution or zero-intercept approach for purposes of allocating distribution costs between the customer and demand functions in this case . In our view, the coincident peak method is consistent with the fact that distribution systems are designed primarily to serve electric demand . The Commission believes that attempts to separate the costs of connecting customers to the electric distribution system from the costs of serving their demand remain problematic” (Illinois Commerce Commission, 2008, p . 208) .
 
-costs of serving their demand remain problematic” (Illinois Commerce Commission, 2008, p . 208) .
+[^145]: According to 199 Iowa Administrative Code 20 .10(2)e, “customer cost component estimates or allocations shall include only costs of the distribution system from and including transformers, meters and associated customer service expenses .” This means that all of accounts 364 through 367 are demand-related . Under this provision, the Iowa Utilities Board classifies the cost of 10 kVA per transformer as customer-related but reduces the cost that is assigned to residential and small commercial customers to reflect the sharing of transformers by multiple customers .
 
-- 145 According to 199 Iowa Administrative Code 20 .10(2)e, “customer cost component estimates or allocations shall include only costs of the distribution system from and including transformers, meters and associated customer service expenses .” This means that all of accounts 364 through 367 are demand-related . Under this provision, the Iowa Utilities Board classifies the cost of 10 kVA per transformer as customer-related but reduces the cost that is assigned to residential and small commercial customers to reflect the sharing of transformers by multiple customers .
+[^146]: “Plant items classified as customer costs included only meters, a portion of services, street lighting plant, and a portion of labor-related general plant” (La Capra, 1992, p . 15) . See also Gorman, 2018, pp . 13-15 .
 
-- 146 “Plant items classified as customer costs included only meters, a portion of services, street lighting plant, and a portion of labor-related general plant” (La Capra, 1992, p . 15) . See also Gorman, 2018, pp . 13-15 .
+[^147]: Texas has explicitly adopted the basic customer approach for the purposes of rate design: “Specifically, the customer charge shall be comprised of costs that vary by customer such as metering, billing and customer service” (Public Utility Commission of Texas, 2000, pp . 5-6) . But it has followed this rule in practice for cost allocation as well .
 
-- 147 Texas has explicitly adopted the basic customer approach for the purposes of rate design: “Specifically, the customer charge shall be comprised of costs that vary by customer such as metering, billing and customer service” (Public Utility Commission of Texas, 2000, pp . 5-6) . But it has followed this rule in practice for cost allocation as well .
+[^148]: “The Commission finds that the Basic Customer method represents a reasonable approach . This method should be used to analyze distribution costs, regardless of the presence or absence of a decoupling mechanism . We agree with Commission Staff that proponents of the Minimum System approach have once again failed to answer criticisms that have led us to reject this approach in the past . We direct the parties not to propose the Minimum System approach in the future unless technological changes in the utility industry emerge, justifying revised proposals” (Washington Utilities and Transportation Commission, 1993, p . 11) .
 
-- 148 “The Commission finds that the Basic Customer method represents a reasonable approach . This method should be used to analyze distribution costs, regardless of the presence or absence of a decoupling mechanism . We agree with Commission Staff that proponents of the Minimum System approach have once again failed to answer criticisms that have led us to reject this approach in the past . We direct the parties not to propose the Minimum System approach in the future unless technological changes in the utility industry emerge, justifying revised proposals” (Washington Utilities and Transportation Commission, 1993, p . 11) .
+[PDF p. 148 | printed p. 146]
 
 For certain rural utilities, this may be reasonable under the conceptual view that the size of distribution components (e.g., the diameter of conductors or the capacity of transformers) is load-related, but the number and length of some types of equipment is customer-related. In some rural service territories, the basic customer cost may require nearly a mile of distribution line along the public way as essentially an extended service drop.
 
@@ -128,13 +147,15 @@ The minimum system method attempts to calculate the cost (in constant dollars) i
 
 This minimum system analysis does not provide a reliable basis for classifying distribution investment and vastly overstates the portion of distribution that is customer-related. Specifically, it is unrealistic to suppose that the mileage of the shared distribution system and the number of physical units are customer-related and that only the size of the components is demand-related, for at least eight reasons.
 
-[^149]: As noted above, for some rural utilities, particularly cooperatives that extend distribution without requiring that the extension be profitable, a portion of the distribution system may effectively be customer-specific .
-
 1. Much of the cost of a distribution system is required to cover an area and is not sensitive to either load or customer number. The distribution system is built to cover an area because the total load that the utility expects to serve will justify the expansion into that area. Serving many customers in one multifamily building is no more expensive than serving one commercial customer of the same size, other than metering. The shared distribution cost of serving a geographical area for a given load is roughly the same whether that load is from concentrated commercial or dispersed residential customers along a circuit of equivalent length and hence does not vary with customer number.[^149] Bonbright found that there is “a very weak correlation between the area (or the mileage) of a distribution system and the number of customers served by the system.” He concluded that “the inclusion of the costs of a minimum-sized distribution system among the customer-related costs seems … clearly indefensible. [Cost analysts are] under impelling pressure to fudge their cost apportionments by using the category of customer costs as a dumping ground” (1961, p. 348).
 
 2. The minimum system approach erroneously assumes that the minimum system would consist of the same number of units (e.g., number of poles, feet of conductors) as the actual system. In reality, load levels help determine the number of units as well as their size. Utilities build an additional feeder along the route of an existing feeder (or even on the same poles); loop a second feeder to the end of an existing line to pick up some load from the existing line; build an additional feeder in parallel with an existing feeder to pick up the load of some of its branches; and upgrade feeders from single-phase to three-phase. As secondary load grows, the utility typically will add transformers, splitting smaller customers among the existing and new transformers.[^150] Some other feeder construction is designed to improve reliability (e.g., to interconnect feeders with automatic switching to reduce the number of customers affected by outages and outage duration).
 
+[^149]: As noted above, for some rural utilities, particularly cooperatives that extend distribution without requiring that the extension be profitable, a portion of the distribution system may effectively be customer-specific .
+
 [^150]: Adding transformers also reduces the length of the secondary lines from the transformers to the customers, reducing losses, voltage drop or the required gauge of the secondary lines .
+
+[PDF p. 149 | printed p. 147]
 
 3. Load can determine the type of equipment installed as well. When load increases, electric distribution systems are often relocated from overhead to underground (which is more expensive) because the weight of lines required to meet load makes overhead service infeasible. Voltages may also be increased to carry more load, requiring early replacement of some equipment with more expensive equipment (e.g., new transformers, increased insulation, higher poles to accommodate higher voltage or additional circuits). Thus, a portion of the extra costs of moving equipment underground or of newer equipment may be driven in part by load.
 
@@ -154,6 +175,8 @@ Thus, the frequent assumption that the number of feet of conductors and the numb
 
 [^151]: For example, in many cases, utilities that make an allocation based on a minimum system use 10-kVA transformers, even though they installed 3-kVA or 5-kVA transformers in the past . Some utilities also have used conductor sizes and costs significantly higher than the actual minimum conductor size and cost on their systems .
 
+[PDF p. 150 | printed p. 148]
+
 overhead distribution equipment only under several unusual circumstances.[^152] These circumstances represent a very small part of the shared distribution cost for the typical urban or suburban utility, particularly since many of the most remote customers for these utilities might be charged a contribution in aid of construction. These circumstances may be more prevalent for rural utilities, principally cooperatives.
 
 The related zero-intercept method attempts to extrapolate from the cost of actual equipment (including actual minimumsized equipment) to the cost of hypothetical equipment that carries zero load. The zero-intercept method usually involves statistical regression analysis to decompose the costs of distribution equipment into customer-related costs and costs that vary with load or size of the equipment, although some utilities use labor installation costs with no equipment. The idea is that this procedure identifies the amount of equipment required to connect existing customers that is not load-related (a zero-kVA transformer, a zero- **ampere** conductor or a pole that is zero feet high). The zero-intercept regression analysis is so abstract that it can produce a wide range of results, which vary depending on arcane statistical methods and the choice of types of equipment to include or exclude from an equation. As a result, the zero-intercept method is even less realistic than the minimum system method.
@@ -163,8 +186,6 @@ The best practice is to determine customer-related costs using the basic custome
 - The fundamental reason for building distribution systems is to deliver energy to customers, not simply to connect them to the grid.
 
 - The number and extent of overloads determines the life of the insulation on lines and in transformers (in both
-
-[^152]: These circumstances are: (1) if the customer would have been the farthest one from the transformer along a span of secondary conductor that is not a service drop; (2) if the customer is the only one served off the last pole at the end of a radial primary feeder, a pole and a span of secondary, or a span of primary and a transformer; and (3) if several poles are required solely for that customer .
 
 substations and line transformers) and hence the life of the equipment. A transformer that is very heavily loaded for a couple of hours a year and lightly loaded in other hours may last 40 years or more until the enclosure rusts away. A similar transformer subjected to the same annual peaks, but also to many smaller overloads in each year, may burn out in 20 years.
 
@@ -178,9 +199,13 @@ A portion of distribution costs can thus be classified to energy, or the demand 
 
 The average-and-peak method, discussed in Section 9.1 in the context of generation classification, is commonly used by natural gas utilities to classify distribution mains and other shared distribution plant.[^154] This approach recognizes that a portion of shared distribution would be needed even if all
 
+[^152]: These circumstances are: (1) if the customer would have been the farthest one from the transformer along a span of secondary conductor that is not a service drop; (2) if the customer is the only one served off the last pole at the end of a radial primary feeder, a pole and a span of secondary, or a span of primary and a transformer; and (3) if several poles are required solely for that customer .
+
 [^154]: See _Gas Distribution Rate Design Manual_ from the National Association of Regulatory Utility Commissioners (1989, pp . 27-28) as well as more recent orders from the Minnesota Public Utilities Commission describing the range of states that use basic customer and average-and-peak methods for natural gas cost allocation (2016, pp . 53-54) and the Michigan Public Service Commission affirming the usage of the average-and-peak method (2017, pp . 113-114) .
 
 [^153]: For a detailed analysis of the measurement and valuation of marginal line losses, see Lazar and Baldwin (2011) .
+
+[PDF p. 151 | printed p. 149]
 
 customers used power at a 100% load factor, while other costs are incurred to upsize the system to meet local peak demands. The same approach may have a place in electric distribution system classification and allocation, with something over half the basic infrastructure (poles, conductors, conduit and transformers) classified to energy to reflect the importance of energy use in justifying system coverage and the remainder to demand to reflect the higher cost of sizing equipment to serve a load that isn’t uniform.
 
@@ -190,8 +215,6 @@ Nearly every electric utility has a line extension policy that dictates the circ
 
 - The credit is the actual extension cost, capped at a fixed value. For example, Minnesota Power pays up to $850 for the cost of extending lines, charges $12 per foot for
 
-[^155]: California sets electric line extension allowances at expected net distribution revenue divided by a cost of service factor of roughly 16% (California Public Utilities Commission, 2007, pp . 8-9) .
-
 costs over $850 and charges actual costs for extensions over 1,000 feet (Minnesota Power, 2013, p. 6). Xcel Energy’s Colorado subsidiary gives on-site construction allowances of $1,659 for residential customers, $2,486 for small commercial, $735 per kW for other secondary nonresidential and $680 per kW for primary customers (Public Service Company of Colorado, 2018, Sheet R226). The company describes these allowances as “based on two and three-quarters (2.75) times estimated annual non-fuel revenue” — a simplified version of the revenue approach.[^156]
 
 The credit is determined by distance. Xcel Energy’s Minnesota subsidiary includes the first 100 feet of line extension for a residential customer into rate base, with the customer bearing the cost for any excess length (Northern States Power Co.-Minnesota, 2010, Sheet 6-23). Green Mountain Power applies a credit equal to the cost of 100 feet of overhead service drop but no costs for poles or other equipment (Green Mountain Power, 2016, Sheet 148). The portion of the line extensions paid by the utility might be thought of as customer-related, with some caveats. First, the amount of the distribution system that was built out under this provision is almost certainly much less than 100 feet times the number of residential customers. Second, these allowances are often determined as a function of expected revenue, as in the Xcel Colorado example, and thus are usage-related. If the line extension investment is tied to revenue
@@ -200,13 +223,17 @@ The credit is determined by distance. Xcel Energy’s Minnesota subsidiary inclu
 
 (and most revenue is associated with usage-related costs, such as fuel, purchased power, generation, transmission and substations), then the resulting investment should be classified and allocated on a usage basis. The cost of service study should ensure that the costs customers prepay are netted out (including not just the costs but the footage of lines or excess costs of poles and transformers if a minimum system method is used) before classifying any distribution costs as customer-related.
 
-[^156]: The company also has the option of applying the 2 .75 multiple directly (Public Service Company of Colorado, 2018, Sheet R212) .
-
 ##### Figure 40. San Diego Gas & Electric circuit peaks
 
 20%<br>20<br>15%<br>12<br>10% 11<br>10<br>9 9 9<br>7<br>5%<br>0%<br>1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24<br>Hour of day<br>Percentage of circuits experiencing peak<br>
 
 Source: Fang, C. (2017, January 20). Direct testimony on behalf of San Diego Gas & Electric. California Public Utilities Commission Application No. 17-01-020
+
+[^155]: California sets electric line extension allowances at expected net distribution revenue divided by a cost of service factor of roughly 16% (California Public Utilities Commission, 2007, pp . 8-9) .
+
+[^156]: The company also has the option of applying the 2 .75 multiple directly (Public Service Company of Colorado, 2018, Sheet R212) .
+
+[PDF p. 152 | printed p. 150]
 
 ### 11.3 Distribution Demand Allocators
 
@@ -228,6 +255,8 @@ Although load levels drive distribution costs, the maximum load on each piece of
 
 [^157]: Some utilities design their substations so that each feeder is fed by a single transformer, rather than all the feeders being served by all the transformers at the substation . In those cases, the relevant loads (for timing and class mix) are at the transformer level, rather than the entire substation .
 
+[PDF p. 153 | printed p. 151]
+
 Figure 41. Month and hour of Delmarva Power & Light substation peaks in 2014
 
 24<br>Substation peak. Size of circle<br>22 is proportional to peak load<br>20<br>18<br>16<br>14<br>12<br>10<br>8<br>6<br>4<br>2<br>0<br>January February March April May June July August September October November December<br>Hour of day<br>
@@ -242,9 +271,7 @@ contributes to the potential for overloads. That allocation could be constructed
 
 The resulting allocator should reflect the variety of seasons and times at which the load on this type of equipment experiences peaks. In addition, the allocator should reflect the near-peak and prepeak loads that contribute to overheating and aging of equipment. Selecting the important hours for distribution loads and the weight to be given to the prepeak loads may require some judgments. Class NCP allocators do not serve this function.
 
-Rocky Mountain Power allocates primary distribution
-
-on monthly coincident distribution peak, weighted by the percentage of substations peaking in each month (Steward, 2014, p. 7). Under this weighting scheme, for example:
+Rocky Mountain Power allocates primary distribution [PDF p. 154 | printed p. 152] on monthly coincident distribution peak, weighted by the percentage of substations peaking in each month (Steward, 2014, p. 7). Under this weighting scheme, for example:
 
 - A small substation has as much effect on a month’s weighting factor as a large substation. The month with the largest number of large substations seriously overloaded could be the highest-cost month yet may not receive the highest weight since each substation is weighted equally.
 
@@ -258,10 +285,6 @@ Many utilities will need to develop additional information on system loads for c
 
 In the absence of detailed data on the loads on line transformers, feeders and substations, utilities will be limited to cruder aggregate load data. For primary equipment, the best available proxy may be the class energy usage in the expected
 
-[^158]: Distribution conductors and transformers have greater capacity in winter (when heat is removed quickly) than in summer; even if winter peak loads are higher, the sizing of some facilities may be driven by summer loads .
-
-[^159]: The division of the residential class into subclasses for calculation of the class NCP has been an issue in several recent Texas cases . In Docket No . 43695, at the recommendation of the Office of Public Utility Counsel, the Public Utility Commission of Texas reversed its former method for Southwestern Public Service to use the NCP for a single residential
-
 high-load period for the equipment, the class contribution to coincident peak or possibly class NCP, but only if that NCP is computed with respect to the peak load of the customers sharing the equipment. Although most substations and feeders serving industrial and commercial customers will also serve some residential customers, and most residential substations and feeders will have some commercial load, some percentage of distribution facilities serve a single class.
 
 The NCP approximation is not a reasonable approximation for finer disaggregation of class loads. For example, there are many residential areas that contain a mix of single-family and multifamily housing and homes with and without electric space heating, electric water heating and solar panels. The primary distribution plant in those areas must be sized for the combined load in coincident peak periods, which may be the late afternoon summer cooling peak, the evening winter heating and lighting peak or some other time — but it will be the same time for all the customers in the area.[^158]
@@ -270,7 +293,11 @@ Many utilities have multiple tariffs or tariff codes for residential customers (
 
 Unless there is strong geographical differentiation of the subclasses, any NCP allocator should be computed for the
 
-> class (instead of separate subclasses for residential customers with and without electric heat), which reduced the costs allocated to residential customers as a whole (Public Utility Commission of Texas, 2015, pp . 12-13 and findings of fact 277A, 277B and 339A) . The issue was also raised in dockets 44941 and 46831 involving El Paso Electric Co . El Paso Electric proposed separate NCP allocations for residential customers with and without solar generation, which the Office of Public Utility Counsel and solar generator representatives opposed . Both of these cases were settled and did not create a precedent .
+[^158]: Distribution conductors and transformers have greater capacity in winter (when heat is removed quickly) than in summer; even if winter peak loads are higher, the sizing of some facilities may be driven by summer loads .
+
+[^159]: The division of the residential class into subclasses for calculation of the class NCP has been an issue in several recent Texas cases . In Docket No . 43695, at the recommendation of the Office of Public Utility Counsel, the Public Utility Commission of Texas reversed its former method for Southwestern Public Service to use the NCP for a single residential class (instead of separate subclasses for residential customers with and without electric heat), which reduced the costs allocated to residential customers as a whole (Public Utility Commission of Texas, 2015, pp . 12-13 and findings of fact 277A, 277B and 339A) . The issue was also raised in dockets 44941 and 46831 involving El Paso Electric Co . El Paso Electric proposed separate NCP allocations for residential customers with and without solar generation, which the Office of Public Utility Counsel and solar generator representatives opposed . Both of these cases were settled and did not create a precedent .
+
+[PDF p. 155 | printed p. 153]
 
 combined load of the customer classes, with the customer class NCP assigned to rate tariffs in proportion to their estimated contribution to the customer class peak.
 
@@ -284,10 +311,6 @@ Each piece of secondary distribution equipment generally serves a smaller number
 
 Thus, loads on secondary equipment are less diversified than loads on primary equipment. Hence, cost of service studies frequently allocate secondary equipment on load measures that reflect customer loads diversified for the number of customers on each component. Utilities often use assumed diversity factors to determine the capacity required
 
-[^160]: The same is true for increased distribution voltage . Seattle City Light upgraded its residential distribution system from 4 kV to 26 kV in the early 1980s based on analysis done in the Energy 1990 study, prepared in 1976, which focused on avoiding new baseload generation . The line losses justified the expenditure, but the result was also a dramatic increase in distribution system circuit capacity . The Energy 1990 study was discussed in detail in a meeting of the City Council Utilities Committee (Seattle Municipal Archives, 1977) .
-
-[^161]: In high-load areas, such as city centers, utilities often operate secondary distribution networks, in which multiple primary feeders serve multiple transformers, which then feed a network of interconnected secondary
-
 for secondary lines and transformers, for various numbers of customers. Figure 42 on the next page provides an example of the diversity curve from El Paso Electric Co. (2015, p. 24).
 
 Even identical houses with identical equipment may routinely peak at different times, depending on household composition, work and school schedules and building orientation. The actual peak load for any particular house may occur not at typical peak conditions but because of events not correlated with loads in other houses. For example, one house may experience its maximum load when the family returns from vacation to a hot house in the summer or a very cold one in the winter, even if neither temperatures nor time of day would otherwise be consistent with an annual maximum load. The house next door may experience its maximum load after a water leak or interior painting, when the windows are open and fans, dehumidifiers and the heating or cooling system are all in use.
@@ -298,13 +321,17 @@ The average transformer serving residential customers may serve a dozen customer
 
 The same factors (household composition, work and
 
-> lines that feed all the customers on the network (See Behnke et al ., 2005, p . 11, Figure 8) . In secondary networks, the number of transformers and the investment in secondary lines are driven by the aggregate load of the entire network or large parts of the network . The loss of any one feeder and one transformer, or any one run of secondary line, will not disconnect any customer . The existence of the network, the number of transformers and the number and length of primary and secondary lines are entirely load-related . Similar arrangements, called spot networks, are used to serve individual large customers with high reliability requirements . A single spot network customer may thus have multiple transformers, providing redundant capacity .
-
 ##### Figure 42. Typical utility estimates of diversity in residential loads
 
 40<br>35 3,001 to 4,500 square feet<br>2,001 to 3,000 square feet<br>30 1,201 to 2,000 square feet<br>1,200 square feet or less<br>25 Less than 1,000 square feet without refrigerated air<br>20<br>15<br>10<br>5<br>0<br>1 5 10 15 20 25 30 35 40<br>Residences<br>Coincident demand per residence in kilowatts<br>
 
 Source: El Paso Electric Co. (2015, October 29). _El Paso Electric Company’s Response to Office of Public Utility Counsel’s Fifth Request for Information._ Public Utility Commission of Texas Docket No. 44941
+
+[^160]: The same is true for increased distribution voltage . Seattle City Light upgraded its residential distribution system from 4 kV to 26 kV in the early 1980s based on analysis done in the Energy 1990 study, prepared in 1976, which focused on avoiding new baseload generation . The line losses justified the expenditure, but the result was also a dramatic increase in distribution system circuit capacity . The Energy 1990 study was discussed in detail in a meeting of the City Council Utilities Committee (Seattle Municipal Archives, 1977) .
+
+[^161]: In high-load areas, such as city centers, utilities often operate secondary distribution networks, in which multiple primary feeders serve multiple transformers, which then feed a network of interconnected secondary lines that feed all the customers on the network (See Behnke et al ., 2005, p . 11, Figure 8) . In secondary networks, the number of transformers and the investment in secondary lines are driven by the aggregate load of the entire network or large parts of the network . The loss of any one feeder and one transformer, or any one run of secondary line, will not disconnect any customer . The existence of the network, the number of transformers and the number and length of primary and secondary lines are entirely load-related . Similar arrangements, called spot networks, are used to serve individual large customers with high reliability requirements . A single spot network customer may thus have multiple transformers, providing redundant capacity .
+
+[PDF p. 156 | printed p. 154]
 
 school schedules, unit-specific events) apply in multifamily housing as well as in single-family housing. But the effects of orientation are probably even stronger in multifamily housing than in single-family homes. For example, units on the east side of a building are likely to have summer peak loads in the morning, while those on the west side are likely to experience maximum loads in the evening and those on the south in the middle of the day.
 
@@ -318,8 +345,6 @@ Utilities can often provide detailed current data from their geographic informat
 
 The customers who have their own transformer may be too far from their neighbors to share a transformer, or local load growth may have required that the utility add a transformer. In many cases, residential customers with
 
-[^162]: Ratios computed using Form 1, p . 429, transformer data (Federal Energy Regulatory Commission, n .d .) and 2001 numbers from utilities’ federal Form 861 (U .S . Energy Information Administration, n .d .-a, file 2) .
-
 Table 30. Residential shared transformer example
 
 |                                      | With multiple<br>residences per<br>transformer | With single<br>residence per<br>transformer | Total     |
@@ -329,6 +354,10 @@ Table 30. Residential shared transformer example
 | **Customers per**<br>**transformer** | 5 .3                                           | 1                                           | 4 .5      |
 
 Sources: Levin, A. (2017, June 30). Prefiled response testimony on behalf of NW Energy Coalition, Renewable Northwest and Natural Resources Defense Council. Washington Utilities and Transportation Commission Docket No. UE-170033; additional calculations by the authors
+
+[^162]: Ratios computed using Form 1, p . 429, transformer data (Federal Energy Regulatory Commission, n .d .) and 2001 numbers from utilities’ federal Form 861 (U .S . Energy Information Administration, n .d .-a, file 2) .
+
+[PDF p. 157 | printed p. 155]
 
 individual transformers may need to pay to obtain service that is more expensive than their line extension allowances (see Section 11.2 or Section 15.2).
 
@@ -340,10 +369,6 @@ Where no detailed data are available on the number of customers per transformer 
 
 Distribution O&M accounts associated with a single type of equipment (FERC accounts 582, 591 and 592 for substations
 
-[^163]: One large service drop is much less expensive than the multiple drops needed to serve the same number of customers in single-customer buildings . Small commercial customers may also share service drops, although probably to a more limited extent than residential customers .
-
-[^164]: Similarly, if the cost of service study includes any classification of shared distribution plant as customer-related (such as from a minimum system), each multifamily building should be treated as a single location, rather than a large number of dispersed customers . For utilities without remote meter reading, the labor cost for that activity per multifamily customer will be lower than for single-family customers .
-
 and Account 595 for transformers) should be classified and allocated in the same manner as associated equipment. Other accounts serve both primary and secondary lines and service drops (accounts 583, 584, 593 and 594) or include services to a range of equipment (accounts 580 and 590). These costs normally should be classified and allocated in proportion to the plant in service, for the plant accounts they support, subfunctionalized as appropriate. For example, typical utility tree-trimming activities are almost entirely related to primary overhead lines, with very little cost driven by secondary distribution and no costs for protecting service lines (see, for example, Entergy Corp., n.d.).
 
 #### 11.3.5 Multifamily Housing and Distribution Allocation
@@ -352,9 +377,15 @@ One common error in distribution cost allocation is treating the residential cla
 
 This problem can be resolved in either of two ways. The broadest solution is to separate residential customers into two allocation classes: single-family residential and multifamily residential, as we discuss in Section 5.2.[^166] Alternatively, the allocation of transformer and service costs to a combined residential class (as well as residential rate design) should take into account the percentage of customers who are in multifamily buildings, and only components that are not shared should be considered customer-related.
 
+[^163]: One large service drop is much less expensive than the multiple drops needed to serve the same number of customers in single-customer buildings . Small commercial customers may also share service drops, although probably to a more limited extent than residential customers .
+
+[^164]: Similarly, if the cost of service study includes any classification of shared distribution plant as customer-related (such as from a minimum system), each multifamily building should be treated as a single location, rather than a large number of dispersed customers . For utilities without remote meter reading, the labor cost for that activity per multifamily customer will be lower than for single-family customers .
+
 [^165]: Allocating transformer costs on demand eliminates the bias for that cost category .
 
 [^166]: If any sort of NCP allocator is used in the cost of service study, the multifamily class load generally should be combined with the load of the type of customers that tend to surround the multifamily buildings in the particular service territory, which may be single-family residential or medium commercial customers .
+
+[PDF p. 158 | printed p. 156]
 
 #### 11.3.6 Direct Assignment of Distribution Plant
 
@@ -378,8 +409,6 @@ Traditional meters are often discussed as part of the distribution system but ar
 
 In many parts of the country, this traditional metering has been replaced with advanced metering infrastructure. AMI investments were funded in many cases by the American Recovery and Reinvestment Act of 2009, the economic stimulus passed during the Great Recession, but in other cases ratepayers are paying for them in full in the traditional method. In many jurisdictions, AMI has been accompanied by other complementary “smart grid”
 
-[^167]: Some customers who are small or have extremely consistent load patterns are not metered; instead, their bills are estimated based on known load parameters . The largest group of these customers is street lighting customers, but some utilities allow unmetered loads for various small loads that can be easily estimated or nearly flat loads with very high load factors (such as traffic signals) . An example of an unmetered customer from the past was a phone booth . Unmetered customers should not be allocated costs of traditional metering and meter reading .
-
 Table 31. Smart grid cost classification
 
 |                                         | Le                                       | gacy approach |                          |                             |
@@ -389,6 +418,10 @@ Table 31. Smart grid cost classification
 | **Distribution control devices**        | Station equipment<br>and devices         | 362, 365, 367 | Demand                   | Demand and energy           |
 | **Data collection system**              | Meter readers                            | 902           | Customer                 | Demand, energy and customer |
 | **Meter data management**<br>**system** | Customer accounting<br>and general plant | 903, 905, 391 | Customer and<br>overhead | Demand, energy and customer |
+
+[^167]: Some customers who are small or have extremely consistent load patterns are not metered; instead, their bills are estimated based on known load parameters . The largest group of these customers is street lighting customers, but some utilities allow unmetered loads for various small loads that can be easily estimated or nearly flat loads with very high load factors (such as traffic signals) . An example of an unmetered customer from the past was a phone booth . Unmetered customers should not be allocated costs of traditional metering and meter reading .
+
+[PDF p. 159 | printed p. 157]
 
 investments. On the whole, these investments include:
 
@@ -424,8 +457,6 @@ The installations have also been very expensive, running into the hundreds of mi
 
 Special attention must be given to matching costs and benefits associated with smart grid deployment. The expected benefits spread across the entire spectrum of utility costs, from lower labor costs for meter reading to lower energy
 
-[^168]: The data systems can also be configured to provide systemwide Wi-Fi internet access, although they usually are not . See Burbank Water and Power (n .d .) .
-
 Table 32. Summary of distribution allocation approaches
 
 | Element                         | Method                                                                                                                                                                                        | Comments                                                                                                                           | Hourly allocation                                                                                                                                                                      |
@@ -438,6 +469,10 @@ Table 32. Summary of distribution allocation approaches
 | **Meters**                      | Functionalization:Advanced metering<br>infrastructure to generation,<br>transmission and distribution, as well<br>as metering<br>Allocator for customer-related costs:<br>Weighted customer   | Allocation of generation,<br>transmission and distribution<br>components depends on<br>use of advanced metering<br>infrastructure  | N/A                                                                                                                                                                                    |
 
 - Except some to customer, where a significant portion of plant serves only one customer
+
+[^168]: The data systems can also be configured to provide systemwide Wi-Fi internet access, although they usually are not . See Burbank Water and Power (n .d .) .
+
+[PDF p. 160 | printed p. 158]
 
 costs due to load shifting and line loss reduction. Legacy methods for allocating metering costs as primarily customerrelated would place the vast majority of these costs onto the residential rate class, but many of the benefits are typically shared across all rate classes. In other words, the legacy method would give commercial and industrial rate classes substantial benefits but none of the costs.
 
@@ -462,6 +497,8 @@ Table 33. Illustrative allocation of distribution substation costs by different 
 | **Hourly**                         | $9,939,000  | $10,533,000             | $9,009,000            | $519,000        | $30,000,000 |
 
 Note: Numbers may not add up to total because of rounding.
+
+[PDF p. 161 | printed p. 159]
 
 Where the available data or analytical resources will not support more sophisticated analyses of distribution cost causation, the following simple rules of thumb may be helpful.
 
@@ -493,8 +530,6 @@ Distribution circuits are built where there is an expectation of significant ele
 
 Line transformers are needed to serve all secondary voltage customers, typically all residential, small general
 
-[^169]: The street lighting class NCP occurs in the night, and street lighting is a small portion of load on any substation, so the street lighting class NCP load rarely contributes to the sizing of summer-peaking substations . The NCP method treats off-peak class loads as being as important as those that are on-peak . This is particularly inequitable for street lighting, which is nearly always a load caused by the presence of other customers who collectively justify the construction of a circuit .
-
 Table 34. Illustrative allocation of primary distribution circuit costs by different methods
 
 |                                 | Residential  | Secondary<br>commercial | Primary<br>industrial | Street lighting | Total        |
@@ -506,6 +541,10 @@ Table 34. Illustrative allocation of primary distribution circuit costs by diffe
 
 Note: Numbers may not add up to total because of rounding.
 
+[^169]: The street lighting class NCP occurs in the night, and street lighting is a small portion of load on any substation, so the street lighting class NCP load rarely contributes to the sizing of summer-peaking substations . The NCP method treats off-peak class loads as being as important as those that are on-peak . This is particularly inequitable for street lighting, which is nearly always a load caused by the presence of other customers who collectively justify the construction of a circuit .
+
+[PDF p. 162 | printed p. 160]
+
 service and street lighting customers and often other customer classes as well. We present four methods in Table 35: two archaic and two more reflective of dynamic systems and more granular data. All of these apportion no cost to the primary voltage class, which does not use distribution transformers supplied by the utility.
 
 The first method is to apportion transformers in proportion to the class sum of customer noncoincident peaks. This method is not recommended because it fails to recognize that there is great diversity between customers at the transformer level; as noted in Subsection 11.3.3, each transformer in an urban or suburban system may serve anywhere from five to more than 50 customers. The second is the minimum system method, also not recommended because it fails to recognize the drivers of circuit construction, as discussed in Section 11.2. The third is the weighted transformers allocation factor we derive in Section 5.3 (Table 7), weighting the number of transformers
@@ -515,6 +554,8 @@ by class at 20% and the class sum of customer NCP (recognizing that the diversit
 ###### Customer-Related Costs
 
 The final illustration shows two techniques for the apportionment of customer-related costs, based on a traditional customer count and a weighted customer count. Even for simple meters used solely for billing purposes, larger customers require different and more expensive meters. There are fewer of them per customer class, but the billing system programming costs do not vary by number of customers. In addition, a weighted customer account is also relevant to customer service, discussed in the next chapter, because the larger use customers typically have access to superior customer service through “key accounts” specialists who are trained for their needs.
+
+[PDF p. 163 | printed p. 161]
 
 Table 35. Illustrative allocation of distribution line transformer costs by different methods
 
@@ -548,3 +589,5 @@ Table 36 first shows a traditional calculation based on the actual number of cus
 treated as a tiny fraction of one customer; although there are tens of thousands of individual lights, the bills typically include hundreds or thousands of individual lights, billed to a city, homeowners association or other responsible party.[^170]
 
 [^170]: In some locales, street lighting is treated as a franchise obligation of the utility and is not billed . In this situation, there are no customer service or billing and collection expenses .
+
+[PDF pp. 164-276 not transcribed: Chapter 12 to Glossary and back cover, in 12_billing_customer.md to glossary.md of this folder]

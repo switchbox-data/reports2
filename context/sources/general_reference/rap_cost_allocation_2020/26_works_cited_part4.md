@@ -1,3 +1,20 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 228-230 (printed pp. 226-228), Works Cited in Part IV; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 228-230 (printed pp. 226-228) of the manual, Works Cited in Part IV; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on._
+
+[PDF pp. 1-227 not transcribed: front matter to Chapter 26, in 00_front_matter.md to 26_marginal_recommendations.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 228 | printed p. 226]
+
 ## Works Cited in Part IV
 
 Bade, G . (2018, June 13) . NV Energy 2 .3-cent solar contract could set new price record . Utility Dive . Retrieved from https://www .utilitydive .com/news/nv-energy-23-cent-solar-contract-could-set-new-price-record/525610/
@@ -27,6 +44,8 @@ Goodman, I ., and Marcus, W . (1990, July 23) . Joint testimony on behalf of Con
 Horii, B ., Price, S ., Cutter, E ., Ming, Z ., and Chawla, K . (2016) . _Avoided costs 2016 interim update._ Energy and Environmental Economics Inc . Retrieved from https://www .ethree .com/wp-content/uploads/2017/01/20160801_ E3_-Avoided_Cost-2016-Interim_Update .pdf
 
 Jones, G ., and Marcus, W . (2015, March 13) . Testimony on behalf of The Utility Reform Network . California Public Utilities Commission Application No . 14-06-014 .
+
+[PDF p. 229 | printed p. 227]
 
 Jones, G ., and Marcus, W . (2016, July 5) . Testimony on behalf of Utility Consumers’ Action Network . California Public Utilities Commission Application No . 15-04-012 .
 
@@ -60,6 +79,8 @@ Paice, C . (2013, March 1) . Testimony on behalf of PacifiCorp . Public Utility 
 
 Phillips, N . (2018, March 23) . Testimony on behalf of Energy Producers and Users Coalition . California Public Utilities Commission Docket No . 17-06-030 .
 
+[PDF p. 230 | printed p. 228]
+
 PJM . (n .d .) . _Capacity market (RPM)_ [Webpage] . Retrieved from https://www .pjm .com/markets-and-operations/rpm .aspx
 
 Pollard, T . (2010, June 1) . Testimony on behalf of NV Energy . Public Utility Commission of Nevada Docket No . 10-06-001 . Retrieved from http://pucweb1 .state .nv .us/PDF/AxImages/DOCKETS_2010_THRU_PRESENT/2010-6/1869 .pdf
@@ -87,3 +108,5 @@ Strunk, K . (2018, October 15) . _Marginal cost of distribution service: Prepare
 Walsh, L . (2013, June 3) . Testimony on behalf of NV Energy . Public Utilities Commission of Nevada Docket No . 13-06-002 . Retrieved from http://pucweb1 .state .nv .us/PDF/AxImages/DOCKETS_2010_THRU_PRESENT/2013-6/26978 .pdf
 
 Xcel Energy . (2018, October 2-4) . _Leading the energy future_ [Presentation at the Wolfe Research Conference] . Retrieved from investors .xcelenergy .com/file/4025308/Index?KeyFile=1500113448
+
+[PDF pp. 231-276 not transcribed: Chapter 27 to Glossary and back cover, in 27_using_results.md to glossary.md of this folder]

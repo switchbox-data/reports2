@@ -85,7 +85,13 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "date_filed",
     "witness",
 )
-OPTIONAL_FIELDS: tuple[str, ...] = ("file_prefix", "source_extract", "expected_responses", "draft")
+OPTIONAL_FIELDS: tuple[str, ...] = (
+    "file_prefix",
+    "source_extract",
+    "testimony_extract",
+    "expected_responses",
+    "draft",
+)
 ALL_FIELDS = REQUIRED_FIELDS + OPTIONAL_FIELDS
 
 FIELD_HELP: dict[str, str] = {
@@ -98,6 +104,7 @@ FIELD_HELP: dict[str, str] = {
     "witness": "default witness for every response (override per response with {witness=...})",
     "file_prefix": 'start of each split file name, e.g. "CT 26-05-10" gives "CT 26-05-10_CIEC-1 Response.docx" (optional)',
     "source_extract": "path to the extract of the requests; every question line is checked against it (optional)",
+    "testimony_extract": "path to the Velez Direct extract; inlines ``testimony()`` refs in question blocks (optional)",
     "expected_responses": "how many responses the set has; checked against the file (optional)",
     "draft": "true (default) prints DRAFT FOR COUNSEL REVIEW at the top of every page; set false for the filing copy",
 }
@@ -124,6 +131,7 @@ class Fields:
     witness: str
     file_prefix: str | None = None
     source_extract: str | None = None
+    testimony_extract: str | None = None
     expected_responses: int | None = None
     draft: bool = True
 
@@ -162,7 +170,7 @@ def parse_fields(meta: Mapping[str, Any]) -> Fields:
         else:
             values["set_label" if name == "set" else name] = text
 
-    for name in ("file_prefix", "source_extract"):
+    for name in ("file_prefix", "source_extract", "testimony_extract"):
         raw = block.get(name)
         if raw is not None and str(raw).strip():
             values[name] = str(raw).strip()
@@ -193,7 +201,7 @@ def parse_fields(meta: Mapping[str, Any]) -> Fields:
 _FRONTMATTER = re.compile(r"^---\s*\n.*?\n---\s*\n", re.DOTALL)
 _COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _HEADING = re.compile(r"^#{1,6}\s+(?P<label>.*?)\s*(?:\{(?P<attrs>[^}]*)\})?\s*$")
-_DIV_OPEN = re.compile(r"^:{3,}\s*(?:\{\s*\.(?P<braced>[\w-]+)[^}]*\}|(?P<bare>[\w-]+))\s*$")
+_DIV_OPEN = re.compile(r"^:{3,}\s*(?:\{\s*\.(?P<braced>[\w-]+)[^}]*\}|\{\s*custom-style=[^}]*\}|(?P<bare>[\w-]+))\s*$")
 _DIV_CLOSE = re.compile(r"^:{3,}\s*$")
 _WITNESS_ATTR = re.compile(r'witness\s*=\s*"([^"]*)"')
 
@@ -213,20 +221,38 @@ class Response:
         return bool(text) and not text.upper().startswith("TODO") and not _is_placeholder(text)
 
 
+_PREAMBLE_CHUNK = re.compile(r"^(`{3,}\{python\}.*?`{3,}\s*)$", re.DOTALL)
+
+
+def _strip_body_preamble(body: str) -> tuple[str, list[str]]:
+    """Drop a leading setup chunk (e.g. ``bind_testimony``) before the first heading."""
+    match = re.search(r"^#{1,6}\s+", body, re.MULTILINE)
+    if match is None:
+        return body, []
+    preamble = body[: match.start()]
+    if not preamble.strip():
+        return body[match.start() :], []
+    if _PREAMBLE_CHUNK.fullmatch(preamble.strip() + "\n") or _PREAMBLE_CHUNK.fullmatch(preamble.strip()):
+        return body[match.start() :], []
+    return body, ["Text appears before the first response heading; move it below the first `##` or into a setup chunk."]
+
+
 def parse_body(text: str) -> tuple[list[Response], list[str]]:
     """Split the body into responses; return them with any structural problems."""
     body = _COMMENT.sub("", _FRONTMATTER.sub("", text, count=1))
+    body, preamble_problems = _strip_body_preamble(body)
     responses: list[Response] = []
-    problems: list[str] = []
+    problems: list[str] = list(preamble_problems)
     current: Response | None = None
     div: str | None = None
+    nest = 0
     buf: list[str] = []
 
     def close_div() -> None:
-        nonlocal div, buf
+        nonlocal div, nest, buf
         if current is not None and div in ("question", "response"):
             setattr(current, div, "\n".join(buf).strip())
-        div, buf = None, []
+        div, nest, buf = None, 0, []
 
     for line in body.splitlines():
         heading = _HEADING.match(line)
@@ -249,7 +275,15 @@ def parse_body(text: str) -> tuple[list[Response], list[str]]:
                 setattr(current, f"has_{name}", True)
             div = name
             continue
+        if opened and div in ("question", "response"):
+            nest += 1
+            buf.append(line)
+            continue
         if _DIV_CLOSE.match(line) and div is not None:
+            if nest > 0:
+                nest -= 1
+                buf.append(line)
+                continue
             close_div()
             continue
         if div is not None:
@@ -302,10 +336,13 @@ def _prefix_len(line: str, hay: str) -> int:
 
 def verify_questions(responses: list[Response], extract_text: str) -> list[str]:
     """Return one message per question line that is not in the extract."""
+    from lib.just.interrogatory_reftext import question_lines_for_extract_check
+
     hay = _squash(_PAGE_MARKER.sub(" ", extract_text))
     problems: list[str] = []
     for r in responses:
-        for raw in r.question.splitlines():
+        question = question_lines_for_extract_check(r.question)
+        for raw in question.splitlines():
             line = _squash(_LIST_MARKER.sub("", raw))
             if not line or line in hay:
                 continue
@@ -320,6 +357,107 @@ def verify_questions(responses: list[Response], extract_text: str) -> list[str]:
                     f"Yours: “{line[n : n + 40]}”. Extract: “{hay[at + n : at + n + 40]}”."
                 )
             problems.append(msg)
+    return problems
+
+
+# ---------------------------------------------------------------------------
+# Checking citations in the responses
+# ---------------------------------------------------------------------------
+
+_FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
+_FOOTNOTE_DEF = re.compile(r"^\s*\[\^(?P<label>[^\]]+)\]:")
+_FOOTNOTE_REF = re.compile(r"\[\^(?P<label>[^\]]+)\](?!:)")
+_DRAFT_NOTE = re.compile(
+    r"\[(?:TK|NOT INGESTED|NOT EXTRACTED|COUNSEL|RESEARCH|ANALYSIS|UNVERIFIED IDEA|EST|DISCUSSION FOR JPV)\b[^\]]*\]"
+)
+_INLINE_CITE = re.compile(
+    r"\((?:see |_?id\._? )?(?:\w[\w.-]* )?Direct\b|"
+    r"\b(?:Direct|Exhibit [\w.-]+|Response to [A-Z][\w-]*\d[\w()]*),? at \d|"
+    r"\(_?[Ii]d\._?,? at \d"
+)
+_BACKTICK_KEY = re.compile(r"`[a-z][a-z0-9]*_[A-Z]\w*_\d{4}[a-z]?`")
+_PAGE_ABBREV = re.compile(r"\b(?:PDF )?pp?\. \d")
+
+
+def check_citations(text: str) -> list[str]:
+    """Return one message per citation-style problem in the response blocks.
+
+    Citations go in footnotes written out as in the testimony (see the
+    ``expert-testimony`` skill's ``citations.md``), drafts included. Skipped:
+    question blocks, fenced code, ``>`` discussion blocks and bracketed draft
+    markers such as ``[TK: …]``.
+    """
+    body = _COMMENT.sub("", _FRONTMATTER.sub("", text, count=1))
+    problems: list[str] = []
+    label = "before the first response heading"
+    div: str | None = None
+    fence: str | None = None
+    defs: dict[str, int] = {}
+    refs: dict[str, int] = {}
+    lines = body.splitlines()
+    for i, line in enumerate(lines):
+        fenced = _FENCE.match(line)
+        if fence is not None:
+            if fenced and fenced.group(1)[0] == fence[0] and len(fenced.group(1)) >= len(fence):
+                fence = None
+            continue
+        if div is None:
+            heading = _HEADING.match(line)
+            if heading:
+                label = heading.group("label").strip()
+                continue
+            opened = _DIV_OPEN.match(line)
+            if opened:
+                div = opened.group("braced") or opened.group("bare")
+            continue
+        if _DIV_CLOSE.match(line):
+            div = None
+            continue
+        if div != "response":
+            continue
+        if fenced:
+            fence = fenced.group(1)
+            continue
+        if line.lstrip().startswith(">"):
+            continue
+        prose = _DRAFT_NOTE.sub("", line)
+        footnote = _FOOTNOTE_DEF.match(line)
+        for ref in _FOOTNOTE_REF.finditer(prose[footnote.end() :] if footnote else prose):
+            refs[ref.group("label")] = refs.get(ref.group("label"), 0) + 1
+        if footnote:
+            name = footnote.group("label")
+            defs[name] = defs.get(name, 0) + 1
+            if i + 1 < len(lines) and lines[i + 1].strip():
+                problems.append(
+                    f"{label}: add a blank line after footnote [^{name}]; without one, Pandoc folds a following "
+                    "paragraph into the note."
+                )
+        elif _INLINE_CITE.search(prose):
+            problems.append(
+                f"{label}: a citation in the response text (“{line.strip()[:60]}”); move it to a footnote written "
+                "out as in the testimony."
+            )
+        if key := _BACKTICK_KEY.search(prose):
+            problems.append(
+                f"{label}: a citation key used as a citation (“{key.group(0)}”); write the source out in a "
+                "footnote, with `[@key]` after it."
+            )
+        if page := _PAGE_ABBREV.search(prose):
+            problems.append(
+                f"{label}: “{page.group(0)}”; pinpoints are written `at 14` or `at 14:5\u20137`, never p., pp. or PDF p."
+            )
+    for name, n in defs.items():
+        if n > 1:
+            problems.append(f"Footnote [^{name}] is defined {n} times.")
+        if name not in refs:
+            problems.append(f"Footnote [^{name}] is defined but never used.")
+    for name, n in refs.items():
+        if n > 1:
+            problems.append(
+                f"Footnote [^{name}] is referenced {n} times; Pandoc repeats the note. Give each use its own."
+            )
+        if name not in defs:
+            problems.append(f"Footnote [^{name}] is used but never defined.")
     return problems
 
 
@@ -350,8 +488,10 @@ def check_file(qmd_path: Path) -> Report:
     except InterrogatoryError as err:
         errors.extend(err.problems)
 
-    responses, problems = parse_body(qmd_path.read_text(encoding="utf-8"))
+    text = qmd_path.read_text(encoding="utf-8")
+    responses, problems = parse_body(text)
     errors.extend(problems)
+    errors.extend(check_citations(text))
     report = Report(fields=fields, responses=responses, errors=errors)
 
     if fields is not None:
@@ -365,6 +505,16 @@ def check_file(qmd_path: Path) -> Report:
                 errors.extend(verify_questions(responses, extract.read_text(encoding="utf-8")))
         else:
             report.notes.append("No `source_extract` set, so the questions were not checked against the requests.")
+        if fields.testimony_extract:
+            testimony_path = _find_extract(qmd_path, fields.testimony_extract)
+            if testimony_path is None:
+                errors.append(f"`testimony_extract` not found: {fields.testimony_extract}")
+            else:
+                from lib.just.interrogatory_reftext import verify_referenced_testimony
+
+                for r in responses:
+                    if "Please refer to Velez Direct Testimony" in r.question:
+                        errors.extend(verify_referenced_testimony(r.question, testimony_path, r.label))
 
     open_count = sum(1 for r in responses if not r.answered)
     if responses and open_count:
@@ -575,6 +725,9 @@ SCAFFOLD = """---
 title: "Interrogatory Responses"
 execute:
   echo: false
+format:
+  html:
+    include-in-header: ../.style/interrogatory-preview.html   # sets quoted testimony apart in the HTML preview
 
 # Fill in every field below. They become the header printed at the top of every
 # page of every response. `just interrogatories` stops and lists anything still
@@ -589,6 +742,7 @@ interrogatory_responses:
   witness: "[WITNESS NAME]"
   # file_prefix: "CT 00-00-00"   # start of each split file name
   # source_extract: context/sources/...md   # every question line is checked against it
+  # testimony_extract: context/sources/...md   # Velez Direct, for inline testimony() quotes
   # expected_responses: 19
   # draft: false   # drop the DRAFT line for the filing copy
 ---
@@ -602,6 +756,67 @@ Paste the question here exactly as the requesting party wrote it.
 ::: {.response}
 :::
 """
+
+
+def insert_testimony_refs(qmd_path: Path) -> int:
+    """Add ``referenced-testimony`` blocks to every question that cites Velez Direct."""
+    from lib.just.interrogatory_reftext import insert_referenced_testimony_block
+
+    fields = parse_fields(read_frontmatter(qmd_path))
+    if not fields.testimony_extract:
+        raise InterrogatoryError(["Set `testimony_extract` in the frontmatter before insert-refs."])
+    extract = _find_extract(qmd_path, fields.testimony_extract)
+    if extract is None:
+        raise InterrogatoryError([f"`testimony_extract` not found: {fields.testimony_extract}"])
+
+    text = qmd_path.read_text(encoding="utf-8")
+    body = _COMMENT.sub("", _FRONTMATTER.sub("", text, count=1))
+    lines = body.splitlines()
+    out_front = text[: len(text) - len(body)]
+    out: list[str] = []
+    div: str | None = None
+    nest = 0
+    buf: list[str] = []
+    updated = 0
+
+    def flush_question() -> None:
+        nonlocal updated
+        question = "\n".join(buf).strip()
+        patched = insert_referenced_testimony_block(question, extract)
+        if patched != question:
+            updated += 1
+        out.extend(patched.splitlines())
+        buf.clear()
+
+    for line in lines:
+        opened = _DIV_OPEN.match(line)
+        if opened and div is None:
+            name = opened.group("braced") or opened.group("bare")
+            if name == "question":
+                div = name
+                out.append(line)
+                continue
+        if opened and div == "question":
+            nest += 1
+            buf.append(line)
+            continue
+        if _DIV_CLOSE.match(line) and div == "question":
+            if nest > 0:
+                nest -= 1
+                buf.append(line)
+                continue
+            flush_question()
+            div = None
+            nest = 0
+            out.append(line)
+            continue
+        if div == "question":
+            buf.append(line)
+            continue
+        out.append(line)
+
+    qmd_path.write_text(out_front + "\n".join(out) + ("\n" if text.endswith("\n") else ""), encoding="utf-8")
+    return updated
 
 
 def write_scaffold(path: Path) -> Path:
@@ -624,6 +839,10 @@ def main(argv: list[str] | None = None) -> None:
         "path_qmd"
     )
     sub.add_parser("check", help="Validate fields, structure and questions without rendering.").add_argument("path_qmd")
+    sub.add_parser(
+        "insert-refs",
+        help="Insert referenced-testimony blocks after each Velez Direct cite line.",
+    ).add_argument("path_qmd")
     p_render = sub.add_parser("render", help="Render the combined review file, or one file per response.")
     p_render.add_argument("path_qmd")
     p_render.add_argument("--split", action="store_true", help="One Word file per response, in ./filing/.")
@@ -645,6 +864,11 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.command == "render":
         render(path, split=args.split)
+        return
+
+    if args.command == "insert-refs":
+        n = insert_testimony_refs(path)
+        print(f"✅ {path}: inserted or refreshed referenced-testimony blocks in {n} question(s).")
         return
 
     report = check_file(path)

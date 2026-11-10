@@ -8,28 +8,23 @@ Sheets
 ------
 README
     What the file is and how the sheets connect.
-hp_home_8760
-    One row per hour for the customer who already has a heat pump.
-    ``kWh`` is the sample-weight weighted average of upgrade 00. Month and
-    season are formulas on the timestamp.
-new_home_8760
-    One row per hour for a customer who enrolls later. ``kWh`` is the
-    weighted average of upgrade 02 loads for upgrade 00 homes without a
-    heat pump.
+home_8760
+    One row per hour for the representative heat pump customer: the
+    weighted average of upgrade 02 loads for Eversource homes heated with
+    natural gas, fuel oil, or propane, the population of the direct
+    testimony. Month and season are formulas on the timestamp.
 rates
-    Rate 1 components, the Rate HP winter rates, and the monthly schedule
-    both bills use.
+    Rate 1 components, the Rate HP winter rates, and the monthly schedule.
 bill_change
-    Monthly bills for the existing-customer home. The decrease is the
-    cent-rounded annual bill.
-bill_change_new
-    The same bill for the later-enrollee home.
+    Monthly bills for that home. The decrease is the cent-rounded annual bill,
+    applied to every enrolled customer.
 enrollment
-    Floor and ceiling. The bounds are formulas on the stated inputs.
-    Cumulative counts keep everyone already enrolled.
+    One existing-customer count, from EnergizeCT installations, and a floor
+    and ceiling for new customers. Cumulative counts keep everyone already
+    enrolled.
 revenue
-    The starting stock times the existing-home decrease, plus later
-    enrollees times the new-home decrease. Each product rounds to the dollar.
+    Enrolled customers times the per-customer decrease. The starting stock
+    and the later enrollees each round to the dollar.
 """
 
 from __future__ import annotations
@@ -136,12 +131,12 @@ class Charge:
 
 @dataclass
 class EnrollmentInputs:
-    """Stated counts the enrollment sheet turns into the floor and the ceiling."""
+    """Stated counts the enrollment sheet turns into existing customers and the new-customer bounds.
 
-    rebates_since_2023: int
-    clm_2026: int
-    hp_share_percent: int
-    rate_year_customers: int
+    ``energizect`` is (heat pump type, installations, systems per home), one row per type.
+    """
+
+    energizect: list[tuple[str, int, float]]
     clm_annual: int
     eversource_per_thousand: int
     years: list[int]
@@ -151,14 +146,11 @@ class EnrollmentInputs:
 @dataclass
 class Case:
     hourly: pl.DataFrame
-    hourly_new: pl.DataFrame
     charges: list[Charge]
     winter_dist: float
     winter_tx: float
     n_buildings: int
-    n_buildings_new: int
     total_weight: float
-    total_weight_new: float
     enrollment: EnrollmentInputs
 
 
@@ -240,22 +232,14 @@ def _write_readme(wb: Workbook) -> None:
         ("", False),
         ("Yellow cells are inputs. Every other number is a formula.", True),
         ("", False),
-        ("hp_home_8760", True),
+        ("home_8760", True),
         (
-            "8,760 hours for the Eversource home that already has a heat pump. "
-            "It is the sample-weight weighted average of ResStock upgrade 00 buildings assigned to "
-            "Eversource with has_hp true: each hour is the sum of kWh times weight, divided by the sum of weight. "
+            "8,760 hours for the representative heat pump customer, the same home as the direct testimony: "
+            "Eversource homes heated with natural gas, fuel oil, or propane, on their ResStock upgrade 02 "
+            "(heat pump) load. Each hour is the sum of kWh times sample weight, divided by the sum of weight. "
             "kWh is CAIRO grid consumption. Timestamps are UTC, and the month follows that timestamp, "
-            "which is how the bill is calculated. Month and season are formulas.",
-            False,
-        ),
-        ("", False),
-        ("new_home_8760", True),
-        (
-            "8,760 hours for a customer who enrolls after installing a heat pump. "
-            "The buildings are the upgrade 00 Eversource homes with has_hp false. "
-            "Each hour is their upgrade 02 load, weighted by the upgrade 00 sample weight. "
-            "Month and season are formulas.",
+            "which is how the bill is calculated. Month and season are formulas. "
+            "Every enrolled customer, existing or new, is billed as this home.",
             False,
         ),
         ("", False),
@@ -264,32 +248,23 @@ def _write_readme(wb: Workbook) -> None:
             "Rate 1 is the proposed Rate Year schedule. Distribution is core delivery plus the riders. "
             "Rate HP replaces distribution and transmission in January, February, March, November, and "
             "December. The winter rates include the riders. Summer, generation, and the customer charge "
-            "stay at Rate 1. The winter rates are the unrounded rates behind Table 4 of the direct testimony. "
-            "Both homes use this schedule.",
+            "stay at Rate 1. The winter rates are the unrounded rates behind Table 4 of the direct testimony.",
             False,
         ),
         ("", False),
         ("bill_change", True),
         (
-            "Each month's kWh is the sum of that month on hp_home_8760. Volumetric charges are kWh times "
+            "Each month's kWh is the sum of that month on home_8760. Volumetric charges are kWh times "
             "the rate on the rates sheet. The customer charge is dollars per month. The comparison rounds "
-            "each annual component to the cent, then adds those cents. The decrease is Rate 1 minus Rate HP. "
-            "This is the bill for customers already enrolled.",
-            False,
-        ),
-        ("", False),
-        ("bill_change_new", True),
-        (
-            "The same bill, with kWh from new_home_8760. This is the bill for a customer who enrolls "
-            "in 2027 through 2031.",
+            "each annual component to the cent, then adds those cents. The decrease is Rate 1 minus Rate HP.",
             False,
         ),
         ("", False),
         ("enrollment", True),
         (
-            "The floor and the ceiling, from the stock already enrolled through 2031. "
-            "The existing floor is the rebate count plus 2026 installations. "
-            "The existing ceiling is the heat-pump share times Rate Year residential customers. "
+            "Customers on Rate HP, from the stock already enrolled through 2031. "
+            "Existing customers are EnergizeCT residential space-heating installations divided by "
+            "systems per home, rounded to the thousand. The same count starts the floor and the ceiling. "
             "The new floor holds the 2027 forecast flat. "
             "The new ceiling is the statewide forecast times Eversource's share of Eversource and "
             "United Illuminating. Cumulative counts add that year's installations and keep everyone already enrolled.",
@@ -298,11 +273,9 @@ def _write_readme(wb: Workbook) -> None:
         ("", False),
         ("revenue", True),
         (
-            "Each row is a full year for the customers enrolled by that year. "
-            "The starting stock is billed at the existing-home decrease. Customers added after that "
-            "are billed at the new-home decrease. Each group's distribution and transmission round to "
-            "the dollar, then the two groups are added. T&D adds those dollars. The existing customers "
-            "are included in every later year.",
+            "Each row is a full year for the customers enrolled by that year, at the per-customer decrease "
+            "on bill_change. The starting stock and the customers added after it each round to the dollar, "
+            "then the two are added. T&D adds those dollars. The existing customers are included in every later year.",
             False,
         ),
     ]
@@ -313,7 +286,7 @@ def _write_readme(wb: Workbook) -> None:
             cell.font = TITLE_FONT if row == 1 else HEADER_FONT
     ws.column_dimensions["A"].width = 120
     ws.row_dimensions[1].height = 22
-    for row in (8, 11, 14, 17, 20, 23, 26):
+    for row in (8, 11, 14, 17, 20):
         ws.row_dimensions[row].height = 48
 
 
@@ -616,86 +589,87 @@ def _write_bills(
 
 def _write_enrollment(wb: Workbook, enrollment: EnrollmentInputs) -> dict[str, str]:
     ws = wb.create_sheet("enrollment")
-    _heading(ws, 1, "Enrollment, floor and ceiling")
+    _heading(ws, 1, "Enrollment")
     _put(
         ws,
         2,
         1,
-        "The existing row is the stock in place when Rate HP takes effect, including 2026 installations. "
+        "The existing row is the stock in place when Rate HP takes effect. "
         "Each later row adds that year's installations and keeps everyone already enrolled.",
         wrap=True,
     )
     ws.merge_cells("A2:D2")
     ws.row_dimensions[2].height = 32
 
-    _put(ws, 4, 1, "Inputs", bold=True)
-    share_percent = enrollment.eversource_per_thousand / PER_THOUSAND * 100
-    inputs = [
-        (
-            5,
-            "Full-displacement rebates since 2023",
-            enrollment.rebates_since_2023,
-            FMT_COUNT,
-            "Company count. Not every heat-pump customer.",
-        ),
-        (6, "CLM installations in 2026", enrollment.clm_2026, FMT_COUNT, "In place when Rate HP takes effect."),
-        (
-            8,
-            "Heat-pump share of Eversource households (percent)",
-            enrollment.hp_share_percent,
-            "0",
-            f"RASS Appendix E, Table 455. {enrollment.hp_share_percent} percent.",
-        ),
-        (
-            11,
-            "CLM installations per year, 2027 on",
-            enrollment.clm_annual,
-            FMT_COUNT,
-            "2027 forecast, held flat. No forecast after 2027.",
-        ),
-        (
-            12,
-            "Eversource households per 1,000 served by Eversource and UI",
-            enrollment.eversource_per_thousand,
-            FMT_COUNT,
-            f"RASS Table 6. {enrollment.eversource_per_thousand} per 1,000 is {share_percent:.1f} percent.",
-        ),
-    ]
-    for row, label, value, fmt, note in inputs:
-        _put(ws, row, 1, label)
-        _put(ws, row, 2, value, input_=True, fmt=fmt)
-        _put(ws, row, 3, note, wrap=True)
-
-    _put(ws, 7, 1, "Existing floor", bold=True)
-    _put(ws, 7, 2, "=B5+B6", fmt=FMT_COUNT, bold=True)
-    _put(ws, 7, 3, "Rebates plus 2026 installations.", wrap=True)
-
-    _put(ws, 9, 1, "Rate Year residential customers")
-    _put(ws, 9, 2, enrollment.rate_year_customers, input_=True, fmt=FMT_COUNT)
+    _put(ws, 4, 1, "Existing customers (EnergizeCT residential space-heating installations)", bold=True)
+    for col, header in enumerate(["Heat pump type", "Installations", "Systems per home", "Homes"], start=1):
+        _put(ws, 5, col, header, bold=True)
+    first_type = 6
+    for i, (hp_type, installations, systems_per_home) in enumerate(enrollment.energizect):
+        row = first_type + i
+        _put(ws, row, 1, hp_type)
+        _put(ws, row, 2, installations, input_=True, fmt=FMT_COUNT)
+        _put(ws, row, 3, systems_per_home, input_=True, fmt="0.00")
+        _put(ws, row, 4, f"=B{row}/C{row}", fmt=FMT_COUNT)
+    last_type = first_type + len(enrollment.energizect) - 1
+    total_type = last_type + 1
+    _put(ws, total_type, 1, "Total", bold=True)
+    _put(ws, total_type, 2, f"=SUM(B{first_type}:B{last_type})", fmt=FMT_COUNT, bold=True)
+    _put(ws, total_type, 4, f"=SUM(D{first_type}:D{last_type})", fmt=FMT_COUNT, bold=True)
+    existing = total_type + 1
+    _put(ws, existing, 1, "Existing customers", bold=True)
+    _put(ws, existing, 4, f"=ROUND(D{total_type},-3)", fmt=FMT_COUNT, bold=True)
     _put(
         ws,
-        9,
-        3,
-        "Average bills rendered for Rates 1, 5, and 7, Exhibit CLP-RATES-2.10, Rate Year ending June 30, 2028.",
+        first_type - 1,
+        5,
+        "EnergizeCT dashboard, 2017 through 2026 to date, water heaters excluded. Mini-splits: 123 outdoor units "
+        "per 90 homes (R1617). Every other type counts as one home. An upper estimate: a home with two systems, "
+        "or incentives in two years, counts twice.",
         wrap=True,
     )
 
-    _put(ws, 10, 1, "Existing ceiling", bold=True)
-    _put(ws, 10, 2, "=ROUND(B9*B8/100,0)", fmt=FMT_COUNT, bold=True)
-    _put(ws, 10, 3, "Heat-pump share times Rate Year customers.", wrap=True)
+    inputs_header = existing + 2
+    _put(ws, inputs_header, 1, "New-customer inputs", bold=True)
+    clm_row = inputs_header + 1
+    share_row = inputs_header + 2
+    share_percent = enrollment.eversource_per_thousand / PER_THOUSAND * 100
+    inputs = [
+        (
+            clm_row,
+            "CLM installations per year, 2027 on",
+            enrollment.clm_annual,
+            "2027 forecast, held flat. No forecast after 2027.",
+        ),
+        (
+            share_row,
+            "Eversource households per 1,000 served by Eversource and UI",
+            enrollment.eversource_per_thousand,
+            f"RASS Table 6. {enrollment.eversource_per_thousand} per 1,000 is {share_percent:.1f} percent.",
+        ),
+    ]
+    for row, label, value, note in inputs:
+        _put(ws, row, 1, label)
+        _put(ws, row, 2, value, input_=True, fmt=FMT_COUNT)
+        _put(ws, row, 3, note, wrap=True)
 
-    _put(ws, 14, 1, "New installations", bold=True)
+    new_header = share_row + 2
+    _put(ws, new_header, 1, "New installations", bold=True)
     for col, header in enumerate(["Year", "Statewide additions", "Floor", "Ceiling"], start=1):
-        _put(ws, 15, col, header, bold=True)
-    first_new = 16
+        _put(ws, new_header + 1, col, header, bold=True)
+    first_new = new_header + 2
     for i, (year, statewide) in enumerate(zip(enrollment.years, enrollment.statewide_additions, strict=True)):
         row = first_new + i
         _put(ws, row, 1, year, fmt="0")
         _put(ws, row, 2, statewide, input_=True, fmt=FMT_COUNT)
-        _put(ws, row, 3, "=$B$11", fmt=FMT_COUNT)
-        _put(ws, row, 4, f"=B{row}*$B$12/{PER_THOUSAND}", fmt=FMT_COUNT)
+        _put(ws, row, 3, f"=$B${clm_row}", fmt=FMT_COUNT)
+        _put(ws, row, 4, f"=B{row}*$B${share_row}/{PER_THOUSAND}", fmt=FMT_COUNT)
     _put(
-        ws, 15, 5, "Statewide additions are the ISO-NE forecast. The ceiling multiplies by the share in B12.", wrap=True
+        ws,
+        new_header + 1,
+        5,
+        f"Statewide additions are the ISO-NE forecast. The ceiling multiplies by the share in B{share_row}.",
+        wrap=True,
     )
 
     cum_header = first_new + len(enrollment.years) + 2
@@ -704,9 +678,9 @@ def _write_enrollment(wb: Workbook, enrollment: EnrollmentInputs) -> dict[str, s
         _put(ws, cum_header, col, header, bold=True)
     existing_row = cum_header + 1
     _put(ws, existing_row, 1, enrollment.years[0] - 1, fmt="0")
-    _put(ws, existing_row, 2, "=$B$7", fmt=FMT_COUNT)
-    _put(ws, existing_row, 3, "=$B$10", fmt=FMT_COUNT)
-    _put(ws, existing_row, 4, "Existing stock, including 2026 installations.", wrap=True)
+    _put(ws, existing_row, 2, f"=$D${existing}", fmt=FMT_COUNT)
+    _put(ws, existing_row, 3, f"=$D${existing}", fmt=FMT_COUNT)
+    _put(ws, existing_row, 4, "Existing stock, the same at the floor and the ceiling.", wrap=True)
     for i in range(len(enrollment.years)):
         row = existing_row + 1 + i
         new_row = first_new + i
@@ -719,7 +693,7 @@ def _write_enrollment(wb: Workbook, enrollment: EnrollmentInputs) -> dict[str, s
     ws.column_dimensions["C"].width = 78
     ws.column_dimensions["D"].width = 16
     ws.column_dimensions["E"].width = 78
-    for row in (2, 7, 9, 10, 12):
+    for row in (2, first_type - 1, share_row):
         ws.row_dimensions[row].height = 32
     return {
         "floor_start": f"B{existing_row}",
@@ -732,7 +706,6 @@ def _write_enrollment(wb: Workbook, enrollment: EnrollmentInputs) -> dict[str, s
 def _write_revenue(
     wb: Workbook,
     decrease: dict[str, str],
-    decrease_new: dict[str, str],
     enrollment: dict[str, str],
 ) -> None:
     ws = wb.create_sheet("revenue")
@@ -742,22 +715,18 @@ def _write_revenue(
         2,
         1,
         "A full year of bills for the customers enrolled by that year. "
-        "The starting stock uses the existing-home decrease. Later enrollees use the new-home decrease. "
-        "Each group's distribution and transmission round to the dollar, then the groups are added. "
+        "Every customer is billed at the per-customer decrease on bill_change. "
+        "The starting stock and later enrollees each round to the dollar, then they are added. "
         "The existing customers are included in 2027 through 2031.",
         wrap=True,
     )
     ws.merge_cells("A2:E2")
     ws.row_dimensions[2].height = 48
 
-    _put(ws, 4, 1, "Existing customer, distribution decrease")
+    _put(ws, 4, 1, "Per-customer distribution decrease")
     _put(ws, 4, 2, f"=bill_change!{decrease['dec_dist']}", fmt=FMT_DOLLAR)
-    _put(ws, 5, 1, "Existing customer, transmission decrease")
+    _put(ws, 5, 1, "Per-customer transmission decrease")
     _put(ws, 5, 2, f"=bill_change!{decrease['dec_tx']}", fmt=FMT_DOLLAR)
-    _put(ws, 6, 1, "New customer, distribution decrease")
-    _put(ws, 6, 2, f"=bill_change_new!{decrease_new['dec_dist']}", fmt=FMT_DOLLAR)
-    _put(ws, 7, 1, "New customer, transmission decrease")
-    _put(ws, 7, 2, f"=bill_change_new!{decrease_new['dec_tx']}", fmt=FMT_DOLLAR)
 
     headers = [
         "Year",
@@ -790,14 +759,14 @@ def _write_revenue(
             ws,
             row,
             3,
-            f"=ROUND({floor_existing}*$B$4,0)+ROUND({floor_new}*$B$6,0)",
+            f"=ROUND({floor_existing}*$B$4,0)+ROUND({floor_new}*$B$4,0)",
             fmt=FMT_REVENUE,
         )
         _put(
             ws,
             row,
             4,
-            f"=ROUND({floor_existing}*$B$5,0)+ROUND({floor_new}*$B$7,0)",
+            f"=ROUND({floor_existing}*$B$5,0)+ROUND({floor_new}*$B$5,0)",
             fmt=FMT_REVENUE,
         )
         _put(ws, row, 5, f"=C{row}+D{row}", fmt=FMT_REVENUE)
@@ -806,18 +775,18 @@ def _write_revenue(
             ws,
             row,
             7,
-            f"=ROUND({ceiling_existing}*$B$4,0)+ROUND({ceiling_new}*$B$6,0)",
+            f"=ROUND({ceiling_existing}*$B$4,0)+ROUND({ceiling_new}*$B$4,0)",
             fmt=FMT_REVENUE,
         )
         _put(
             ws,
             row,
             8,
-            f"=ROUND({ceiling_existing}*$B$5,0)+ROUND({ceiling_new}*$B$7,0)",
+            f"=ROUND({ceiling_existing}*$B$5,0)+ROUND({ceiling_new}*$B$5,0)",
             fmt=FMT_REVENUE,
         )
         _put(ws, row, 9, f"=G{row}+H{row}", fmt=FMT_REVENUE)
-    _put(ws, 10, 10, "2026 is the existing stock. Later rows add the new-customer bill.", wrap=True)
+    _put(ws, 10, 10, "2026 is the existing stock. Later rows add each year's new customers.", wrap=True)
 
     ws.freeze_panes = "A8"
     ws.column_dimensions["A"].width = 46
@@ -829,32 +798,26 @@ def _write_revenue(
 def build_workbook(case: Case) -> Workbook:
     wb = Workbook()
     _write_readme(wb)
-    last_hour = _write_hourly(wb, "hp_home_8760", case.hourly, case.n_buildings, case.total_weight)
-    last_hour_new = _write_hourly(wb, "new_home_8760", case.hourly_new, case.n_buildings_new, case.total_weight_new)
+    last_hour = _write_hourly(wb, "home_8760", case.hourly, case.n_buildings, case.total_weight)
     rate_rows = _write_rates(wb, case)
     decrease = _write_bills(
         wb,
         "bill_change",
-        "hp_home_8760",
+        "home_8760",
         rate_rows,
         last_hour,
-        title="Bill change, customers who already have a heat pump",
-    )
-    decrease_new = _write_bills(
-        wb,
-        "bill_change_new",
-        "new_home_8760",
-        rate_rows,
-        last_hour_new,
-        title="Bill change, customers who enroll after installing a heat pump",
+        title="Bill change, representative heat pump customer",
     )
     enrollment = _write_enrollment(wb, case.enrollment)
-    _write_revenue(wb, decrease, decrease_new, enrollment)
+    _write_revenue(wb, decrease, enrollment)
     return wb
 
 
 def upload_xlsx(path: Path, folder_id: str, name: str) -> str:
-    """Upload the workbook to Drive, trashing an existing file of the same name."""
+    """Upload the workbook to Drive, overwriting a file of the same name in place.
+
+    Overwriting keeps the file id, so links to the workbook in the responses stay valid.
+    """
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaFileUpload
 
@@ -871,18 +834,27 @@ def upload_xlsx(path: Path, folder_id: str, name: str) -> str:
             includeItemsFromAllDrives=True,
         )
         .execute()
+    ).get("files", [])
+    media = MediaFileUpload(
+        str(path),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        resumable=True,
     )
-    for old in existing.get("files", []):
-        drive.files().update(fileId=old["id"], body={"trashed": True}, supportsAllDrives=True).execute()
+    if existing:
+        keep, *duplicates = existing
+        for old in duplicates:
+            drive.files().update(fileId=old["id"], body={"trashed": True}, supportsAllDrives=True).execute()
+        updated = (
+            drive.files()
+            .update(fileId=keep["id"], media_body=media, fields="id, webViewLink", supportsAllDrives=True)
+            .execute()
+        )
+        return str(updated["webViewLink"])
     uploaded = (
         drive.files()
         .create(
             body={"name": name, "parents": [folder_id]},
-            media_body=MediaFileUpload(
-                str(path),
-                mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                resumable=True,
-            ),
+            media_body=media,
             fields="id, webViewLink",
             supportsAllDrives=True,
         )

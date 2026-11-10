@@ -1,6 +1,23 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 181-183 (printed pp. 179-181), Chapter 17; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 181-183 (printed pp. 179-181) of the manual, Chapter 17; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back. Footnote 206 had been extracted as plain text and is now footnote definition._
+
+[PDF pp. 1-180 not transcribed: front matter to Chapter 16, in 00_front_matter.md to 16_differential_treatment.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 181 | printed p. 179]
+
 ## 17. Future of Embedded Cost Allocation
 
-hange is inevitable as the electric industry adapts to new technology. Part III of this manual, on **C** embedded cost of service studies, has attempted to address many common situations the cost analyst will face in determining an equitable allocation of costs among customer classes. But new technologies and changing loads will dictate new issues and perhaps new methods.
+Change is inevitable as the electric industry adapts to new technology. Part III of this manual, on embedded cost of service studies, has attempted to address many common situations the cost analyst will face in determining an equitable allocation of costs among customer classes. But new technologies and changing loads will dictate new issues and perhaps new methods.
 
 Historically, power has flowed from central generators, through transmission, to primary distribution and then secondary distribution. Customers served at the transmission level have not paid for distribution, and those served at primary have not paid for line transformers or secondary lines. This situation is beginning to change. In some places, the development of distributed solar capacity already causes power to flow from secondary to primary and even onto the transmission system. At some point, all customers may receive service through all levels of the delivery system, requiring a substantial rethinking of the allocation of distribution costs.
 
@@ -16,13 +33,15 @@ Figure 45. Daily dispatch for illustrative hourly allocation example
 
 2,500<br>Peaker Storage<br>Solar Charging of storage<br>2,000 Base<br>1,500<br>1,000<br>500<br>0<br>-500<br>1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24<br>Hour of day<br>Megawatts<br>
 
-206 Among other things, charging storage in hours with low net loads will raise minimum load levels and reduce ramp rates, benefiting the hours in which net load rises rapidly .
-
 ##### Figure 46. Class loads for illustrative hourly allocation example
 
 2,500<br>Street lighting<br>Industrial<br>Commercial<br>2,000<br>Residential<br>1,500<br>1,000<br>500<br>0<br>1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24<br>Megawatts<br>
 
 Hour of day
+
+[^206]: Among other things, charging storage in hours with low net loads will raise minimum load levels and reduce ramp rates, benefiting the hours in which net load rises rapidly .
+
+[PDF p. 182 | printed p. 180]
 
 worth of hourly dispatch of four resources: a baseload resource (perhaps nuclear), solar, a peaker (perhaps a combustion turbine) and storage (both as charging load below the axis and generation above the line). In this example, the storage charges from excess base capacity in the early morning and then from solar, and discharges in the evening to replace the waning solar. The actual application of hourly allocation would include 8,760 hours from an actual or typical year, with a wide range of load levels, availability of the base resource and solar output patterns.
 
@@ -41,6 +60,8 @@ for the day)
 Table 40 shows the result of this computation for the data in Table 39. The lighting class, for example, would pay for 1.8% of the base resource, 2.2% of the peakers and just 0.6% of the solar. Table 40 also shows each class’s share of total load, for reference.
 
 Table 39. Hourly class load share and resource output
+
+[PDF p. 183 | printed p. 181]
 
 | Hour          | Residential | Commercial<br>Class shar | e of load<br>Industrial | Street<br>lighting | Reso<br>Base | urce output: Perce<br>Peaking | ntage occurring<br>Solar | by hour<br>Storage |
 | ------------- | ----------- | ------------------------ | ----------------------- | ------------------ | ------------ | ----------------------------- | ------------------------ | ------------------ |
@@ -82,3 +103,5 @@ Note: Percentages may not add up to 100 because of rounding.
 | Solar                                | 37 .5%      | 43 .1%                  | 18 .7%                | 0 .6%              |
 | Storage                              | 43 .8%      | 37 .4%                  | 17 .2%                | 1 .7%              |
 | **Class share**<br>**of total load** | 39 .7%      | 39 .6%                  | 19 .1%                | 1 .6%              |
+
+[PDF pp. 184-276 not transcribed: Works Cited in Part III to Glossary and back cover, in 17_works_cited_part3.md to glossary.md of this folder]

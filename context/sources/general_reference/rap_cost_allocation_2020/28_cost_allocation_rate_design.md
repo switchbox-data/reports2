@@ -1,6 +1,23 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 242-245 (printed pp. 240-243), Chapter 28; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 242-245 (printed pp. 240-243) of the manual, Chapter 28; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back._
+
+[PDF pp. 1-241 not transcribed: front matter to Chapter 27, in 00_front_matter.md to 27_using_results.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 242 | printed p. 240]
+
 ## 28. Relationship Between Cost Allocation and Rate Design
 
-s indicated at the outset, cost allocation is the second of three steps in the rate- **A** making process, beginning with the determination of the revenue requirement and ending with the design of rates. This manual has been careful to explain that these are separate phases of a proceeding and may have separate principles that apply, and the results may not always flow neatly from one phase to the next.
+As indicated at the outset, cost allocation is the second of three steps in the rate- making process, beginning with the determination of the revenue requirement and ending with the design of rates. This manual has been careful to explain that these are separate phases of a proceeding and may have separate principles that apply, and the results may not always flow neatly from one phase to the next.
 
 At its heart, cost allocation is about equity among customer classes . Rate design has a different set of goals .
 
@@ -24,6 +41,8 @@ Most cost allocation studies group customers into a relatively small number of c
 
 - Principle 2: Customers should pay for grid services and power supply in proportion to how much they use these
 
+[PDF p. 243 | printed p. 241]
+
 It is common to have separate rate tariffs that focus on the usage by specific groups of customers to enable them to control their bills by focusing their attention on elements of their consumption they can easily manage. A cost of service study provides broad guidance on how costs should be apportioned among customer classes. The result may be a uniform percentage allocation of a rate increase (or decrease) or one that is differentially apportioned among the customer classes.
 
 The class definitions for cost allocation typically look at large groups of customers with similar service characteristics. Rate design often looks at smaller groups of customers with similar usage characteristics or even individual customers. For example, a shift of rate design from an inclining block rate to a time-varying rate may result in sharp increases in the bills for some customers with low usage.
@@ -44,6 +63,8 @@ Many analysts who still use legacy cost allocation techniques or otherwise probl
 
 [^245]: As discussed in Section 6 .1, there is a direct relationship between an embedded cost of service study and the revenue requirement, which makes it an analytically convenient method of dividing the revenue requirement . Using a marginal cost of service study for cost allocation requires additional adjustments to ensure the correct amount of revenue will be recovered .
 
+[PDF p. 244 | printed p. 242]
+
 states allow use of the minimum system method for cost allocation between classes but require the narrower basic customer method for the determination of customer charges within classes in the rate design process.
 
 ### 28.3 Other Considerations in Rate Design
@@ -62,9 +83,7 @@ These types of broader policy priorities can be reflected in many ways. For exam
 
 One very common public policy goal is the use of postage stamp rates, with the same rates applying to all customers of a class within a service territory. As discussed in Section 5.2, there are trade-offs in terms of the number of customer classes. A larger number of customer classes may capture more cost-based distinctions than a smaller number. For example, in most utility systems, multifamily customers that are less expensive to serve pay the same rates as single-family customers, and rural customers pay the same rates as urban. Having separate customer classes to reflect these distinctions would arguably lead to a much more equitable distribution of costs. These are probably the largest deviations from cost principles in today’s utilities — dwarfing other deviations such as perceived undercharging of residential customers as a class or of solar customers as a subclass.
 
-However, additional customer classes can lead to additional administrative and oversight costs. Furthermore, regulators, utilities and stakeholders must all have confidence that there are true cost differentials among the customer types and that there will be little controversy in applying these differentials. Some analysts object to customer classes based on adoption of particular end uses, although this may serve as a proxy for significantly different usage profiles. Some analysts may prefer separate classes for distinct types of customers, such as schools and churches. As discussed previously, rates that automatically reflect cost distinctions (e.g., time-varying rates or different residential customer charges for singlefamily and multifamily) can accomplish the same objective as the creation of additional customer classes, often with
-
-additional efficiency benefits from improved pricing.
+However, additional customer classes can lead to additional administrative and oversight costs. Furthermore, regulators, utilities and stakeholders must all have confidence that there are true cost differentials among the customer types and that there will be little controversy in applying these differentials. Some analysts object to customer classes based on adoption of particular end uses, although this may serve as a proxy for significantly different usage profiles. Some analysts may prefer separate classes for distinct types of customers, such as schools and churches. As discussed previously, rates that automatically reflect cost distinctions (e.g., time-varying rates or different residential customer charges for singlefamily and multifamily) can accomplish the same objective as the creation of additional customer classes, often with [PDF p. 245 | printed p. 243] additional efficiency benefits from improved pricing.
 
 Proper data must be available so all parties can scrutinize whether distinctions made between customer classes are based on cost and not improper motives like price discrimination .
 
@@ -79,3 +98,5 @@ Lastly, in some states, legislatures have dictated some elements of rate design,
 [^246]: See Connecticut General Statutes, Title 16, § 16-243bb, limiting the residential fixed charge to “only the fixed costs and operation and maintenance expenses directly related to metering, billing, service connections and the provision of customer service .”
 
 [^247]: California Public Utilities Code § 739 .9(f) .
+
+[PDF pp. 246-276 not transcribed: Works Cited in Part V to Glossary and back cover, in 28_works_cited_part5.md to glossary.md of this folder]

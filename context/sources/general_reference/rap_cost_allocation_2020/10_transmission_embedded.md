@@ -1,6 +1,23 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 137-143 (printed pp. 135-141), Chapter 10; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 137-143 (printed pp. 135-141) of the manual, Chapter 10; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back. Footnote 132, which the first extraction split across the page's columns, is rejoined._
+
+[PDF pp. 1-136 not transcribed: front matter to Chapter 9, in 00_front_matter.md to 09_generation_embedded.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 137 | printed p. 135]
+
 ## 10. Transmission in Embedded Cost of Service Studies
 
-s discussed in Chapter 3, investments in transmission lines and substations are needed and valuable for a **A** wide assortment of purposes, including integrating
+As discussed in Chapter 3, investments in transmission lines and substations are needed and valuable for a wide assortment of purposes, including integrating
 
 wide assortment of purposes, including integrating inherently remote generation, allowing economic dispatch of generation over large areas and providing backup reliability. Any particular transmission line and the substations to which it is connected may perform multiple functions under varying load and generation conditions. Because the purposes for constructing transmission and the use of the facilities vary so widely, the allocation methods used may need to distinguish among several categories of transmission.
 
@@ -18,9 +35,7 @@ If those subfunctions were classified and allocated in the same manner, the divi
 
 This approach is inequitable and fails to reflect cost causality. The various voltages of transmission serve complementary functions. In general, customers and distribution substations that are served from subtransmission would be more expensive to serve from EHV transmission. Subtransmission is a lower-cost alternative to EHV where the higher capacity of the EHV facilities is not required.
 
-For some systems, the subtransmission and EHV systems may seem to be serving different functions since the EHV lines may be more often networked or looped, while the subtransmission lines are often radial. This pattern is due to the higher load-carrying capacity of the EHV lines, which results in their being used in high-load backbone configurations. These lines are usually networked for greater reliability, not due to some inherent difference in the capabilities of the technologies. Higher-voltage lines
-
-can be used in radial applications, and subtransmission can be networked or looped in some situations.
+For some systems, the subtransmission and EHV systems may seem to be serving different functions since the EHV lines may be more often networked or looped, while the subtransmission lines are often radial. This pattern is due to the higher load-carrying capacity of the EHV lines, which results in their being used in high-load backbone configurations. These lines are usually networked for greater reliability, not due to some inherent difference in the capabilities of the technologies. Higher-voltage lines [PDF p. 138 | printed p. 136] can be used in radial applications, and subtransmission can be networked or looped in some situations.
 
 Figure 36. Transmission east of San Francisco Bay
 
@@ -52,6 +67,8 @@ As a result, the separation of subtransmission is often inappropriate in princip
 
 However, if a state determines that subtransmission costs are to be allocated to the classes that use the subtransmission system, ignoring the complementary nature of high- and lowvoltage transmission, the allocator should approximate the
 
+[PDF p. 139 | printed p. 137]
+
 A separate subtransmission allocator should approximate the following:
 
 - An EHV industrial class that takes all its power from the EHV system would be allocated no subtransmission costs.
@@ -68,17 +85,17 @@ The classification of transmission costs raises many of the same issues as the c
 
 Some assets that are carried on the books as transmission may actually be related to interconnecting or integrating
 
-[^130]: Some distribution substation transformers are at substations serving multiple transmission voltages . The FERC Form 1 reports provide only the total transformer capacity at the substation, without differentiating among the EHV-subtransmission, EHV-distribution and EHV-EHV capacity . The percentages of distribution capacity served from the EHV system, listed above, do not include any of this multivoltage capacity .
-
-[^131]: The northern AC gathering system that brings the hydro to the HVDC converters is also classified as energy-related .
-
-[^132]: Examples of this phenomenon include Nova Scotia Power’s concentration of coal in the eastern end of the province; BC Hydro’s, Manitoba Hydro’s and Hydro-Quebec’s northern generation; PacifiCorp’s Rocky
-
 generation (step-up transformers and generation ties for many utilities; more extensive facilities for utilities with extremely remote generators). Those facilities can either be functionalized as generation-related and classified along with the generation resource or functionalized as transmission and classified in the same manner as the investment-related costs of the associated generation. Facilities connecting peakers should be treated as demand-related, while those connecting the baseload generation, especially remote generation, should be primarily treated as energy-related since the facilities were built primarily to provide energy benefits. For example, Manitoba Hydro classifies as entirely energy-related the high-voltage direct current system that brings its northern hydro generation to the southern load centers and export points, as well as its transmission interties, which allow for economic energy exports and for off-peak energy imports to firm up hydro supplies in drought conditions.[^131]
 
 In addition to the substations that step up the generator output to transmission voltages and the lines that connect the generator to the broader transmission network, many utilities have transmission facilities that are integrated with the transmission network but are driven largely by the need to move large amounts of power from remote generators. Those transmission facilities may be identifiable because they were originally required to reinforce the transmission system when major baseload (or remote hydro or wind) resources were added or because they connect areas that have surplus generation to areas with generation shortages. For example, a utility may have 60% of its load in a central metropolitan area but 80% of its baseload resources far to the east or north, with multiple major transmission lines connecting the resource-rich east with the load in the center.[^132]
 
-Mountain Power division (with load concentrated around Salt Lake City and generation in Colorado, Wyoming, Arizona and Montana); Arizona Public Service Co . with load in Phoenix and generation in the Four Corners and Palo Verde areas; Puget Sound Energy and the Colstrip transmission system from Montana; the California utilities and the AC and DC interties to the Pacific Northwest and lines to the Southwest; and Texas’ concentration of wind generation in the Panhandle, serving load throughout ERCOT . This pattern is also emerging for California’s imports of solar energy from Nevada and Arizona, Minnesota’s imports of wind power from North Dakota and hydro energy from Manitoba, and the transfers of large amounts of wind power from generation in the western parts of Kansas and Oklahoma to load centers in the eastern parts of those states .
+[^130]: Some distribution substation transformers are at substations serving multiple transmission voltages . The FERC Form 1 reports provide only the total transformer capacity at the substation, without differentiating among the EHV-subtransmission, EHV-distribution and EHV-EHV capacity . The percentages of distribution capacity served from the EHV system, listed above, do not include any of this multivoltage capacity .
+
+[^131]: The northern AC gathering system that brings the hydro to the HVDC converters is also classified as energy-related .
+
+[^132]: Examples of this phenomenon include Nova Scotia Power’s concentration of coal in the eastern end of the province; BC Hydro’s, Manitoba Hydro’s and Hydro-Quebec’s northern generation; PacifiCorp’s Rocky Mountain Power division (with load concentrated around Salt Lake City and generation in Colorado, Wyoming, Arizona and Montana); Arizona Public Service Co . with load in Phoenix and generation in the Four Corners and Palo Verde areas; Puget Sound Energy and the Colstrip transmission system from Montana; the California utilities and the AC and DC interties to the Pacific Northwest and lines to the Southwest; and Texas’ concentration of wind generation in the Panhandle, serving load throughout ERCOT . This pattern is also emerging for California’s imports of solar energy from Nevada and Arizona, Minnesota’s imports of wind power from North Dakota and hydro energy from Manitoba, and the transfers of large amounts of wind power from generation in the western parts of Kansas and Oklahoma to load centers in the eastern parts of those states .
+
+[PDF p. 140 | printed p. 138]
 
 Utility transmission system design typically lowers energy costs in at least three ways. First, a large portion of many transmission systems is required to move power from the remote generators to the load centers and for export. If generation were located nearer the load centers, the long, expensive transmission lines would not be required, and transmission losses would be smaller. These transmission costs were incurred as part of the trade-off against the higher operating costs of plants that could be located nearer the load centers — in other words, as a trade-off against energyrelated costs. This category includes transmission built to allow the addition of remote wind resources, which are often the least-cost energy resources even where the utility already has sufficient capacity and energy supply. In other cases, the remote wind resources may be more expensive than conventional resources, new or existing, but less expensive than local renewables (e.g., solar, wind turbines in areas with lower wind speed, higher land costs and more complex siting problems) that would otherwise need to be built to comply with energy-related renewable energy standards.
 
@@ -98,6 +115,8 @@ It may be possible to identify and classify the costs of the individual lines or
 
 PacifiCorp’s Rocky Mountain Power subsidiary in Utah classifies transmission as 75% demand-related and 25% energy-related (Steward, 2014, p. 7). This classification recognizes that, although peak loads are a major driver of transmission costs, a significant portion of transmission costs is incurred to reduce energy costs. Since PacifiCorp has a large amount of transmission connecting remote coal plants in Wyoming, Arizona and Colorado to its load centers and connecting its Northwestern hydro assets to its load centers, an even higher energy classification may be
 
+[PDF p. 141 | printed p. 139]
+
 ##### Figure 38. Transmission system with remote and centralized generation
 
 400 MWs<br>400 MWs<br>hydro import<br>350 MWs<br>City with 500 MWs<br>Generation = Generation = peak demand<br> 3 x 300 MWs 0 MWs<br>combined cycle 500 MWs<br>Transmission<br>capacity<br>500 MWs<br>500 MWs<br>600 MWs<br>Generation = Generation =<br>8 x 100 MWs 3 x 400 MWs<br>combustion turbine 600 MWs coal 200 MWs<br>600 MWs wind<br>200 MWs<br>
@@ -116,6 +135,8 @@ Historically, most cost of service studies have computed transmission allocation
 
 Some utilities have recognized that transmission investments are justified by loads in more than one hour in a month. For example, Manitoba Hydro has used a transmission allocator computed from class contribution to the highest 50 hours in the winter, Manitoba Hydro’s peak period, and the highest 50 hours in the summer, the period of Manitoba Hydro’s maximum exports, which also drive intraprovincial transmission construction (Manitoba Hydro, 2015, Appendix 3.1, p. 9).
 
+[PDF p. 142 | printed p. 140]
+
 The hours of maximum transmission loads may be different from the hours of maximum generation stress. For example, the power lines from remote baseload units to the load centers may be most heavily loaded at moderate demand levels. At high load levels, more of the low-cost remote generation may be used by load closer to the generator, while higher-cost generation in and near the load centers increases, reducing the long-distance transmission line loading. In addition, generator maintenance does not necessarily smooth out transmission reliability risk across months in the same way that it spreads generation shortage risk. If transmission loads peak in winter, when carrying capacity is higher, then transmission peaks may not match even the maximum transmission stress period.
 
 In its Order 1000, establishing regional transmission planning and cost allocation principles, FERC includes the following cost allocation principles, which recognize that transmission is justified by multiple drivers and that different allocation approaches may be justified for different types of transmission facilities:
@@ -123,8 +144,6 @@ In its Order 1000, establishing regional transmission planning and cost allocati
 (1) The cost of transmission facilities must be allocated to those … that benefit from those facilities in a manner that is at least roughly commensurate with estimated benefits. In determining the beneficiaries of transmission facilities, a regional transmission planning process may consider benefits including, but not limited to, the extent to which transmission facilities, individually or in the aggregate, provide for maintaining reliability and sharing reserves, production cost savings and congestion relief, and/or meeting public policy requirements established by state or federal laws or regulations that may drive transmission needs. …
 
 (5) The cost allocation method and data requirements for determining benefits and identifying beneficiaries for a transmission facility must be transparent with adequate documentation to allow a stakeholder to determine how they were applied to a proposed transmission facility.
-
-[^133]: Attributing transmission to hours is more complicated than assigning generation costs by hours, because of the flow of electricity in a network . Once a transmission line is in service, power will flow over it any time there is a voltage differential between the ends of the line, whether or not the line was in any way needed to meet load in that hour .
 
 (6) A transmission planning region may choose to use a different cost allocation method for different types of transmission facilities in the regional plan, such as transmission facilities needed for reliability, congestion relief or to achieve public policy requirements established by state or federal laws or regulations (Federal Energy Regulatory Commission, 2011, ¶ 586).
 
@@ -138,9 +157,13 @@ The discussion above has indicated why transmission investments must be carefull
 
 Transmission is a very difficult challenge for the cost analyst because each transmission segment may have a
 
+Table 28. Summary of transmission classification and allocation approaches
+
+[^133]: Attributing transmission to hours is more complicated than assigning generation costs by hours, because of the flow of electricity in a network . Once a transmission line is in service, power will flow over it any time there is a voltage differential between the ends of the line, whether or not the line was in any way needed to meet load in that hour .
+
 [^134]: The latter definition would require load flow modeling for each transmission line or a representative sample; the practicality of this approach will depend on the extent of transmission modeling undertaken for system planning .
 
-Table 28. Summary of transmission classification and allocation approaches
+[PDF p. 143 | printed p. 141]
 
 | Element                                     | Example methods                                                                                                                                                                         | Comments                                                                               | Hourly allocation                                                                                             |
 | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
@@ -168,3 +191,5 @@ Table 29. Illustrative allocation of transmission costs by different methods
 | **Hourly**            | $16,565,000 | $17,555,000    | $15,015,000    | $866,000        | $50,000,000 |
 
 Note: Numbers may not add up to total because of rounding.
+
+[PDF pp. 144-276 not transcribed: Chapter 11 to Glossary and back cover, in 11_distribution_embedded.md to glossary.md of this folder]

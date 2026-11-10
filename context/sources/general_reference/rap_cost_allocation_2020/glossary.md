@@ -1,3 +1,20 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 258-276, Glossary and back cover; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 258-276 of the manual, Glossary and back cover; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on._
+
+[PDF pp. 1-257 not transcribed: front matter to Appendix E, in 00_front_matter.md to appendix_e_avoided_generation.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 258 | printed p. 256]
+
 ## Glossary
 
 ###### Adjustment clause
@@ -35,6 +52,8 @@ One of a set of services offered and demanded by system operators, utilities and
 ###### Automated meter reading _Abbreviation:_ **AMR**
 
 Automated meter reading systems use radio or other means to download data from meters periodically without a need for a meter reader to visit each location. They typically do not include interval data of sufficient precision to support advanced services such as critical peak pricing. More sophisticated systems are usually called advanced metering infrastructure.
+
+[PDF p. 259 | printed p. 257]
 
 ###### Average-and-peak method
 
@@ -77,6 +96,8 @@ The ratio of total energy produced by a generator for a specified period to the 
 ###### Capacity-related costs
 
 See **demand-related costs** .
+
+[PDF p. 260 | printed p. 258]
 
 ###### Circuit
 
@@ -130,6 +151,8 @@ Community choice aggregation involves a municipality or other local entity servi
 
 Regulators use a cost of service approach to determine a fair price for electric service, by which the aggregate costs for providing each class of service (residential, commercial and industrial) are determined. Prices are set to recover those costs, plus a reasonable return on the invested capital portion of those costs.
 
+[PDF p. 261 | printed p. 259]
+
 ###### Cost of service study
 
 An analysis performed in the context of a rate case that allocates a utility’s allowed costs to provide service among its various customer classes. The total cost allocated to a given class represents the costs that class would pay to produce an equal rate of return to other classes. Regulators frequently exercise judgment to adopt rates that vary from study results.
@@ -165,6 +188,8 @@ Costs that vary directly with the number of customers served by the utility, suc
 ###### Decomposition method
 
 A legacy method that jointly classifies and allocates generation assets. This method assumes that customer classes with high load factors are served by high-capacity-factor baseload resources. In many cases, such a method would advantage the large industrial customer class, although that does depend on the cost of the baseload resources in question. Among other issues, this method ignores reserve requirements or other backup supply needs and any need to equitably share the costs of excess capacity.
+
+[PDF p. 262 | printed p. 260]
 
 ###### Decoupling
 
@@ -208,6 +233,8 @@ An electric current that flows in one direction, with a magnitude that does not 
 
 Any resource or activity at or near customer loads that generates energy, reduces consumption or otherwise manages energy on-site. Distributed energy resources include customer-site generation, such as solar photovoltaic systems and emergency backup generators, as well as energy efficiency, controllable loads and energy storage.
 
+[PDF p. 263 | printed p. 261]
+
 ###### Distributed generation
 
 Any electricity generator located at or near customer loads. Distributed generation usually refers to customer-sited generation, such as solar photovoltaic systems, but may include utility-owned generation or independent power producers interconnected to the distribution system.
@@ -247,6 +274,8 @@ The actual current costs, including a return on existing plant, used to provide 
 ###### Energy
 
 A unit of power consumed over a period of time. Energy is expressed in watt-time units, in which the time units are usually one hour, such as a kilowatt-hour, megawatt-hour and so on. An appliance placing 1 kilowatt of demand on the system for an hour will consume 1 kilowatt-hour of energy. See also **watt** and **watt-hour** .
+
+[PDF p. 264 | printed p. 262]
 
 ###### Energy charge
 
@@ -294,9 +323,7 @@ Any fee or charge that does not vary with consumption. Customer charges are a ty
 
 ###### Fixed cost
 
-This accounting term is meant to denote costs that do not vary within a certain period of time, usually one year, primarily interest expense and depreciation expense. This term is often misapplied to denote costs associated with plant and equipment (which are themselves denoted as fixed assets in accounting terms) or other utility costs that cannot be changed in the short term. From a regulatory and economics perspective, the concept of fixed costs is irrelevant. For purposes of regulation, all utility costs are variable in the long run. Even the costs associated with seemingly fixed assets, such as the distribution system, are not fixed, even in the short run. Utilities are constantly upgrading and replacing distribution
-
-facilities throughout their systems as more customers are served and customer usage increases, and efforts to reduce demand can have immediate impacts on those costs.
+This accounting term is meant to denote costs that do not vary within a certain period of time, usually one year, primarily interest expense and depreciation expense. This term is often misapplied to denote costs associated with plant and equipment (which are themselves denoted as fixed assets in accounting terms) or other utility costs that cannot be changed in the short term. From a regulatory and economics perspective, the concept of fixed costs is irrelevant. For purposes of regulation, all utility costs are variable in the long run. Even the costs associated with seemingly fixed assets, such as the distribution system, are not fixed, even in the short run. Utilities are constantly upgrading and replacing distribution [PDF p. 265 | printed p. 263] facilities throughout their systems as more customers are served and customer usage increases, and efforts to reduce demand can have immediate impacts on those costs.
 
 ###### Flat volumetric rate
 
@@ -350,6 +377,8 @@ Any equipment or device that supplies energy to the electric system. Generation 
 
 A power plant that is owned by an entity other than an electric utility. May also be referred to as a non-utility generator.
 
+[PDF p. 266 | printed p. 264]
+
 ###### Independent system operator _Abbreviation:_ **ISO**
 
 A non-utility entity that has multi-utility or regional responsibility for ensuring an orderly wholesale power market, the management of transmission lines and the dispatch of power resources to meet utility and non-utility needs. All existing ISOs also act as regional transmission organizations, which control and operate the transmission system independently of the local utilities that serve customers. This usually includes control of the dispatch of generating units and calls on demand response resources over the course of a day or year. In regions without an ISO, less formal entities and markets exist for wholesale trading and regional transmission planning. See also **regional transmission organization** .
@@ -400,9 +429,7 @@ A meter capable of measuring and recording a customer’s detailed consumption d
 
 ###### Load
 
-The combined demand for electricity placed on the system. The term is sometimes used in a generalized sense to simply denote the aggregate of customer energy usage on the system,
-
-or in a more specific sense to denote the customer demand at a specific point in time.
+The combined demand for electricity placed on the system. The term is sometimes used in a generalized sense to simply denote the aggregate of customer energy usage on the system, [PDF p. 267 | printed p. 265] or in a more specific sense to denote the customer demand at a specific point in time.
 
 ###### Load factor
 
@@ -443,6 +470,8 @@ The cost of augmenting output. Short-run marginal costs are the incremental expe
 ###### Marginal cost revenue requirement _Abbreviation:_ **MCRR**
 
 An output in a marginal cost of service study, where the marginal unit costs for each element of the electric system are multiplied by the billing determinants for each class to produce a class marginal cost revenue requirement for each element. These can be aggregated to produce a system MCRR. It is only happenstance if the system MCRR equals the embedded cost revenue requirement, so the elements of the MCRR can be used in different ways to allocate embedded costs among the customer classes. See also **reconciliation** .
+
+[PDF p. 268 | printed p. 266]
 
 ###### Megawatt _Abbreviation:_ **MW**
 
@@ -496,6 +525,8 @@ The maximum demand of a customer, group of customers, customer class, distributi
 
 The period of time that is not on-peak. During off-peak periods, system costs are generally lower and system reliability is not an issue, and only generating units with lower short-run variable costs are operating. This may include high-load hours if nondispatchable generation, such as solar photovoltaic energy, is significant within the service area. Time-of-use rates typically have off-peak prices that are lower than on-peak prices.
 
+[PDF p. 269 | printed p. 267]
+
 ###### On-peak
 
 The period of time when storage units and generating units with higher short-run variable costs are operating to supply energy or when transmission or distribution system congestion is present. During on-peak periods, system costs are higher than average and reliability issues may be present. Many rate designs and utility programs are oriented to reducing on-peak usage. Planning and investment decisions are often driven by expectations about the timing and magnitude of peak demand during the on-peak period. Time-of-use rates typically have on-peak prices that are higher than off-peak prices.
@@ -535,6 +566,8 @@ An approach to determining the utility revenue requirement that departs from the
 ###### Postage stamp pricing
 
 The practice of having separate sets of prices for a relatively small and easily identifiable number of customer classes. Every customer in a given customer class generally pays the same prices regardless of location in a utility’s service territory, although separate prices may exist for subclasses in some cases.
+
+[PDF p. 270 | printed p. 268]
 
 ###### Power factor
 
@@ -588,6 +621,8 @@ This federal law, enacted in 1978 and amended several times, contains two essent
 
 An annualized cost expressed in percentage terms that reflects the annual “mortgage” payment that would be required to pay off a capital investment at the utility’s real (net of inflation) cost of capital over its expected lifetime. It is used in long-run marginal cost and total system long-run incremental cost studies.
 
+[PDF p. 271 | printed p. 269]
+
 ###### Reconciliation/revenue reconciliation/
 
 ###### cost reconciliation
@@ -627,6 +662,8 @@ A restructured market in which customers are allowed to or must choose their own
 ###### Revenue requirement
 
 The annual revenues that the utility is entitled to collect (as modified by adjustment clauses). It is the sum of operations and maintenance expenses, depreciation, taxes and a return on rate base. In most contexts, “revenue requirement” and “cost of service” are synonymous.
+
+[PDF p. 272 | printed p. 270]
 
 ###### Rider/tariff rider
 
@@ -669,6 +706,8 @@ A rate design method that designate much or all of the distribution system as a 
 ###### Stranded costs
 
 Utility costs for plant that is no longer used or no longer economic. This may include fossil-fueled power plants made uneconomic by new generating technologies; assets that fail to perform before they are fully depreciated; or distribution facilities built to serve customers who are no longer taking utility service, such as failed industrial sites and customers choosing self-generation as a replacement for utility service. Some regulators allow recovery of stranded costs from continuing customers and the inclusion of these costs in the cost of service methodology.
+
+[PDF p. 273 | printed p. 271]
 
 ###### Substation
 
@@ -720,9 +759,7 @@ The cost of replicating the current utility system with new power supply, transm
 
 ###### Used and useful
 
-A determination on whether investment in utility infrastructure may be recovered in rate base, such that new rates will enable the utility to recover those costs in the future
-
-when that plant will be providing service (i.e., when it will be used and useful). In general, “used” means that the facility is actually providing service, and “useful” means that, without the facility, either costs would be higher or the quality of service would be lower.
+A determination on whether investment in utility infrastructure may be recovered in rate base, such that new rates will enable the utility to recover those costs in the future [PDF p. 274 | printed p. 272] when that plant will be providing service (i.e., when it will be used and useful). In general, “used” means that the facility is actually providing service, and “useful” means that, without the facility, either costs would be higher or the quality of service would be lower.
 
 ###### Variable resources/variable renewable resources/ intermittent resources
 
@@ -759,5 +796,9 @@ The amount of energy generated or consumed with 1 watt of power over the course 
 ###### Zero-intercept approach/zero-intercept method
 
 A method for classifying distribution system costs between customer-related and demand- or energy-related that uses a cost regression calculation to compare components of different size actually used in a system to estimate the costs of a hypothetical zero-capacity distribution system.
+
+[PDF p. 275]
+
+[PDF p. 276]
 
 Regulatory Assistance Project (RAP)® 50 State Street, Suite 3 802-223-8199 Belgium · China · Germany · India · United States Montpelier, VT 05602 raponline.org USA

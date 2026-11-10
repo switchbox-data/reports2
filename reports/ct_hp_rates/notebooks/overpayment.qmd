@@ -773,6 +773,28 @@ Path("../cache/overpayment_report_variables.pkl").write_bytes(pickle.dumps(repor
 print(f"\nExported {len(report_vars)} report vars to cache/overpayment_report_variables.pkl")
 ```
 
+CIEC-13 asks about heat pump customers whose usage differs from the average. Rate HP is calibrated so the average fossil-fuel customer's T&D bill rises by their incremental marginal cost; this cell records how many individual customers would instead see their annual T&D bill fall after installing, for `ciec_responses.qmd`.
+
+```{python}
+#| label: cache-ciec-13
+
+import pickle
+
+_ciec13_op = all_overpayment[("Fair seasonal rate", "Annual")].filter(
+    pl.col("heating_type_v2").is_in(list(FAIR_RATE_HTS))
+)
+_ciec13_w = _ciec13_op["weight"].sum()
+ciec_13_vars = {
+    "pct_bill_decrease": _ciec13_op.filter(pl.col("bill_delta") < 0)["weight"].sum() / _ciec13_w,
+    "pct_bill_decrease_100": _ciec13_op.filter(pl.col("bill_delta") < -100)["weight"].sum() / _ciec13_w,
+    "pct_bill_increase_100": _ciec13_op.filter(pl.col("bill_delta") > 100)["weight"].sum() / _ciec13_w,
+    "mean_bill_delta": (_ciec13_op["bill_delta"] * _ciec13_op["weight"]).sum() / _ciec13_w,
+    "mean_delta_mc": (_ciec13_op["delta_mc"] * _ciec13_op["weight"]).sum() / _ciec13_w,
+}
+Path("../cache/ciec_13_vars.pkl").write_bytes(pickle.dumps(ciec_13_vars))
+ciec_13_vars
+```
+
 ## Diagnostic: Rate HP residual overpayment by income and fuel
 
 The fair seasonal rate (Rate HP) zeroes overpayment on average, but individual

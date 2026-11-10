@@ -1,6 +1,23 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 16-25 (printed pp. 14-23), Introduction; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 16-25 (printed pp. 14-23) of the manual, Introduction; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back._
+
+[PDF pp. 1-15 not transcribed: front matter to front matter, in 00_front_matter.md to 00_front_matter.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 16 | printed p. 14]
+
 ## Introduction and Overview
 
-he purpose of this manual is to provide a comprehensive reference on electric **T** utility **cost allocation** for a wide range of practitioners, including utilities, intervenors, utility regulators and other policymakers. Cost allocation is one of the major steps in the traditional regulatory process for setting utility rates. In this step, the regulators are primarily determining how to equitably divide a set amount of costs, typically referred to as the **revenue requirement** , among several broadly defined classes of ratepayers. The predominant impact of different cost allocation techniques is which group of customers pays for which costs. In many cases, this is the share of costs paid by residential customers, commercial customers and industrial customers.
+The purpose of this manual is to provide a comprehensive reference on electric utility **cost allocation** for a wide range of practitioners, including utilities, intervenors, utility regulators and other policymakers. Cost allocation is one of the major steps in the traditional regulatory process for setting utility rates. In this step, the regulators are primarily determining how to equitably divide a set amount of costs, typically referred to as the **revenue requirement** , among several broadly defined classes of ratepayers. The predominant impact of different cost allocation techniques is which group of customers pays for which costs. In many cases, this is the share of costs paid by residential customers, commercial customers and industrial customers.
 
 Charting a new path on cost allocation is an important part of creating the fair, efficient and clean electric system of the future .
 
@@ -22,6 +39,8 @@ Figure 1. Simplified rate-making process
 
 Determine Net rate base<br>revenue (Plant in service – depreciation reserve)<br>requirement x<br>Rate of return<br>+<br>Depreciation expense<br>(Plant in service x depreciation rate)<br>+<br>Operating expense<br>(Fuel + purchased power + labor + labor overheads + supplies + services + income taxes)<br>+<br>Other taxes<br>=<br>$ millions<br>Allocate<br>costs among<br>customer Residential Commercial Industrial Street lighting<br>classes<br>Dollars Cents Dollars Cents Dollars Dollars Dollars<br>Design per Cents per kWh per Cents per kWh per Cents Cents per kW per light<br>retail rates month per kWh off-peak month per kWh off-peak month per kWh per kWh monthly per<br>peak peak peak off-peak month<br>
 
+[PDF p. 17 | printed p. 15]
+
 Marginal cost of service studies, in contrast, look at how costs are changing over time in response to changes in customer usage.
 
 Regardless of which framework will be used, an enormous amount of data is typically collected first, starting with the costs that make up the revenue requirement, **energy** usage by **customer class** and measurements of demand at various times and often extending to data on **generation** patterns. Furthermore, when the quantitative **cost of service study** is completed, regulators typically don’t take the results as the final word, often making adjustments for a wide range of policy considerations after the fact.
@@ -42,6 +61,8 @@ Figure 2. Traditional embedded cost of service study flowchart
 
 Revenue<br>requirement<br>F unctionalizatio n<br>Billing and<br>Generation Transmission Distribution customer<br>service<br>Classif i cation<br>Demand-related Energy-related Customer-related<br>Allocation<br>Residential Commercial Industrial Street lighting<br>
 
+[PDF p. 18 | printed p. 16]
+
 - _The Economics of Regulation: Principles and Institutions_ by Alfred E. Kahn (first edition Volume 1, 1970, and Volume 2, 1971; second edition, 1988).
 
 - _The Regulation of Public Utilities_ by Charles F. Phillips (1984).
@@ -55,6 +76,8 @@ other works, including RAP’s publication _Electricity Regulation in the United
 Since the establishment of electric utility regulation in the United States in the early 20th century, the electric system has undergone periods of great change every several decades. Initial provision of electricity service in densely populated areas was followed by widespread rural electrification in the 1930s and 1940s. In the 1950s and 1960s, **vertically integrated utilities** , owning generation, **transmission** and **distribution** simultaneously, were the overwhelmingly dominant form of electricity service across the entire country.
 
 However, the oil crisis in the 1970s sparked a chain reaction in the electric industry. That included a new focus by utilities on **baseload generation** plants, typically using coal or nuclear power. At the same time, the federal government began to open up competition in the electric system with the passage of the **Public Utilities Regulatory Policy Act** (PURPA)
+
+[PDF p. 19 | printed p. 17]
 
 of 1978. PURPA dictated that each state utility commission consider a series of standards to reform rate-making practices, including **cost of service** .[^1] Nearly every state adopted the recommendation that rates should be based on the cost of service, but neither PURPA nor state regulators were clear about what that should mean. This has led to a fertile legal and policy discussion about the cost of service, how to calculate it and how to use it. PURPA also required that utilities pay for power from **independent power producers** on set terms.
 
@@ -86,8 +109,6 @@ Figure 3 illustrates the dramatic increase in wind and solar generation in the U
 
 Traditional cost allocation techniques classify all utility costs as **energy-related** , **demand-related** or **customerrelated** . These categories were always simplifications, but they must be reevaluated given new developments. Some legacy cost allocation methods would have treated wind and solar generation entirely as a demand-related cost simply because they are capital investments without any variable **fuel costs** . However, wind and solar generation does not necessarily provide firm **capacity** at peak times as envisioned by the legacy frameworks, and it displaces the need for fuel supply, so it doesn’t fit as a demand-related cost.
 
-[^1]: The PURPA rate-making standards are set forth in 16 U .S .C . § 2621 . Congress in 2005 adopted a specific requirement that cost of service studies take time of usage into account; this is set forth in 16 U .S .C . § 2625 .
-
 Table 1. Types of meters and percentage of customers with each in 2017
 
 |                                             | Residential | Commercial | Industrial |
@@ -97,6 +118,10 @@ Table 1. Types of meters and percentage of customers with each in 2017
 | **Older systems**                           | 18 .3%      | 23 .5%     | 27 .5%     |
 
 Data source: U.S. Energy Information Administration. _Annual Electric Power Industry Report, Form EIA-861: 2017_ [Data file]. Retrieved from https://www.eia.gov/electricity/data/eia861/
+
+[^1]: The PURPA rate-making standards are set forth in 16 U .S .C . § 2621 . Congress in 2005 adopted a specific requirement that cost of service studies take time of usage into account; this is set forth in 16 U .S .C . § 2625 .
+
+[PDF p. 20 | printed p. 18]
 
 In addition, many utilities now collect much more granular data than was possible in the past, due to the widespread installation of **advanced metering infrastructure** (AMI) in many parts of the country and other advancements in the monitoring of the electric system. As a result, utility analysts often have access to historical hourly usage data for the entire utility system, each distribution **circuit** , each customer class and, increasingly, each customer. Some **automated meter reading** (AMR) systems also allow the collection of hourly data, typically read once per billing cycle. Table 1 shows the recent distribution of meter types across the country, based on data from the U.S. Energy Information Administration. Improved data collection allows for a wide range of new cost allocation techniques.
 
@@ -124,9 +149,7 @@ In that spirit, we would like to highlight the following current best practices 
 
 - Treat as customer-related only those costs that actually vary with the number of customers, generally known as the **basic customer method** .
 
-- Apportion all shared generation, transmission and distribution assets and the associated operating expenses
-
-  - on measures of usage, both energy- and demand-based.
+- Apportion all shared generation, transmission and distribution assets and the associated operating expenses [PDF p. 21 | printed p. 19] on measures of usage, both energy- and demand-based.
 
 - Ensure broad sharing of overhead investments and **administrative and general (A&G) costs** , based on usage metrics.
 
@@ -172,6 +195,8 @@ Our power system is changing, and cost allocation methods must also change to re
 
 - Storage is a new form of peaking resource — one that can be located almost anywhere and has low variable costs. Storage can help avoid generation, transmission and distribution **capacity-related costs** . The total costs of storage need to be assigned to the proper time period for equitable treatment of customer classes.
 
+[PDF p. 22 | printed p. 20]
+
 - Consumer-sited resources, including solar and storage, are becoming essential components of the modern **grid** . The **distribution system** may also begin to serve as a gathering system for power flowing from locations of local generation to other parts of the utility service territory, the opposite of the historical top-down electric delivery model.
 
 - **Smart grid** systems make it possible to provide better service at lower cost by including targeted energy efficiency and demand response measures to meet loads at targeted times and places and other measures to take advantage of improved data and operational capabilities. Unfortunately, older techniques, even those resulting
@@ -201,6 +226,8 @@ include:
 Figure 4. Modern embedded cost of service study flowchart
 
 Revenue<br>requirement<br>Functionalization<br>Billing, customer<br>Generation Transmission Distribution service, and<br>A&G costs<br>Time assignment<br>Site<br>Peak hours Intermediate All hours, infrastructure,<br>hours including off-peak billing and<br>collection<br>Allocation<br>Residential Commercial Industrial Street lighting<br>
+
+[PDF p. 23 | printed p. 21]
 
 - should be assigned to the hours in which the relevant facilities are actually used and to all hours across the year, not solely based on measurements in a subset of these hours.
 
@@ -240,9 +267,11 @@ The conclusion wraps up with final thoughts. Each part of this manual ends with 
 
 cited. Terms defined in the glossary are set off in boldface type where they first appear in the text.
 
+###### Visual display of cost allocation results
+
 [^2]: For a more detailed handbook on the structure and operation of the industry, see Lazar, J . (2016) . _Electricity Regulation in the United States: A Guide_ (2nd ed .) . Montpelier, VT: Regulatory Assistance Project . Retrieved from https://www .raponline .org/knowledge-center/electricity-regulationin-the-us-a-guide-2/
 
-###### Visual display of cost allocation results
+[PDF p. 24 | printed p. 22]
 
 Like much of utility regulation, visual display of information in cost allocation tends to be dry and difficult to understand. Much of the analytical information for cost allocation tends to be displayed in large tables that only experts can interpret. Simple flowcharts, such as Figure 2 on Page 16, are also quite common and convey little substantive information. Nevertheless, it should
 
@@ -251,6 +280,8 @@ be possible to convey cost allocation results in a meaningful way that a wider a
 ##### Figure 5. Sankey diagram for traditional embedded cost of service study
 
 Revenue requirement: 1,500<br>Billing &<br>Generation: Transmission: Distribution: customer<br>service:<br>650 250 450<br>150<br>Customer-<br>Demand-related: Energy-related: related:<br>625 675<br>200<br>Street<br>Residential: Commercial: Industrial: lighting:<br>530 460 415 95<br>
+
+[PDF p. 25 | printed p. 23]
 
 A Sankey diagram can display a tremendous amount of information in a way that is reasonably understandable. At the top, it begins with the overall revenue requirement, then splits into three functions. Next, each function splits into the different classifications, which are then allocated by customer class. At each step, the overall costs stay constant, but the relative sizes for each function, classification and customer class are readily apparent. Additionally, the colors in the diagram can be used to indicate additional distinctions. Figure 6 is a Sankey diagram for
 
@@ -261,3 +292,5 @@ As the Sankey diagram becomes more complex, it can be less intuitive. Yet it is 
 Figure 6. Sankey diagram for modern embedded cost of service study
 
 Revenue requirement: 1,500<br>Customer service,<br>Generation: Transmission: Distribution:<br>billing and A&G:<br>600 200 400<br>300<br>Site infrastructure,<br>Peak hours: Intermediate hours: All hours: billing and<br>250 375 635 collection:<br>240<br>Street<br>Residential: Commercial: Industrial: lighting:<br>500 460 400 140<br>
+
+[PDF pp. 26-276 not transcribed: Chapter 1 to Glossary and back cover, in 01_economic_regulation.md to glossary.md of this folder]

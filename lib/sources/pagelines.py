@@ -195,6 +195,7 @@ class ExtractLine:
     end: int | None = None
     footnote: str | None = None
     lineno: int = 0  # line in the markdown file
+    prefix: str = ""  # markdown block prefix before the ``{n}`` marker: indent, ``2. ``, ``- ``, ``## ``
 
 
 @dataclass
@@ -229,7 +230,7 @@ def _unit(text: str, page: int | None, printed: str | None, lineno: int, first_p
     if lm:
         start = int(lm.group(2))
         end = int(lm.group(3)) if lm.group(3) else start
-        return ExtractLine(page, printed, lm.group(4), start=start, end=end, lineno=lineno)
+        return ExtractLine(page, printed, lm.group(4), start=start, end=end, lineno=lineno, prefix=lm.group(1))
     return ExtractLine(page, printed, text, lineno=lineno)
 
 

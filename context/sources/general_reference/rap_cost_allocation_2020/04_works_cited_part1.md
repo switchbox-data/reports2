@@ -1,3 +1,20 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 51-52 (printed pp. 49-50), Works Cited in Part I; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 51-52 (printed pp. 49-50) of the manual, Works Cited in Part I; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on._
+
+[PDF pp. 1-50 not transcribed: front matter to Chapter 4, in 00_front_matter.md to 04_past_present_future.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 51 | printed p. 49]
+
 ## Works Cited in Part I
 
 Association of Electric Companies of Texas Inc . (2019) . _Electricity 101_ . Retrieved from http://www .aect .net/ documents/2019/AECT%20Electricity%20101%202019 .pdf
@@ -28,6 +45,8 @@ Linvill, C ., Lazar, J ., Dupuy, M ., Shipley, J ., and Brutkoski, D . (2017) . 
 
 Linvill, C ., Shenot, J ., and Lazar, J . (2013) . _Designing distributed generation tariffs well: Fair compensation in a time of transition._ Montpelier, VT: Regulatory Assistance Project . Retrieved from https://www .raponline .org/knowledgecenter/designing-distributed-generation-tariffs-well/
 
+[PDF p. 52 | printed p. 50]
+
 Littell, D ., Kadoch, C ., Baker, P ., Bharvirkar, R ., Dupuy, M ., Hausauer, B ., Linvill, C ., Midgen-Ostrander, J ., Rosenow, J ., Xuan, W ., Zinaman, O ., and Logan, J . (2017) . _Next-generation performance-based regulation: Emphasizing utility performance to unleash power sector innovation_ (NREL/TP-6A50-68512) . Montpelier, VT and Golden, CO: Regulatory Assistance Project and National Renewable Energy Laboratory . Retrieved from https://www .raponline .org/knowledge-center/next-generation-performance-based-regulation-emphasizing-utilityperformance-unleash-power-sector-innovation/
 
 National Association of Regulatory Utility Commissioners . (1992) . _Electric utility cost allocation manual._ Washington, DC: Author . Retrieved from https://pubs .naruc .org/pub/53A3986F-2354-D714-51BD-23412BCFEDFD
@@ -45,3 +64,5 @@ U .S . Energy Information Administration . (2019, March) . _Monthly energy revie
 Xcel Energy . (2018, October 2-4) . _Leading the energy future_ [Presentation at the Wolfe Research Conference] . Retrieved from investors .xcelenergy .com/file/4025308/Index?KeyFile=1500113448
 
 Zummo, P . (2018) . _Coast to coast, public power costs less._ Arlington, VA: American Public Power Association . Retrieved from https://www .publicpower .org/periodical/article/coast-coast-public-power-costs-less
+
+[PDF pp. 53-276 not transcribed: Chapter 5 to Glossary and back cover, in 05_analytical_elements.md to glossary.md of this folder]

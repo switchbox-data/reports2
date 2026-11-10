@@ -195,8 +195,10 @@ from types import SimpleNamespace
 
 v = SimpleNamespace(**pickle.loads(Path("cache/report_variables.pkl").read_bytes()))
 
+
 def dollar(x, accuracy=0):
     return f"${x:,.{accuracy}f}"
+
 
 def pct(x, accuracy=0):
     return f"{x * 100:,.{accuracy}f}%"

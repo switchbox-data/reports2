@@ -123,6 +123,39 @@ def _build_styles_xml() -> str:
             ppr='<w:keepNext/><w:spacing w:before="240" w:after="60" w:line="240" w:lineRule="auto"/>',
         )
     )
+    add(
+        _style(
+            "IRTestimonyHeading",
+            "IR Testimony Heading",
+            custom=True,
+            ppr='<w:spacing w:before="120" w:after="80" w:line="240" w:lineRule="auto"/>'
+            '<w:ind w:left="360" w:right="0"/>',
+            rpr='<w:i/><w:iCs/><w:color w:val="595959"/><w:sz w:val="20"/><w:szCs w:val="20"/>',
+        )
+    )
+    add(
+        _style(
+            "IRTestimonyPassage",
+            "IR Testimony Passage",
+            custom=True,
+            ppr='<w:spacing w:before="160" w:after="40" w:line="240" w:lineRule="auto"/>'
+            '<w:ind w:left="360" w:right="0"/>',
+            rpr='<w:b/><w:bCs/><w:color w:val="404040"/><w:sz w:val="20"/><w:szCs w:val="20"/>',
+        )
+    )
+    # IRTestimonyLine kept for fallback; normal rows use a two-column OpenXML table in the Lua filter.
+    add(
+        _style(
+            "IRTestimonyLine",
+            "IR Testimony Line",
+            based_on="BodyText",
+            custom=True,
+            ppr='<w:tabs><w:tab w:val="left" w:pos="1080"/></w:tabs>'
+            '<w:spacing w:before="0" w:after="40" w:line="240" w:lineRule="auto"/>'
+            '<w:ind w:left="1080" w:hanging="1080" w:right="0"/>',
+            rpr='<w:color w:val="404040"/><w:sz w:val="20"/><w:szCs w:val="20"/>',
+        )
+    )
 
     add(
         _style(

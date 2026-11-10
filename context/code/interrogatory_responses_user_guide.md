@@ -7,7 +7,7 @@ How to answer another party's interrogatories or data requests and get Word file
 1. **Create the file:** `just new-interrogatory-responses reports/<report>/<name>.qmd`
 2. **Fill in the form** at the top of the file (the `interrogatory_responses:` block).
 3. **Add each question**, copied exactly, then **check** it: `just check-interrogatory-responses reports/<report>/<name>.qmd`
-4. **Write the responses.**
+4. **Write the responses**, with every citation in a footnote in the testimony's format, even in a first draft. Run the check again: it also fails on inline citations, "p." pinpoints and footnote formatting mistakes.
 5. **Render for review:** from the report folder, `just interrogatories` (Connecticut report: `ciec_responses.qmd`).
 6. **Render for filing:** `just interrogatories-split`, which writes one Word file per response into `filing/`.
 
@@ -49,13 +49,14 @@ Each response is a level-2 heading carrying its label, then a `question` block a
 Please refer to Velez Direct Testimony at page 6, lines 11-23.
 
 a. Please provide Mr. Velez’s estimate of ...
-b. Please provide Mr. Velez’s estimate of ...
 :::
 
 ::: {.response}
 a. ...
 :::
 ```
+
+When CIEC cites Velez Direct, set `testimony_extract` in the frontmatter (path to the testimony markdown extract), then run `just insert-interrogatory-testimony-refs reports/<report>/<name>.qmd` (or `uv run python -m lib.just.interrogatory insert-refs <path>`). That command **inserts or replaces** the entire `::: {.referenced-testimony}` block after each “Please refer to…” line — you do not write passage titles, divs, or line text by hand. Re-run it whenever the cite line or testimony extract changes. Word output adds the gray _Referenced testimony (not part of the request)_ label automatically; passage titles and line styling are handled at render time. `check` strips the machine block when matching questions to the requests extract and confirms every cited range resolves in the testimony extract.
 
 - The label is printed exactly as you type it, in the header (`CIEC-1` or `CIEC-001`).
 - A different witness for one response: `## CIEC-5 {witness="Name"}`.

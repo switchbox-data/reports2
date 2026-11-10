@@ -261,7 +261,10 @@ def uncap_title(title: str, names: Iterable[str] = (), acronyms: Iterable[str] =
     for n, i in enumerate(words):
         if not selected[n]:
             continue
-        lead, core, trail = re.match(r"^([^A-Za-z0-9]*)(.*?)([^A-Za-z0-9/]*)$", tokens[i]).groups()  # type: ignore[union-attr]
+        token_match = re.match(r"^([^A-Za-z0-9]*)(.*?)([^A-Za-z0-9/]*)$", tokens[i])
+        if token_match is None:
+            continue
+        lead, core, trail = token_match.groups()
         if core:
             after_colon = n > 0 and tokens[words[n - 1]].endswith(":")
             core = _case_word(core, n == 0 or after_colon, n == len(words) - 1, acr)

@@ -1,6 +1,23 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 34-44 (printed pp. 32-42), Chapter 3; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 34-44 (printed pp. 32-42) of the manual, Chapter 3; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back._
+
+[PDF pp. 1-33 not transcribed: front matter to Chapter 2, in 00_front_matter.md to 02_rate_making.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 34 | printed p. 32]
+
 ## 3. Basic Components of the Electric System
 
-he electric utility system, for general descriptive purposes and for regulatory and legal purposes, **T** typically is divided into several categories of activities and costs, including generation, transmission, distribution, billing and customer service, and A&G costs. In a vertically integrated utility, a single entity owns and operates all of these, although many other forms of market structure and ownership exist in the United States. Each of these segments includes capital investments and labor and nonlabor operating expenses. Each of these segments is operated and regulated according to different needs and principles.
+The electric utility system, for general descriptive purposes and for regulatory and legal purposes, typically is divided into several categories of activities and costs, including generation, transmission, distribution, billing and customer service, and A&G costs. In a vertically integrated utility, a single entity owns and operates all of these, although many other forms of market structure and ownership exist in the United States. Each of these segments includes capital investments and labor and nonlabor operating expenses. Each of these segments is operated and regulated according to different needs and principles.
 
 These distinctions at each level of the power system are important to cost allocation, and the terminology is important to understand. Many of the arguments about proper allocation of costs hinge on the purpose for, and capabilities of, capital investments and the nature of operating expenses. Thus, having a correct understanding of the purpose, limitations and current usage of each major element of the system is important to resolve key cost allocation questions. Figure 7 is a diagram of a traditional electric power system, with one-way power flow from a large central generation facility through the
 
@@ -17,6 +34,8 @@ All decisions that a utility makes have consequences for its overall cost of ser
 Figure 7. Illustrative traditional electric system
 
 Generation Subtransmission<br>customer<br>Transmission Transmission lines 26 kV or 69 kV<br>765, 500, 230 and 138 kV<br>Distribution<br>Substation Primary<br>step-down customer<br>transformer<br>13 kV or 4 kV<br>Line transformer<br>Generating Generator Transmission<br>station step-up customer Secondary<br>transformer 138 kV or 230 kV customers<br>120 V or 240 V<br>
+
+[PDF p. 35 | printed p. 33]
 
 Source: Adapted from U.S.-Canada Power System Outage Task Force. (2004). _Final Report on the August 14, 2003 Blackout in the United States and Canada: Causes and Recommendations_
 
@@ -38,6 +57,8 @@ Combustion turbines, which are similar to jet engines, use heated gases from the
 
 [^12]: Some sources, including the FERC accounts and the 1992 NARUC _Electric Utility Cost Allocation Manual_ , use the term “production” instead of “generation .” This manual uses the term “generation” and generally includes exports from storage facilities under this category .
 
+[PDF p. 36 | printed p. 34]
+
 **Combined cycle units** include combustion turbines but capture the waste heat to boil water, produce steam and spin an extra turbine to generate electricity. As a result, combined cycle units have higher capital costs than combustion turbines but generate more electricity for each unit of fuel burned.
 
 Hydroelectric plants use moving water, either released from reservoirs or running in rivers, to spin turbines and generate electricity. These units vary widely in their seasonal generation patterns, storage capacity and dispatchability. Many, but not all, hydroelectric plants are easily dispatchable to follow load but may be constrained by minimum and maximum allowed river flows below the facility.
@@ -56,9 +77,7 @@ Some plants, mainly steam, combustion turbine and combined cycle, can be set up 
 
 Generation facilities are frequently categorized by their intended purpose and other characteristics. This terminology is evolving and does not necessarily reflect a permanent condition. For example, several types of units traditionally have been characterized as baseload because they are intended to run nearly all the time. This includes most steam-electric combustion units, particularly those run on coal. This also includes nuclear units, which run nearly all of the time with the exception of long refueling periods every few years that can last for months. Historically, **baseload units** had higher capital costs, which could be offset by lower fuel costs given their ability to run constantly. However, as fuel price patterns have changed, this is not always the case, particularly when natural gas is cheaper than coal.
 
-Several types of plants are characterized as **peakers** or peaking units because they are flexible and dispatched easily at times of peak demand. Combustion turbines are the prime
-
-example of a peaking unit. Historically, these units had lower capital costs per unit of capacity and higher fuel costs per kWh generated. Again, this may no longer be true as fuel prices have changed.
+Several types of plants are characterized as **peakers** or peaking units because they are flexible and dispatched easily at times of peak demand. Combustion turbines are the prime [PDF p. 37 | printed p. 35] example of a peaking unit. Historically, these units had lower capital costs per unit of capacity and higher fuel costs per kWh generated. Again, this may no longer be true as fuel prices have changed.
 
 Plants that are neither baseload nor peaking units are often referred to as **intermediate units** . They run a substantial portion of the year but not the whole year or just peak hours. “Midmerit” and “cycling” are commonly used synonyms for these types of generators. Over the last two decades, natural gas combined cycle facilities often filled this role in many parts of the country, but changing fuel costs and environmental regulations have altered the typical operating roles of many types of generation.
 
@@ -94,9 +113,7 @@ Transmission substations connect the generators to the transmission system and t
 
 #### 3.1.3 Distribution
 
-Distribution substations and lines are required for the vast majority of customers who take service at the
-
-distribution level. The distribution system receives power primarily from the transmission system through distribution substations, which convert power from higher transmission-level voltages down to distribution-level voltages. Some power may be delivered to the distribution system directly from small generators, such as small hydro plants and distributed generation. Distribution substations are smaller versions of transmission substations.[^13] These are often connected by subtransmission lines, which may be functionalized as either transmission or distribution in cost studies. Collectively, the transmission and distribution systems are referred to as T&D or as the delivery system.
+Distribution substations and lines are required for the vast majority of customers who take service at the [PDF p. 38 | printed p. 36] distribution level. The distribution system receives power primarily from the transmission system through distribution substations, which convert power from higher transmission-level voltages down to distribution-level voltages. Some power may be delivered to the distribution system directly from small generators, such as small hydro plants and distributed generation. Distribution substations are smaller versions of transmission substations.[^13] These are often connected by subtransmission lines, which may be functionalized as either transmission or distribution in cost studies. Collectively, the transmission and distribution systems are referred to as T&D or as the delivery system.
 
 From each substation, one or more distribution feeders operating between 2 kV and 34 kV, known as **primary voltage** lines, run as far as a few miles, typically along roadways. These are mostly on wooden utility poles shared with telephone and cable services or in underground conduit. A single pole or underground route may carry multiple circuits. Each feeder may branch off to serve customers on side streets. Although distribution feeders leaving the substations are usually three-phase, like the transmission lines, branches that do not carry much load may be built as single-phase lines with just two wires.
 
@@ -108,13 +125,15 @@ Some secondary voltage customers will be served directly by a **service line** f
 
 Figure 9 on the next page illustrates one relatively common arrangement. In this example, each transformer serves two houses directly with service lines, and feeds secondary lines from which service lines run to two or three other houses on the same side of the street and four or five houses across the street. The illustration is for an underground system. The basic layout of an overhead system would be similar. However, since it is easier to string overhead service lines across the street than to dig lines under the street, service lines might run directly from an overhead transformer to one or two houses across the street, and the secondary might just run on the transformers’ side of the street, with service lines crossing the street to additional customers. The key factor here for cost allocation purposes is that even secondary voltage lines are often shared among multiple customers and are not a direct cost responsibility of any one of them individually.
 
-[^13]: In some cases, a higher-voltage distribution line (e .g ., 13 kV) may power a lower-voltage line (e .g ., 4 kV) through a substation .
-
 ##### Figure 9. Underground distribution circuit with radial secondary lines
 
 Pad-mounted transformer Primary Secondary Service<br>distribution line distribution line line<br>Riser poles Open point<br>
 
 Note: Overhead primary lines run down the riser poles and go underground .
+
+[^13]: In some cases, a higher-voltage distribution line (e .g ., 13 kV) may power a lower-voltage line (e .g ., 4 kV) through a substation .
+
+[PDF p. 39 | printed p. 37]
 
 Figure 10 shows a portion of a similar distribution circuit but highlights the difference that in this case the secondary lines are networked, meaning power can flow to the relevant customers over both transformers simultaneously. This allows each transformer to serve as backup for the others in that network and allows for more flexible operation to minimize losses and prevent overloads.
 
@@ -129,6 +148,8 @@ The final step in the delivery of power from the utility to the customer is the 
 For primary voltage customers, the service drop is a line at the primary voltage, attached to one or more phases of primary feeder. For secondary customers, the service drop may run from the transformer to the customer or from a convenient point along the secondary lines.
 
 [^14]: Since overhead service lines often slope down from their connection on the utility pole to the attachment point on the customer’s building, they tend to literally “drop” the service down to the customer .
+
+[PDF p. 40 | printed p. 38]
 
 ##### Figure 11. Secondary distribution pole layout
 
@@ -148,9 +169,7 @@ Generator<br>Losses in<br>step-up<br>transformers<br>Losses in<br>transmission l
 
 are around 7%, but marginal losses can be much higher, more than 20% during peak periods (Lazar and Baldwin, 2011, p. 1).
 
-Reducing a customer’s load (or serving that load with an on-site generation or storage resource) reduces the losses in the service drop from the street to the customer, the secondary line (if any) serving that customer, the line transformers, the distribution feeder, the distribution substation, and transmission lines and transmission substations. Lower loads,
-
-on-site generation and storage also reduce the generation capacity and reserve requirements, meaning that a 1-kW reduction in load at the customer’s premises can avoid nearly 1.5 kWs of generating capacity at a central source (Lazar and Baldwin, 2011, p. 7).
+Reducing a customer’s load (or serving that load with an on-site generation or storage resource) reduces the losses in the service drop from the street to the customer, the secondary line (if any) serving that customer, the line transformers, the distribution feeder, the distribution substation, and transmission lines and transmission substations. Lower loads, [PDF p. 41 | printed p. 39] on-site generation and storage also reduce the generation capacity and reserve requirements, meaning that a 1-kW reduction in load at the customer’s premises can avoid nearly 1.5 kWs of generating capacity at a central source (Lazar and Baldwin, 2011, p. 7).
 
 #### 3.1.5 Billing and Customer Service
 
@@ -176,6 +195,8 @@ States have mandated that utilities make expenditures for various public policy 
 
 [^15]: This is also the case for California customers who opt out of AMI (California Public Utilities Commission, 2014) .
 
+[PDF p. 42 | printed p. 40]
+
 customer assistance, renewable resources, storage and hardening of the system to resist storm damage. Each of these cost centers has a place in the cost allocation study, and each must be treated based on the purpose for which the cost is incurred.
 
 #### 3.1.7 Administrative and General Costs
@@ -194,9 +215,7 @@ the members and customers, IOUs include a return on investment, specifically a r
 
 Publicly owned utilities — including municipal utilities, or munis, and public power districts — serve about 15% of American homes and have about 7% of electric distribution circuit miles (National Rural Electric Cooperative Association, 2017). Many of the areas served are urban, and municipal utilities often provide other services as well, such as water, sewer and natural gas. These utilities evolved for a variety of reasons but typically are not subject to state or federal income tax (but typically pay many other types of taxes) and do not include a return on equity in rates. For this reason, their rates tend to be lower than those of most IOUs. The state or local governmental entity that sets up this type of utility also determines the governing structure for the utility, which could be an elected or appointed board. Typically this board will hire a professional manager to oversee the utility. Many municipal utilities also determine their annual revenue requirement on a cash flow basis, which can lead to greater annual variability. In most cases, state public utility commissions have little or no authority over munis and public power districts.
 
-Electric cooperatives are nonprofit membership corporations or special purpose districts that provide service to about 12% of Americans and own about 42% of electric distribution circuit miles (National Rural Electric Cooperative Association, 2017). They also serve more than half of the land area in the U.S. They mostly serve areas that IOUs originally declined to serve because expected sales did not justify the cost, given their shareholders’ expectations for rates of return and the required investment. Some cooperatives still serve thinly populated rural areas with few large loads. Others have seen their service territories transformed to booming suburbs or industrial hubs. These entities are also exempt from federal and state income tax and do not need to include a return on equity in the revenue requirement. Unlike municipal
-
-utilities, however, cooperatives cannot issue tax-exempt debt. Cooperatives do have flexibility to offer other services to their customers, such as broadband internet, appliance sales and repair, and contract billing and collection. Many cooperatives operate in areas with limited alternatives, and they tend to have good relationships with their member customers. An increasing number of electric cooperatives are building on these assets by entering the solar installation and maintenance field. In most states, cooperatives are entirely self-regulated, with a board being elected by the members. About 16 states regulate cooperatives, often less rigorously than they regulate IOUs (Deller, Hoyt, Hueth and Sundaram-Stukel, 2009, p. 48). This is because any “profits” remain with the member-owned cooperative and members can affect decision-making through board elections.
+Electric cooperatives are nonprofit membership corporations or special purpose districts that provide service to about 12% of Americans and own about 42% of electric distribution circuit miles (National Rural Electric Cooperative Association, 2017). They also serve more than half of the land area in the U.S. They mostly serve areas that IOUs originally declined to serve because expected sales did not justify the cost, given their shareholders’ expectations for rates of return and the required investment. Some cooperatives still serve thinly populated rural areas with few large loads. Others have seen their service territories transformed to booming suburbs or industrial hubs. These entities are also exempt from federal and state income tax and do not need to include a return on equity in the revenue requirement. Unlike municipal [PDF p. 43 | printed p. 41] utilities, however, cooperatives cannot issue tax-exempt debt. Cooperatives do have flexibility to offer other services to their customers, such as broadband internet, appliance sales and repair, and contract billing and collection. Many cooperatives operate in areas with limited alternatives, and they tend to have good relationships with their member customers. An increasing number of electric cooperatives are building on these assets by entering the solar installation and maintenance field. In most states, cooperatives are entirely self-regulated, with a board being elected by the members. About 16 states regulate cooperatives, often less rigorously than they regulate IOUs (Deller, Hoyt, Hueth and Sundaram-Stukel, 2009, p. 48). This is because any “profits” remain with the member-owned cooperative and members can affect decision-making through board elections.
 
 #### 3.2.2 Vertically Integrated Versus Restructured
 
@@ -216,6 +235,8 @@ Between the different ownership models and the mix of assets owned, there are do
 
 - Generation and transmission (G&T) utilities own and operate power plants and often transmission lines, selling their services to other utilities (especially **distribution utilities** ) and sometimes a few large industrial customers. A large portion of cooperative utilities are served by G&T cooperatives, typically owned by the distribution co-ops.
 
+[PDF p. 44 | printed p. 42]
+
 Several states have municipal power joint action agencies that build, buy into or purchase from power plants and may own or co-own transmission facilities. Many IOUs provide these services to municipal and cooperative utilities but are predominantly vertically integrated utilities serving retail customers.
 
 - Flow-through restructured utilities operate distribution systems but do not provide generation services, leaving customers to procure those from competitive providers. Since generation prices are either set by a retail supplier in an agreement with a specific customer or determined by class from the bids of the winning suppliers in utility procurements for default service, generation cost allocation is not normally a cost of service study issue for these utilities.
@@ -227,3 +248,5 @@ Several states have municipal power joint action agencies that build, buy into o
 services from one or more G&T cooperatives, federal agencies, municipal power agencies, merchant generators or vertically integrated utilities or through an organized market operated by an ISO/RTO. Outside of restructured states, most distribution-only utilities are municipals or cooperatives. The cost allocation issues for these utilities are similar to those for vertically integrated utilities, with the complication that the loads driving the G&T costs may be different from the loads used in setting the charges to the distribution utility.
 
 Some transmission companies solely own and operate transmission systems, generally under the rules set by an RTO. Their charges may be incorporated into the retail rates of distribution and flow-through utilities. In many cases, these transmission companies are subsidiaries of larger holding companies that own other electricity assets.
+
+[PDF pp. 45-276 not transcribed: Chapter 4 to Glossary and back cover, in 04_past_present_future.md to glossary.md of this folder]

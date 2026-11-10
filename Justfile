@@ -157,6 +157,10 @@ new-interrogatory-responses path_qmd:
 check-interrogatory-responses path_qmd:
     uv run python -m lib.just.interrogatory check {{ path_qmd }}
 
+# Add referenced-testimony blocks from each "Please refer to Velez Direct…" line
+insert-interrogatory-testimony-refs path_qmd:
+    uv run python -m lib.just.interrogatory insert-refs {{ path_qmd }}
+
 # =============================================================================
 # 🏗️  DEVELOPMENT ENVIRONMENT SETUP
 # =============================================================================

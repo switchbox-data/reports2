@@ -1,6 +1,23 @@
-## Appendix B: Combustion Turbine Costs Using a Real Economic Carrying Charge Rate
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 252-253 (printed pp. 250-251), Appendix B; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
 
-real economic carrying charge (RECC) rate is designed to measure the economic return expected **A** for an asset whose value increases at the rate of
+_Extractor note (not source text): this file holds PDF pp. 252-253 (printed pp. 250-251) of the manual, Appendix B; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back. The footnote 253 reference on the appendix title, which the first extraction dropped, is restored._
+
+[PDF pp. 1-251 not transcribed: front matter to Appendix A, in 00_front_matter.md to appendix_a_ferc_accounts.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 252 | printed p. 250]
+
+## Appendix B: Combustion Turbine Costs Using a Real Economic Carrying Charge Rate[^253]
+
+A real economic carrying charge (RECC) rate is designed to measure the economic return expected for an asset whose value increases at the rate of
 
 inflation every year. An economic carrying charge also has the property of measuring the value of deferring the construction of an asset from one year to the next.
 
@@ -14,6 +31,12 @@ Figure 47 on the next page is a conceptual example to show the capital and opera
 
 Costs are somewhat sensitive to financial input assumptions. For example, using the capital structure (51% equity and 49% debt) and return on equity (9.3%) offered by the Office of Public Utility Counsel, the first-year RECC in this case would be $52.32. Using Southwest Public Service Co.’s capital structure (58% equity and 42% debt) and return on equity (10.25%), the first-year RECC would be $57.51.
 
+Figure 47. Comparison of temporal distributions for combustion turbine cost recovery
+
+$100<br>$90<br>$80 Revenue requirement Real economic carrying charge<br>$70 Nominal levelized cost<br>$60<br>$50<br>$40<br>$30<br>$20<br>$10<br>$0<br>1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30<br>Dollars per kilowatt-year<br>
+
+Year
+
 [^253]: This appendix is adapted from Marcus, W . (2018, May) . Cross-rebuttal testimony on behalf of the Office of Public Utility Counsel, Appendix A . Public Utility Commission of Texas Docket No . 47527 .
 
 [^254]: Costs calculated based upon time periods shorter than 25 years are considered deferred rather than avoided because combustion plant life cycles are 25 years or greater .
@@ -24,10 +47,8 @@ Costs are somewhat sensitive to financial input assumptions. For example, using 
 
 [^257]: The case is Public Utility Commission of Texas Docket No . 47527 . The capital and O&M costs ($621 per kW and $7 .27 per kW-year, respectively) and the inflation rate (1 .74%) are from testimony of J . Pollock on behalf of Texas Industrial Energy Consumers (2018, April 25) . Property tax rates (0 .67%) are those estimated in testimony of N . Koch on behalf of Southwest Public Service Co ., Attachment NK-RR-5 (2017, August 21) . In addition, the capital structure (48% debt, 52% equity) and return on equity (9 .6%) are from the settlement of Southwest Public Service’s previous case in Docket No . 45524, with the cost of debt adjusted to the level from Docket No . 47527 (4 .38%) .
 
-Figure 47. Comparison of temporal distributions for combustion turbine cost recovery
-
-$100<br>$90<br>$80 Revenue requirement Real economic carrying charge<br>$70 Nominal levelized cost<br>$60<br>$50<br>$40<br>$30<br>$20<br>$10<br>$0<br>1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30<br>Dollars per kilowatt-year<br>
-
-Year
+[PDF p. 253 | printed p. 251]
 
 Sources: Based on testimony in Public Utility Commission of Texas Docket No. 47527 and settlement of Docket No. 45524 involving Southwest Public Service Co.
+
+[PDF pp. 254-276 not transcribed: Appendix C to Glossary and back cover, in appendix_c_kw_calculation.md to glossary.md of this folder]

@@ -1,8 +1,27 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 26-29 (printed pp. 24-27), Chapter 1; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 26-29 (printed pp. 24-27) of the manual, Chapter 1; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back. Footnote 4 had been extracted as plain text and is now footnote definition._
+
+[PDF pp. 1-25 not transcribed: front matter to Introduction, in 00_front_matter.md to 00_introduction.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 26 | printed p. 24]
+
 # Part I: Economic Regulation and the Electric System in the United States
 
 ## 1. Economic Regulation in the U.S.
 
-conomic regulation of privately owned business dates back to the Roman Empire and was a significant **E** feature of government in medieval England, where accommodation prices at inns were regulated because travelers typically had only a single choice when arriving at the end of a day on foot or horseback. In the later medieval period, the English Parliament regulated bakers, brewers, ferrymen, millers, smiths and other artisans and professionals (Phillips, 1984, p. 77). This tradition was brought to the United States in the 19th century, when a series of Supreme Court opinions held that grain elevators, warehouses and canals were monopoly providers of service “affected with a public interest” and that their rates and terms of service could therefore be regulated.[^3]
+[PDF p. 27 | printed p. 25]
+
+Economic regulation of privately owned business dates back to the Roman Empire and was a significant feature of government in medieval England, where accommodation prices at inns were regulated because travelers typically had only a single choice when arriving at the end of a day on foot or horseback. In the later medieval period, the English Parliament regulated bakers, brewers, ferrymen, millers, smiths and other artisans and professionals (Phillips, 1984, p. 77). This tradition was brought to the United States in the 19th century, when a series of Supreme Court opinions held that grain elevators, warehouses and canals were monopoly providers of service “affected with a public interest” and that their rates and terms of service could therefore be regulated.[^3]
 
 ### 1.1 Purposes of Economic Regulation
 
@@ -27,6 +46,8 @@ of monopoly power. These subsidiary purposes include:
 - there are many buyers and sellers in a transparent market, the basis for imposing price regulation evaporates. Transportation and telecommunications services used to be regulated in the United States, but as technology changed in a way that
 
 [^3]: Munn v . Illinois, 94 U .S . 113 (1877) . The term “affected with a public interest” originated in England around 1670, in two treatises by Sir Matthew Hale, Lord Chief Justice of the King’s Bench, De Portibus Maris and De Jure Maris . Munn v . Illinois, at 126-128 .
+
+[PDF p. 28 | printed p. 26]
 
 allowed competition, policymakers eliminated the economic regulation, or at least changed the essential features of the regulatory structure. A similar phenomenon has occurred with the introduction of wholesale markets for electricity generation in many parts of the country.
 
@@ -53,6 +74,8 @@ James Bonbright is regarded as the dean of utility rate analysts. His book _Prin
 1. The related, “practical” attributes of simplicity, understandability, public acceptability, and feasibility of application.
 
 — Ralph M. Besse, American Bar Association annual meeting, August 25, 1953 (Phillips, 1984, p. 151)
+
+[PDF p. 29 | printed p. 27]
 
 2. Freedom from controversies as to proper interpretation.
 
@@ -88,4 +111,6 @@ Charles Phillips published _The Regulation of Public Utilities_ in 1984, and sub
 
 The National Association of Regulatory Utility Commissioners published its _Electric Utility Cost Allocation Manual_ in 1992. That handbook provided explicit guidance on some of the different methods that regulators used at that time to apportion rates for both embedded cost and marginal cost frameworks. It was controversial from the outset, due to omission of a very common method of apportioning distribution costs — the basic customer method. However, it is the most recent, comprehensive and directly relevant work on cost allocation prior to this manual.
 
-4 Simplified from principles attributed to Henry Herz, consulting economist, cited in Garfield and Lovejoy (1964, pp . 163-164) .
+[^4]: Simplified from principles attributed to Henry Herz, consulting economist, cited in Garfield and Lovejoy (1964, pp . 163-164) .
+
+[PDF pp. 30-276 not transcribed: Chapter 2 to Glossary and back cover, in 02_rate_making.md to glossary.md of this folder]

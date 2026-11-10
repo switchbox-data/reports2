@@ -1,6 +1,25 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 173-174 (printed pp. 171-172), Chapter 15; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 173-174 (printed pp. 171-172) of the manual, Chapter 15; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back, and the first section heading, which had been run into that paragraph, is a heading again._
+
+[PDF pp. 1-172 not transcribed: front matter to Chapter 14, in 00_front_matter.md to 14_public_policy.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 173 | printed p. 171]
+
 ## 15. Revenues and Offsets in Embedded Cost of Service Studies
 
-**15.1 Off-System Sales Revenues** ome retail cost of service studies treat wholesale sales as a separate class and allocate costs to the off-system **S** customers. The cost of service study does not necessarily lead to any change in the off-system customers’ charges (which are typically set by contracts, markets or FERC) but does help the regulator determine what share of the revenue requirement not recovered by FERC-regulated sales should be borne by each retail class. Alternatively, many utilities allocate all their costs to the retail classes and credit the export revenues back to the retail classes.[^190]
+### 15.1 Off-System Sales Revenues
+
+Some retail cost of service studies treat wholesale sales as a separate class and allocate costs to the off-system customers. The cost of service study does not necessarily lead to any change in the off-system customers’ charges (which are typically set by contracts, markets or FERC) but does help the regulator determine what share of the revenue requirement not recovered by FERC-regulated sales should be borne by each retail class. Alternatively, many utilities allocate all their costs to the retail classes and credit the export revenues back to the retail classes.[^190]
 
 In the latter approach, utilities sometimes allocate wholesale revenues to classes in proportion to their allocation of generation costs. Under this type of allocator, the greater the rate class’s demand and usage, the greater its share of the off-system sales revenue. The problem with this approach is that some classes (e.g., industrials) use most of the generation capacity allocated to them throughout the year, while other classes typically pay for capacity they use in their peak season but which is available for sale in other seasons. Off-system sales revenues depend not only on the retail customers’ financial support of the resources (including generating capacity) from which off-system sales are made but also on the extent to which class load shapes leave resources available to make those sales.
 
@@ -17,6 +36,8 @@ Contributions in aid of construction are similar to customer advances but are ap
 [^190]: The same approach is possible with retail customers whose rates are fixed under multiyear contracts . Off-system sales revenues may vary considerably, based on market conditions, and are therefore often included in a fuel adjustment clause or similar rider between rate cases, while the base allocation is typically established in a general rate case .
 
 [^191]: MidAmerican Energy in Iowa proposed an hourly cost allocation method for capacity and energy in a recent case but also argued that if the Iowa Utilities Board were to use its traditional “average and excess demand” method instead, off-system sales margins should be allocated by excess demand, not by energy . “MidAmerican believes it is more appropriate to allocate wholesale margins (revenues less fuel costs) based on the excess demand component of the [average and excess] allocator, as it is from excess generation capacity that wholesale sales can be made” (Rea, 2013, p . 19) .
+
+[PDF p. 174 | printed p. 172]
 
 rate base reductions for the class for which the contributions were made. Where that is not possible, they should be applied as realistically as possible to offset the rate base for the types of facilities for which the contributions were collected.
 
@@ -45,3 +66,5 @@ Tariffed service charges for costs associated with opting out of AMI should be a
 Rents should be allocated to the function causing the rents (distribution lines, office buildings, etc.). In particular, pole attachment revenues from cable and telecommunications companies should be allocated in proportion to poles.
 
 [^192]: For example, assigning revenues from service establishment charges based on total base rate revenue would result in large customers, who rarely move, receiving revenue as if they had moved many times in a single year .
+
+[PDF pp. 175-276 not transcribed: Chapter 16 to Glossary and back cover, in 16_differential_treatment.md to glossary.md of this folder]

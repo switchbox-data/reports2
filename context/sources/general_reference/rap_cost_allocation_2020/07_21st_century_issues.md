@@ -1,6 +1,23 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 85-102 (printed pp. 83-100), Chapter 7; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 85-102 (printed pp. 83-100) of the manual, Chapter 7; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back. Footnote 73 had been extracted as plain text and is now footnote definition. Footnotes 57, 59, 61, 69, which the first extraction split across the page's columns, are rejoined._
+
+[PDF pp. 1-84 not transcribed: front matter to Chapter 6, in 00_front_matter.md to 06_basic_frameworks.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 85 | printed p. 83]
+
 ## 7. Key Issues for 21st Century Cost Allocation
 
-any important cost allocation issues for the current era are fundamentally different from **M** those that existed when NARUC published its 1992 _Electric Utility Cost Allocation Manual_ . This chapter sets forth the changes the industry has experienced and describes the approaches that may be needed to address those changes in cost allocation studies.
+Many important cost allocation issues for the current era are fundamentally different from those that existed when NARUC published its 1992 _Electric Utility Cost Allocation Manual_ . This chapter sets forth the changes the industry has experienced and describes the approaches that may be needed to address those changes in cost allocation studies.
 
 Inevitably, additional costing issues will emerge and require recognition in future cost of service studies. The fundamental considerations are why the costs were incurred and who currently benefits from the costs. Costs are often categorized using engineering and accounting perspectives that are useful for many applications but must not be allowed to obscure the fundamental questions of causation and benefits.
 
@@ -42,6 +59,8 @@ Smart meters (along with supporting data acquisition and data management hardwar
 
 [^56]: The broader concept of “smart grid” includes distribution (and sometimes transmission) automation devices such as automatic reclosers, voltage controls, switchable capacitors and sensors .
 
+[PDF p. 86 | printed p. 84]
+
 ##### Figure 22. Customer behavior in Sacramento Municipal Utility District pricing pilot
 
 Default critical peak pricing<br>100%<br>Default time-of-use and critical peak pricing<br>90%<br>Default time-of-use pricing<br>80% Opt-in critical peak pricing<br>Opt-in time-of-use pricing<br>70%<br>60%<br>50%<br>40%<br>30%<br>20%<br>10%<br>0%<br>Did laundry off-peak Turned off lights Did dishes off-peak Turned off Increased temperature<br>air conditioner on thermostat<br>Percentage of customers<br>
@@ -62,21 +81,19 @@ demand that had been roughly constant for decades. Due to significant solar capa
 
 In Hawaii, June load shapes changed as increased levels of distributed solar were added to the system. Figure 23 on the next page illustrates this, using data from the Federal Energy Regulatory Commission (n.d.). In 2006, the **system peak demand** was approximately 1,200 MWs at 1 to 3 p.m. By 2017, with extensive deployment of customer-sited solar, the peak demand was 1,068 MWs at 9 p.m. A cost allocation scheme must be adaptable enough to be relevant as significant changes in the shape and character of utility-served load take place.
 
-[^57]: Growth in solar resources, whether central or distributed, gradually reduces the reliability value of incremental solar capacity in many respects; the same is true for wind resources with respect to the reliability value of incremental wind and the equivalent for (if they become economically
-
-> competitive) tidal and wave energy . In contrast, these different resources may be complementary to one another in certain respects .
-
-[^58]: The resulting load shape, first identified by Denholm, Margolis and Milford in 2008, is commonly known as a duck curve . See also Lazar (2016) .
-
 Figure 23. Evolution of system load in Hawaii on typical June weekday
 
 1,200<br>June 13, 2006<br>June 5, 2012<br>1,000<br>800 June 20, 2017<br>600<br>0 2 4 6 8 10 12 14 16 18 20 22 24<br>Hour of day<br>System demand in megawatts<br>
 
 Data source: Federal Energy Regulatory Commission. _Form No. 714_ — _Annual Balancing Authority Area and Planning Area Report_
 
-The capacity role and treatment of variable renewable resources, such as wind and solar, vary among jurisdictions and RTOs. The cost of service study should reflect the role of these resources in supply planning, by classifying part of the renewable costs as demand-related and allocating those costs in proportion to class consumption in the hours contributing to capacity requirements. This should recognize that different types of variable renewable resources can be complementary in many respects as long as the temporal patterns, either daily or seasonal, are different. Even solar in slightly different regions can be complementary since they may not be affected in an identical way by cloud cover. For example, as shown in Figure 24 on the next page, a mix of wind resources from West and South Texas plus solar production combine to produce an overall resource shape that corresponds moderately
+[^57]: Growth in solar resources, whether central or distributed, gradually reduces the reliability value of incremental solar capacity in many respects; the same is true for wind resources with respect to the reliability value of incremental wind and the equivalent for (if they become economically competitive) tidal and wave energy . In contrast, these different resources may be complementary to one another in certain respects .
 
-[^59]: Under conventional rate designs, participants (and their classes) generally retain a smaller share of the benefits of demand response (other than incentives for program participation, which may include peak-time rebates) than of energy efficiency programs . Depending on the program design, the incentives for the participants may be reflected in cost allocation and rate design through (1) reduced allocation of costs to the participating
+[^58]: The resulting load shape, first identified by Denholm, Margolis and Milford in 2008, is commonly known as a duck curve . See also Lazar (2016) .
+
+[PDF p. 87 | printed p. 85]
+
+The capacity role and treatment of variable renewable resources, such as wind and solar, vary among jurisdictions and RTOs. The cost of service study should reflect the role of these resources in supply planning, by classifying part of the renewable costs as demand-related and allocating those costs in proportion to class consumption in the hours contributing to capacity requirements. This should recognize that different types of variable renewable resources can be complementary in many respects as long as the temporal patterns, either daily or seasonal, are different. Even solar in slightly different regions can be complementary since they may not be affected in an identical way by cloud cover. For example, as shown in Figure 24 on the next page, a mix of wind resources from West and South Texas plus solar production combine to produce an overall resource shape that corresponds moderately
 
 well to the shape of the summer diurnal load (Slusarewicz and Cohan, 2018; Electric Reliability Council of Texas, 2019).
 
@@ -88,9 +105,11 @@ A portfolio of energy efficiency measures reduces energy requirements, generatio
 
 The costs of demand response programs — direct load control, customer load automation (e.g., setback thermostats) and price-responsive load (e.g., critical peak pricing) — should similarly be apportioned to reflect their benefits, so that cost-effective demand response is a net benefit to both participants and nonparticipants.[^59] An hourly assignment method, where the costs of demand response are apportioned
 
-> customers and classes to reflect improved load shape, (2) payment of incentives (including peak-time rebates) and allocation of those and other utility expenditures as costs, or (3) a combination of the two, as long as the benefits are not double-counted . Dynamic peak pricing may encourage demand response without explicit incentives, with the cost allocation to the participants’ class reflecting the improved load shape .
-
 ##### Figure 24. Illustrative Texas wind and solar resource compared with load shape
+
+[^59]: Under conventional rate designs, participants (and their classes) generally retain a smaller share of the benefits of demand response (other than incentives for program participation, which may include peak-time rebates) than of energy efficiency programs . Depending on the program design, the incentives for the participants may be reflected in cost allocation and rate design through (1) reduced allocation of costs to the participating customers and classes to reflect improved load shape, (2) payment of incentives (including peak-time rebates) and allocation of those and other utility expenditures as costs, or (3) a combination of the two, as long as the benefits are not double-counted . Dynamic peak pricing may encourage demand response without explicit incentives, with the cost allocation to the participants’ class reflecting the improved load shape .
+
+[PDF p. 88 | printed p. 86]
 
 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23<br>Hour of day<br>Combined generation Wind in West Texas July average load<br>Solar Wind in South Texas<br>
 
@@ -120,6 +139,8 @@ Figure 26. Estimated grid integration costs for electric vehicles<br>$250<br>$20
 
 Source: Sacramento Municipal Utility District, personal communication, July 8, 2019
 
+[PDF p. 89 | printed p. 87]
+
 EVs are first being adopted in light-duty vehicle market segments, which primarily equates to residential adoption. These EVs are charged predominantly at home; there is a general consensus that home charging comprises over 80% on average (U.S. Department of Energy, n.d.). This home EV charging represents a substantial, but not totally unprecedented, amount of new consumption for a residential customer. The annual consumption for an EV represents slightly less than the consumption required for a typical electric water heater (U.S. Department of Energy, n.d.). If uncontrolled, however, this additional consumption could change the load profile significantly for this subset of customers, potentially leading to additional system costs. For example, if EVs begin to charge at home right after the workday ends and the sun is setting, then this could increase system peak and exacerbate ramping issues.
 
 Between rate classes, changes in load profiles can be easily accounted for in future rate cases as long as there is sufficient load research data on the issue. However, there could also be significant changes in customer load profiles within each rate class. As a result, some analysts have suggested that residential customers with EVs should be a separate rate class. As a threshold matter as discussed in Section 5.2, it is an empirical question whether customers with EVs have distinct cost characteristics from other customers in the same rate class
@@ -129,6 +150,8 @@ and whether EV adoption is high enough within the rate class to have an impact o
 Many jurisdictions are moving toward widespread TOU rates for residential customers. If these rates are mandatory for residential customers or even just the default for residential customers with EVs, then that would likely eliminate any cross-subsidy issues between residential customers with and without EVs. Similarly, EVs can be easily integrated into other demand management programs, or programs specific to EVs can be examined.
 
 At some point, similar issues may arise for workplace charging for light-duty vehicles, and it will be desirable to concentrate charging into the hours when generation and delivery system capacity is available and unused. For example, it may be desirable to concentrate workplace EV charging during periods when solar generation is prevalent.
+
+[PDF p. 90 | printed p. 88]
 
 As of this writing, many different heavy-duty EVs are beginning to be adopted. Many jurisdictions have started to adopt electric buses, and a wide range of electric trucks are under development, from postal and parcel urban delivery vehicles to long-haul semitrailers. Fleets of these vehicles will have charging requirements measured in MWs, not kWs, and it may be desirable to locate these charging facilities where they can be directly served from the transmission network, avoiding the primary distribution network altogether. In this case, these sites will be more like large industrial high-voltage customers for cost analysis purposes. Making potential customers aware of this option, to access lower-cost power by locating adjacent to transmission capacity, may help guide the evolution of this market segment on an economical pathway.
 
@@ -148,6 +171,8 @@ Several states have also begun to implement utility EV programs, and many more s
 
 to other energy and demand management programs. In the aggregate, uncontrolled EV load could be a significant addition to peak load that drives many system costs. These utility EV programs encourage, or in some cases ensure, that EV charging will take place during off-peak hours to minimize system stress and long-run electric system costs. The justifications for these programs and the principles for allocating the costs are not very different from other energy management and demand response programs, with functionalization, classification and allocation according to the benefits of the program or alternatively to classes in proportion to customer participation.
 
+[PDF p. 91 | printed p. 89]
+
 In contrast, another major category of utility EV programs does raise new questions. Utility expenditures and investments in support of charging infrastructure are taking a wide variety of forms, including rebates, additional allowances for interconnection costs, and direct utility ownership and operation of end-use charging stations. In most of these programs, participants are expected to bear some of the costs of the charging station, either upfront or ongoing, although a few programs may include full utility ownership and responsibility for all ongoing costs. Drivers of EVs are certainly the most direct beneficiaries of these programs, but there are a wide range of potential benefits for other ratepayers and society at large. Depending on the perspective, this could justify a wide range of cost allocation techniques, including:
 
 - Direct assignment to the customer classes receiving free or subsidized equipment.[^60]
@@ -160,10 +185,6 @@ These programs are still quite new at the time of publication for this manual, s
 
 One logical outcome across these issues could be applying fully loaded time-varying rates to identifiable EV accounts, which may provide higher incremental revenue than incremental costs in those hours. This would have the effect of socializing a substantial portion of EV program costs across a broader group of ratepayers. This would be consistent
 
-[^60]: The number of EV program participants in a class, but not the total number of customers in the class, may be relevant to allocation of the costs .
-
-[^61]: There are a number of potential variants on this . Direct recovery of costs from a given customer for installation at that customer’s site over time would act as a financing mechanism for that customer . However, specific program costs (e .g ., a DC fast charger program) could be recovered
-
 with efforts to jump-start an infant industry. EV charging station program cost responsibility could be more directly concentrated toward EV drivers over time. This could mean specialized ongoing cost recovery mechanisms, including direct assignment of identifiable EV-related costs. However, a jurisdiction that is seeking to accelerate EV adoption would certainly be free to apply short-run marginal cost-based economic development rates to EV charging development while simultaneously socializing EV program costs to all ratepayers.
 
 #### 7.1.4 Distributed Energy Resources
@@ -174,9 +195,13 @@ Customer-sited adoption of solar can raise several cost allocation issues. Unlik
 
 The more difficult issue that jurisdictions around the country have been wrestling with is the possibility of
 
-> through a combination of subsidies from other classes and an ongoing perkWh basis from the accounts that participated in that program .
+[^60]: The number of EV program participants in a class, but not the total number of customers in the class, may be relevant to allocation of the costs .
+
+[^61]: There are a number of potential variants on this . Direct recovery of costs from a given customer for installation at that customer’s site over time would act as a financing mechanism for that customer . However, specific program costs (e .g ., a DC fast charger program) could be recovered through a combination of subsidies from other classes and an ongoing perkWh basis from the accounts that participated in that program .
 
 [^62]: The 2005 Energy Policy Act added net metering to the PURPA standards that each state was required to consider . Pub . L . No . 109-58 § 1251 . Retrieved from https://www .congress .gov/109/plaws/publ58/PLAW109publ58 .pdf
+
+[PDF p. 92 | printed p. 90]
 
 ##### Figure 27. US solar photovoltaic installations
 
@@ -192,15 +217,17 @@ likelihood of lower impacts given the offsetting benefits of solar generation.[^
 
 Even in jurisdictions with significant penetration levels of distributed solar, there have been robust debates about the existence of significant cross-subsidies and the proper means to address them. As a general matter, most proposals to establish separate rate classes for distributed solar have been denied so far.[^64] Utilities have also proposed higher customer charges and special demand charges for solar customers, which have not been widely adopted. However, a variety of rate design changes have been adopted to better align compensation with value and reduce the potential for unreasonable cross-subsidies. California has begun to address these issues by requiring new residential net metering customers to be placed on TOU rates, a measure that is integrated with a move toward TOU rates for residential customers more generally (California Public Utilities Commission, n.d. and 2016). New York’s Value of Distributed Energy Resources proceeding has set up specialized export credit compensation for large distributed energy projects, which include values
 
-[^63]: Net ratepayer impacts from solar policies depend on many factors . In jurisdictions with significant renewable portfolio standard costs or separate solar incentive programs, these costs can be quite different than in jurisdictions where the primary solar compensation policy is net metering . It is important to distinguish whether costs to nonparticipating ratepayers are occurring because of the RPS, dedicated solar incentive programs or net metering policies .
-
-[^64]: The exception to date is Kansas, although separate rate classes for solar customers have been authorized by legislative action in additional states (Trabish, 2017) . At the time of this writing, this area of policy is rapidly evolving .
-
 ##### Figure 28. Substation backfeeding during high solar hours
 
 6<br>Average transformer load — Backfeed<br>December<br>occurring<br>5 2010<br>10 a.m. to 2 p.m.<br>2011<br>4 2012<br>2013<br>3<br>2<br>1 August 8, 2013, backfeed condition<br>0<br>0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24<br>Hour of day<br>Load in megawatts<br>
 
 Source: Hawaiian Electric Company. (2014, April 30). _Minimum Day Time Load Calculation and Screening._ Distributed Generation Interconnection Collaborative (DGIC) webinar
+
+[^63]: Net ratepayer impacts from solar policies depend on many factors . In jurisdictions with significant renewable portfolio standard costs or separate solar incentive programs, these costs can be quite different than in jurisdictions where the primary solar compensation policy is net metering . It is important to distinguish whether costs to nonparticipating ratepayers are occurring because of the RPS, dedicated solar incentive programs or net metering policies .
+
+[^64]: The exception to date is Kansas, although separate rate classes for solar customers have been authorized by legislative action in additional states (Trabish, 2017) . At the time of this writing, this area of policy is rapidly evolving .
+
+[PDF p. 93 | printed p. 91]
 
 for energy, capacity, delivery and environmental externalities (New York Public Service Commission, 2017). Tensions in these debates include differentials between short-term and long-term avoided costs due to distributed generation and how to consider significant societal externalities such as greenhouse gas emissions.
 
@@ -224,6 +251,8 @@ As also introduced in Chapter 4, many new regulatory issues have arisen since th
 
 - New types of public policy programs.
 
+[PDF p. 94 | printed p. 92]
+
 - Consideration of differential rates of return in cost allocation studies.
 
 - Recovery of **stranded costs** , assets with changed purposes and exit fees.
@@ -240,10 +269,6 @@ The most important of these issues may be that A&G costs become a larger share o
 
 In most states allowing retail competition, the distribution utility also procures and offers, at cost, a **default power supply** service for customers who do not choose an alternative retail electricity supplier.[^65] These costs normally will not be included in the cost of service study during a base rate case because they apply only to an optional service and are set through a separate proceeding, generally by competitive bidding to supply individual classes based on their historical load shapes.[^66] Any costs incurred by the utility to procure these
 
-[^65]: Texas has not had any form of default supply since restructuring; all customers must choose a retail electricity supplier .
-
-[^66]: If the utility procures default service at a single price for multiple classes, the regulator should consider whether to differentiate the rates to reflect differences among the classes .
-
 services should be recovered through the default service, without affecting rate case revenue requirements.
 
 Currently, default service is typically offered on a single residential load profile. We anticipate in the future this will become more granular,[^67] at least with respect to time of day and season. This may be done with separate default tariffs for different subclasses of customers, such as multifamily, electric heating or electric vehicle owners. Or it may be done more simply, with a time-varying default service option that applies the same rates to all customers in each period, resulting in different average rates to customers with different usage patterns. A regulator may choose to reconfigure, for retail pricing purposes, these costs on a time-varying basis; if this occurs, the rate analyst must track this change into the cost allocation process.
@@ -256,9 +281,15 @@ The rate analyst may be in the position of secondguessing the ISO pricing, just 
 
 In addition to billing for generation capacity and energy in most cases, all ISOs/RTOs bill for transmission service. Most assign transmission costs, project by project, to geographic areas, based on the historical ownership of older
 
+[^65]: Texas has not had any form of default supply since restructuring; all customers must choose a retail electricity supplier .
+
+[^66]: If the utility procures default service at a single price for multiple classes, the regulator should consider whether to differentiate the rates to reflect differences among the classes .
+
 [^67]: See Hledik and Lazar (2016) for a discussion of future pricing options to enable optimal utilization of DERs to meet system and local capacity requirements .
 
 [^68]: We note that the costs of the Alberta capacity market are spread on a timedifferentiated volumetric basis rather than a traditional demand charge; this may be a useful model for U .S . ISOs . For a more robust discussion, see Hogan (2016) .
+
+[PDF p. 95 | printed p. 93]
 
 facilities and the loads justifying new facilities. If those charges are billed on a capacity basis, the pricing may exceed the cost of avoidance of some transmission capacity but still be necessary for moving energy at nonpeak hours.[^69] In this situation, the analyst may need to consider whether some transmission costs are imprudent and should be excluded from the revenue requirement or, perhaps due to how the assets are used, to split these costs between demand and energy.
 
@@ -270,8 +301,6 @@ There have been more than 100 mergers of electric utilities since the 1992 NARUC
 
 Most utility mergers and acquisitions are justified by projections of more efficient management and a corresponding decline in administrative costs. Determining whether these promises have been realized is a revenue requirement issue beyond the scope of this manual. But the apportionment of administrative costs among unregulated and utility functions, and among utilities within the holding company, are often part of cost allocation. The increased complexity of utility holding companies makes this task more difficult.
 
-[^69]: The Vermont regulator has regularly identified specific nodes where increased efforts for energy efficiency can reduce the need for transmission or distribution capacity upgrades (Vermont Public Service Board, 2007; Vermont System Planning Committee, n .d .) . This may provide a foundation for classification of ISO transmission charges
-
 Many state utility commissions have taken steps to exclude from the revenue requirement any incentives such as higher executive compensation that reward shareholder benefits (such as for a higher stock price) or rewards for good performance in unregulated operations. Determining the portion of executive compensation that is attributable to the utility operations, as contrasted with corporate profit maximization, is not straightforward. This question may be approached by using senior management costs at public agencies (such as state departments of transportation, health and education or universities) as a proxy for the portion of executive compensation that should be allocated to utility service. Large public agencies may have budgets, employee counts and subordinate levels of management comparable to those of utilities.
 
 Different business operations of a modern utility holding company have different risks and rewards. Although management of a distribution utility is complex, the amount of innovation and risk is fundamentally different than in other business units of the holding company. As noted by the U.S. Supreme Court:
@@ -282,9 +311,11 @@ By the same logic, a utility is entitled to recover the management costs of a co
 
 Shareholder service costs — such as the cost of maintaining shareholder data, issuing dividends, issuing new capital stock and annual meeting costs — must be
 
-> and for functionalizing some of these energy efficiency investments as transmission-related or distribution-related capacity costs .
+[^69]: The Vermont regulator has regularly identified specific nodes where increased efforts for energy efficiency can reduce the need for transmission or distribution capacity upgrades (Vermont Public Service Board, 2007; Vermont System Planning Committee, n .d .) . This may provide a foundation for classification of ISO transmission charges and for functionalizing some of these energy efficiency investments as transmission-related or distribution-related capacity costs .
 
 [^70]: Bluefield Water Works v . Public Service Commission, 262 U .S . 679, 692-93 (1923) .
+
+[PDF p. 96 | printed p. 94]
 
 apportioned between the non-utility enterprises and the electric utility. Simple methods such as gross revenue or gross capital may be used; more complex methods looking at the number of employees, the contribution to earnings or other factors may also be appropriate.
 
@@ -298,8 +329,6 @@ The central concept of PBR is greater emphasis on the achievement of public poli
 
 The incentives may be in the form of a higher allowed rate of return based on achieving policy goals or discrete bonuses for achieving specific objectives. Similarly, penalties for underperformance can take a number of forms. The costs to ratepayers of PBR may include the incentives paid to shareholders as well as expenditures undertaken to achieve the PBR goals.[^72] Those costs should be allocated to classes
 
-[^71]: For example, in 1980, the Washington State Legislature approved a 2% incremental rate of return for energy efficiency investments . Two decades later, the Nevada Public Utilities Commission adopted a similar incentive . Both have been allowed to expire .
-
 in proportion to the benefits they receive, and penalties returned to ratepayers should be allocated in a manner similar to the distribution of the excess costs that prompted the penalties.
 
 One form of PBR is to provide for multiyear rate plans, where the incentive between rate cases is to achieve designated policy goals. Specific rewards for achievement provide higher earnings between proceedings, rather than mere cost control. This may have the effect of extending the period between general rate proceedings, making it more important that cost allocation in rate proceedings be given adequate attention. This is important because the results may be in place for a longer period than with conventional regulation.
@@ -310,7 +339,11 @@ The rapid proliferation of tariff riders did not feature in the 1992 NARUC cost 
 
 Cost of service studies should be designed for compatibility with the methods that will be used to adjust costs between rate cases. Adjustments between cases may need to be simpler for administrative convenience and may not track cost study results accurately. To maintain consistency, the cost of service study may allocate all costs, with costs to be recovered through riders netted from class revenue requirements as the final step before the design of base rates. Alternatively, allocations of particular cost components from the cost of service study can be applied to the allocation of rider costs (e.g., the residential class might be assigned 34% of any primary distribution upgrades, 30% of purchased renewable energy, and so on).
 
+[^71]: For example, in 1980, the Washington State Legislature approved a 2% incremental rate of return for energy efficiency investments . Two decades later, the Nevada Public Utilities Commission adopted a similar incentive . Both have been allowed to expire .
+
 [^72]: For example, an incentive mechanism to control fuel costs may require capital investments to improve generating units .
+
+[PDF p. 97 | printed p. 95]
 
 Many tariff riders recover only the difference between actually incurred costs and costs estimated in a rate case, which could be reasonably expected to be relatively small. As a result, it often seems relatively fair and administratively efficient to pass these costs on in a simple way. Larger costs may require more detailed methods to track the broader issues laid out in this manual. If general rate cases occur with reasonable frequency, the divergence of riders from the cost of service study between general rate cases probably will be minor.
 
@@ -334,7 +367,9 @@ _Flow-through of municipal taxes and franchise fees:_ Some gross revenue taxes a
 
 _Storm damage:_ Regulators often allow recovery for storm damage in proceedings separate from general rate cases. In many cases, balancing accounts are created for
 
-73 Some utilities adjust power supply riders by estimated line losses by class .
+[^73]: Some utilities adjust power supply riders by estimated line losses by class .
+
+[PDF p. 98 | printed p. 96]
 
 storm damage recovery; after large storms, the amount to be recovered may be adjusted. Storm damage typically affects primarily distribution and transmission costs. The method used for apportionment of changes in tariff riders for storm damage should generally follow the methods used in rate cases for apportioning the relevant costs (but not the cost for unaffected T&D costs, such as meters in most storms).
 
@@ -358,9 +393,7 @@ Historically, most cost allocation studies have applied a single rate of return,
 
 Rating agencies and others recognize some utility assets, such as generation, as riskier than other assets, such as distribution. Many utilities have experienced significant disallowances in cost recovery for generation, but the same generally has not been the case with distribution investment. Applying a function-specific rate of return in computing class cost responsibility will assure that this cost follows causation and benefit.
 
-Similarly, some utility customer classes may be viewed as riskier than others. This may be customers with electric space conditioning, whose usage is more temperature-sensitive, creating variability in sales from year to year. Or it may be entire classes of customers whose usage varies with economic conditions, creating what financial analysts call systematic risk that raises the utility cost of capital. Applying a classspecific rate of return in computing class cost responsibility
-
-will ensure that low-risk classes do not pay costs more properly attributable to higher-risk classes.
+Similarly, some utility customer classes may be viewed as riskier than others. This may be customers with electric space conditioning, whose usage is more temperature-sensitive, creating variability in sales from year to year. Or it may be entire classes of customers whose usage varies with economic conditions, creating what financial analysts call systematic risk that raises the utility cost of capital. Applying a classspecific rate of return in computing class cost responsibility [PDF p. 99 | printed p. 97] will ensure that low-risk classes do not pay costs more properly attributable to higher-risk classes.
 
 A differential rate of return can be reflected either by assigning different costs of equity and debt to higherand lower-risk parts of the enterprise, or by assigning a less-leveraged capital structure to the riskier parts of the enterprise and a more leveraged capital structure to the lower-risk parts. Moody’s Investor Service applies a higher “business risk” score to generation than to distribution plant. This is then reflected in a higher equity capitalization rate, and thus a higher rate of return requirement, for generation plant (2017, p. 22). This translates into a differential rate of return requirement by customer class because different customer classes use a different mix of generation and distribution assets relative to their total revenue.
 
@@ -382,6 +415,8 @@ Economic obsolescence of coal plants is primarily a result of lower-cost wind, s
 
 [^74]: Public Service Company of Colorado decided to retire two coal units at the Comanche generating facility in Pueblo after bids for wind and solar energy were so low that the operating costs of these coal plants were deemed uneconomic (Pyper, 2018) .
 
+[PDF p. 100 | printed p. 98]
+
 cases, legislatures have driven the retirements. Although a retirement usually concludes with a regulatory determination of what part of the cost is recoverable, a separate decision must be made on how to reflect the allowed costs in the cost of service methods and rate design of the utility.
 
 Cost allocation analysts are not typically charged with determining the portion of abandoned project costs that electricity consumers or shareholders should bear. However, if these costs are included in rates, analysts are charged with determining how to reflect those costs in utility cost allocation studies and ultimately in rate design. If the plants were allocated in one way when operating and that method changes after termination, then the costs are shifted from one set of customers to another.
@@ -391,10 +426,6 @@ In other circumstances, plants have been converted from their original purpose t
 In all of these cases, the cost of service study must reflect the allowed costs for abandoned or repurposed units. Should the costs be allocated based on the original intended purpose? Or should these costs be allocated based on the last useful purpose for the units? There is no easy answer.
 
 Similar issues arose from the divestment of generation assets during restructuring. In jurisdictions with restructured utilities,[^75] millions of retail customers have begun taking generation services from retail electricity providers or public aggregators and no longer pay the regulated utility directly for power supply. In many cases, this was politically achievable only by providing a method to compensate the
-
-[^75]: New York, New Jersey, Pennsylvania, Maryland, Delaware, the District of Columbia, Ohio, Illinois, California, Texas and most of New England, as well as some customers in Michigan and Oregon . In Canada, Ontario has restructured similarly .
-
-[^76]: Certain utilities, notably all those in Ohio and some in Pennsylvania, New Jersey and Maryland, were allowed to transfer their generation assets to an affiliate at an estimated market value, rather than imposing a true market test from full divestment .
 
 utility for any stranded costs. This compensation typically was accomplished through a nonbypassable per-kWh charge on all distribution system customers, although in some cases specific exit fees were established so that departing customers made a one-time lump sum payment. Often this was done without reference to how the underlying costs are allocated among classes.
 
@@ -412,11 +443,17 @@ During restructuring proceedings in New England, many of the mid-Atlantic states
 
 Stranded cost charges are set to recover the sum of categories 4 and 5, the amortization of the balances in categories 1 through 3, any carrying charges for unamortized balances and any over- or undercollections in earlier periods.[^79] Categories 4 and 5, and hence the overall surcharge, may be positive or negative. The surcharge continues until the stranded capital costs are recovered (or gains distributed) and all continuing cash flows end. In some jurisdictions,
 
+[^75]: New York, New Jersey, Pennsylvania, Maryland, Delaware, the District of Columbia, Ohio, Illinois, California, Texas and most of New England, as well as some customers in Michigan and Oregon . In Canada, Ontario has restructured similarly .
+
+[^76]: Certain utilities, notably all those in Ohio and some in Pennsylvania, New Jersey and Maryland, were allowed to transfer their generation assets to an affiliate at an estimated market value, rather than imposing a true market test from full divestment .
+
 [^77]: This approach has been applied to generation for which sale has been delayed (e .g ., several nuclear units) or is impractical (e .g ., ConEd’s generation units located at or serving its steam distribution system) and to resources, such as renewables, that the utility is allowed to develop .
 
 [^78]: Long-term wholesale sales agreements may be bought out or treated in the same manner as power purchase agreements .
 
 [^79]: The costs in the first three categories frequently were refinanced through low-risk bonds, in a process called securitization .
+
+[PDF p. 101 | printed p. 99]
 
 restructuring surcharges have continued into 2019, in some cases as a credit.
 
@@ -442,6 +479,8 @@ Some assets will be disused at many hours, due to deployment of DERs. Some CHP f
 
 [^80]: Clear examples of this are found in the desert Southwest, where retirement of coal units in New Mexico, Arizona and Utah that formerly served California utilities is freeing up transmission that is being repurposed for moving variable renewables . State legislation mandated the retirements; economic conditions are driving the repurposing of these facilities .
 
+[PDF p. 102 | printed p. 100]
+
 to provide continuous service may be used only for a limited number of hours. The rate analyst must consider which is appropriate: applying the same methods used before DERs were installed or a different classification and allocation method in light of the changed circumstances.
 
 In some areas of Hawaii, distribution circuits are backfeeding to the transmission system at midday; these lines are now serving a power supply integration function for many hours of each day.
@@ -453,3 +492,5 @@ the consumers actually using the power when it is generated, rather than being a
 ###### Cross-Functional Repurposing
 
 There are myriad examples of utility resources once needed for a particular function being repurposed for an entirely different function. For example, a former power plant site may become a location for a distribution warehouse. The power plant was functionalized as generation and allocated based on demand and energy factors. The distribution warehouse is a component of general plant, and the allocation method may be very different. One challenge for the rate analyst is tracking changes in how assets are being used, to keep the allocation framework consistent with the utilization of the assets.
+
+[PDF pp. 103-276 not transcribed: Chapter 8 to Glossary and back cover, in 08_choosing_methods.md to glossary.md of this folder]

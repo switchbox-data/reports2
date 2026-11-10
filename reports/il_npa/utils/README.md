@@ -157,23 +157,23 @@ import geopandas as gpd
 import matplotlib.pyplot as plt
 
 # Load data
-gdf = gpd.read_file('peoplesgas_projects.geojson')
+gdf = gpd.read_file("peoplesgas_projects.geojson")
 
 # Summary statistics
 print(f"Total projects: {len(gdf)}")
 print("\nProjects by Status:")
-print(gdf['Status'].value_counts())
+print(gdf["Status"].value_counts())
 print("\nProjects by Phase:")
-print(gdf['Phase'].value_counts())
+print(gdf["Phase"].value_counts())
 
 # Create a map
-gdf.plot(column='Status', legend=True, figsize=(12, 12))
-plt.title('Peoples Gas Construction Projects by Status')
+gdf.plot(column="Status", legend=True, figsize=(12, 12))
+plt.title("Peoples Gas Construction Projects by Status")
 plt.show()
 
 # Export to different formats
-gdf.to_file('peoplesgas_projects.shp')  # Shapefile
-gdf.to_file('peoplesgas_projects.gpkg', driver='GPKG')  # GeoPackage
+gdf.to_file("peoplesgas_projects.shp")  # Shapefile
+gdf.to_file("peoplesgas_projects.gpkg", driver="GPKG")  # GeoPackage
 ```
 
 ---

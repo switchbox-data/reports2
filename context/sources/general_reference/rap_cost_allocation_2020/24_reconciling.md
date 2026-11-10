@@ -1,6 +1,23 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 218-219 (printed pp. 216-217), Chapter 24; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 218-219 (printed pp. 216-217) of the manual, Chapter 24; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back. Footnote 236 had been extracted as plain text and is now footnote definition. Footnote 234, which the first extraction split across the page's columns, is rejoined._
+
+[PDF pp. 1-217 not transcribed: front matter to Chapter 23, in 00_front_matter.md to 23_public_policy_marginal.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 218 | printed p. 216]
+
 ## 24. Reconciling Marginal Costs to Embedded Costs
 
-t is only happenstance if marginal costs and embedded costs produce the same revenue. This raises questions **I** as to how to reconcile these items. The most common method allocates embedded cost revenue requirements in the same proportion that marginal costs are allocated. This is typically called the equal percentage of marginal cost method but may also be known as equiproportional.
+It is only happenstance if marginal costs and embedded costs produce the same revenue. This raises questions as to how to reconcile these items. The most common method allocates embedded cost revenue requirements in the same proportion that marginal costs are allocated. This is typically called the equal percentage of marginal cost method but may also be known as equiproportional.
 
 There are two types of EPMC allocation. The first allocates the entire revenue requirement by the entire marginal cost revenue responsibility, called total EPMC allocation.[^233] This method was used in both California and Nevada through the 1990s. Under this method, if generation marginal costs are low (because of excess capacity, renewable penetration, low gas prices or other reasons), more of the system costs are allocated based on distribution costs, which are allocated more heavily to small customers. The result is problematic for small consumers. This was particularly evident in California, where high costs in the 1980s — created by power purchase contracts required under PURPA and additions of nuclear power — were heavily allocated based on distribution costs because of excess capacity, low system incremental heat rates due to large amounts of baseload power, and falling gas prices that did not reflect the expectation at the time the excess capacity was being constructed.
 
@@ -12,11 +29,11 @@ The other less used approach for reconciling marginal costs to embedded costs is
 
 [^233]: The use of EPMC as a whole in California was first clearly adopted in 1986 (California Public Utilities Commission, 1986, pp . 636-646) .
 
-[^234]: The unbundling of revenue allocation in California by function after the incomplete adoption of utility restructuring is discussed in Schichtl
-
-> (2002) . The functionalization of EPMC in Nevada is found in Public Utilities Commission of Nevada (2007, pp . 162-167) .
+[^234]: The unbundling of revenue allocation in California by function after the incomplete adoption of utility restructuring is discussed in Schichtl (2002) . The functionalization of EPMC in Nevada is found in Public Utilities Commission of Nevada (2007, pp . 162-167) .
 
 [^235]: This method was named after Frank B . Ramsey, who found this result in the context of taxation . Later, Marcel Boiteux applied the rule to natural monopolies in declining cost industries .
+
+[PDF p. 219 | printed p. 217]
 
 even more heavily against this approach in the future. If externalities are incorporated, then in many circumstances per-kWh rates are actually lower than the full societal marginal cost of consumption — meaning it would be socially efficient to classify incremental costs as energy-related. Full incorporation of externalities, in fact, argues for a differential approach depending on whether the MCRR is lower or higher than embedded costs, classifying any incremental costs as energy-related for inclusion in kWh rates while classifying any excess revenue as customer-related to provide a reduction in customer charges.
 
@@ -24,4 +41,6 @@ In addition, certain types of multifamily buildings often face a choice between 
 
 customer charge revenue but has almost no effect on system cost other than meters and billing. The declining cost of storage and solar may enable growing numbers of customers to disconnect entirely from the grid as well. The experience in the cable television and telephone industries shows how people are willing to “cut the cord” to rely on nonmonopoly service providers. Lastly, even if the underlying claims from certain advocates of Ramsey pricing are correct, there are significant equity issues between classes at stake in the allocation of additional costs solely to the residential class. Similarly, using Ramsey pricing to pass those costs on through customer charges raises significant equity issues within the residential class, disproportionately affecting small users.[^236]
 
-236 It could be the case that lower-income customers have a more elastic demand to pay for electric service if prices are increased because of limited ability to pay .
+[^236]: It could be the case that lower-income customers have a more elastic demand to pay for electric service if prices are increased because of limited ability to pay .
+
+[PDF pp. 220-276 not transcribed: Chapter 25 to Glossary and back cover, in 25_cutting_edge.md to glossary.md of this folder]

@@ -1,8 +1,27 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 109-136 (printed pp. 107-134), Chapter 9; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 109-136 (printed pp. 107-134) of the manual, Chapter 9; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back. Footnotes 117, 129 had been extracted as plain text and are now footnote definitions. Footnotes 85, 92, 98, 100, 105, 119, 123, 125, which the first extraction split across the page's columns, are rejoined._
+
+[PDF pp. 1-108 not transcribed: front matter to Works Cited in Part II, in 00_front_matter.md to 08_works_cited_part2.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 109 | printed p. 107]
+
 # Part III: Embedded Cost of Service Studies
+
+[PDF p. 110 | printed p. 108]
 
 ## 9. Generation in Embedded Cost of Service Studies
 
-his chapter addresses the allocation of generation costs, including investment-related costs, operation **T** and maintenance costs and fuel costs. As noted in Section 6.1, equivalent changes in the allocation of a cost category among classes can be achieved by changing functionalization, classification or the choice of allocation factor.[^83] That section discusses the relevant issues at a high level, and this chapter delves more deeply into the underlying concepts and analytical techniques.
+This chapter addresses the allocation of generation costs, including investment-related costs, operation and maintenance costs and fuel costs. As noted in Section 6.1, equivalent changes in the allocation of a cost category among classes can be achieved by changing functionalization, classification or the choice of allocation factor.[^83] That section discusses the relevant issues at a high level, and this chapter delves more deeply into the underlying concepts and analytical techniques.
 
 This chapter is not generally relevant to cost allocation for utilities that have restructured and no longer procure generation resources, as long as the generation prices suppliers offer (directly to customers or to the utility for default service) are differentiated by rate class. High-level cost allocation issues with respect to generation and default service are discussed in Section 7.2.
 
@@ -22,6 +41,8 @@ Many regulators have recognized that energy needs are a significant driver of ge
 
 [^83]: As mentioned previously, the third step is usually called allocation, which is the same as the name of the entire process . Some analysts refer to this third step as factor allocation in an attempt to prevent confusion .
 
+[PDF p. 111 | printed p. 109]
+
 largely determined by energy requirements.[^84] For variable renewables, particularly wind and solar, the effective capacity (in terms of the reliability contribution) of the generators is much smaller than their nameplate capacity, and the costs are mostly undertaken to provide energy without fuel costs or air emissions. Energy storage systems provide both energy benefits (by shifting energy from low-cost to high-cost hours) and reliability benefits, while demand response is used primarily to increase reliability.
 
 As discussed in the text box on pages 78-79, some older cost of service studies classified a wide range of capital and nondispatch O&M costs as demand-related on the grounds that the costs were in some manner fixed, without regard for cost causation. This approach, known as **straight fixed/variable** , is anachronistic and does not reflect cost causation.[^85]
@@ -39,10 +60,6 @@ Table 12. Cost components of conventional generation, 2018 midpoint estimates
 
 Source: Lazard. (2018). _Lazard’s Levelized Cost of Energy Analysis — Version 12.0_
 
-[^84]: “Citing both past operating experience and future resource planning, the Division [the PSC intervention staff] notes that resources with higher energy availability are chosen over those with lower energy availability . Since energy plays a role in the selection of least-cost resources, the Division concludes that some weight needs to be given to energy in planning for new capacity, and the current weight of 25 percent is reasonable . We find the qualitative argument offered by the Division to be … convincing .” (Utah Public Service Commission, 1999, p . 82) . See also Washington Utilities and Transportation Commission (1993, pp . 8-9) .
-
-[^85]: The term “straight fixed/variable” is imported from FERC’s rate design method for wholesale gas supply, where utilities, marketers and very large customers contract for capacity in a portfolio of individual pipeline and storage facilities . As is true for many electric wholesale purchased
-
 from competitive wholesale markets. This is followed by four different classification approaches and two joint classification and allocation approaches, then a discussion of other technologies and issues.
 
 #### 9.1.1 Insights and Approaches From Competitive Wholesale Markets
@@ -55,11 +72,15 @@ Prices generally trend upward with load, but the highestpriced hours are spread 
 
 In 2017, the highest-priced 1% of hours (with prices over $160 per MWh) would have provided 18% of the annual net margin for a baseload plant with no variable cost, 53% of the margin for a plant with a variable cost of $20 per MWh (perhaps a combined cycle unit), and 77% of the margin for a plant with a $30-per-MWh variable cost (such as a recently built combustion turbine), assuming ideal dispatch and no
 
-> power contracts, these gas contracts require that the buyers pay for investment-related costs regardless of how they use the resources and pay for variable costs in proportion to their usage . This approach is workable at the wholesale level but is not applicable to retail cost allocation, where the utility bundles a portfolio of generation assets for all of its customers .
+##### Figure 30. ERCOT load and real-time prices in 2017
+
+[^84]: “Citing both past operating experience and future resource planning, the Division [the PSC intervention staff] notes that resources with higher energy availability are chosen over those with lower energy availability . Since energy plays a role in the selection of least-cost resources, the Division concludes that some weight needs to be given to energy in planning for new capacity, and the current weight of 25 percent is reasonable . We find the qualitative argument offered by the Division to be … convincing .” (Utah Public Service Commission, 1999, p . 82) . See also Washington Utilities and Transportation Commission (1993, pp . 8-9) .
+
+[^85]: The term “straight fixed/variable” is imported from FERC’s rate design method for wholesale gas supply, where utilities, marketers and very large customers contract for capacity in a portfolio of individual pipeline and storage facilities . As is true for many electric wholesale purchased power contracts, these gas contracts require that the buyers pay for investment-related costs regardless of how they use the resources and pay for variable costs in proportion to their usage . This approach is workable at the wholesale level but is not applicable to retail cost allocation, where the utility bundles a portfolio of generation assets for all of its customers .
 
 [^86]: The coal cost in the table is Lazard’s low end, since the high-end cost “incorporates 90% carbon capture and compression” (Lazard, 2018, p . 2), which is in use on only one existing utility coal unit, SaskPower’s Boundary Dam . The $3,000/kW value is also consistent with the costs of the last three coal plants completed by U .S . regulated utilities (Turk, Virginia City and Rogers/Cliffside 6, all completed in 2012) . Actual current costs of various vintages of resources will vary for each utility .
 
-##### Figure 30. ERCOT load and real-time prices in 2017
+[PDF p. 112 | printed p. 110]
 
 $2,250<br>$2,000<br>$1,750<br>$1,500<br>$1,250<br>$1,000<br>$750<br>$500<br>$250<br>$0<br>-$250<br>20,000 25,000 30,000 35,000 40,000 45,000 50,000 55,000 60,000 65,000 70,000<br>Hourly load in megawatts<br>Hourly price per megawatt-hour<br>
 
@@ -78,6 +99,8 @@ estimated that the net revenues available to pay the capital investment and nond
 The PJM independent market monitor reports the capacity revenues and the net energy revenues (i.e., energy revenue in excess of fuel and variable O&M) for a variety of plant types (Monitoring Analytics, 2014, pp. 219-222, 2019, pp. 335-339). These are the revenues available to pay for the capital investment and nondispatch O&M costs and thus represent the market allocation of these costs for the plants. Figure 31 on the next page shows the portion of these costs recovered through capacity payments for four types of new plants (gas-fired combustion turbine and combined cycle units, and hypothetical new coal and nuclear) in each year
 
 ##### Figure 31. Capacity revenue percentage in relation to capacity factor in PJM
+
+[PDF p. 113 | printed p. 111]
 
 100%<br>Combustion turbine<br>90% Combined cycle<br>Coal<br>80%<br>Nuclear<br>Trend<br>70%<br>60%<br>50%<br>40%<br>30%<br>20%<br>10%<br>0%<br>10% 20% 30% 40% 50% 60% 70% 80% 90% 100%<br>Capacity factor<br>Capacity revenue as percentage of total revenue<br>
 
@@ -102,6 +125,8 @@ Table 13. Energy portion of 2017 net revenue for New York ISO
 Sources: Patton, D., LeeVanSchaick, P., Chen, J., and Palavadi Naga, R. (2018). _2017 State of the Market Report for the New York ISO Markets;_ additional calculations by the authors
 
 [^87]: The independent market monitor assumed that a nuclear plant would operate at a 75% capacity factor and made the same assumption for the coal plant through 2015; the capacity factors for the gas-fired plants and for coal in 2016 and 2017 are determined from the economic operation of the units .
+
+[PDF p. 114 | printed p. 112]
 
 #### 9.1.2 Classification Approaches
 
@@ -129,13 +154,15 @@ The average-and-peak approach can be applied in classification, when classifying
 
 Where A = annual average load = energy ÷ 8,760 P = peak load C = class S = system SLF = system load factor = (annual energy) ÷ (peak load × 8,760)
 
-[^88]: This method is sometimes called the system load factor approach . It has also been called “average and excess” because a fraction of cost equal to the system load factor is allocated on energy and the excess of costs on a measure of peak loads (Coyle, 1982, pp . 51-52) .
-
 Various utilities and other analysts have proposed to subfunctionalize generation resources (in the simplest case, between baseload and peaking plants) and classify each category of generation in a different manner. For example, peakers may be classified 100% as demand-related, while baseload resources are classified 75% to demand and 25% to energy, or some other location- and situation-specific ratio.
 
 More advanced analyses have subfunctionalized generation among base, intermediate and peak categories, known as BIP classification. The base generation might be defined as all nuclear and coal plants, with the intermediate being gas-fired steam and combined cycle plants and the peak units being combustion turbines, storage and demand response. Alternatively, base plants might be any unit that operated at more than a certain capacity factor (for example, 60%), peakers those that ran at less than 5%, and intermediate anything between those 5% and 60% capacity factors. Or, rather than using capacity factor (which can be low due to forced outages, maintenance or economic dispatch), the
 
+[^88]: This method is sometimes called the system load factor approach . It has also been called “average and excess” because a fraction of cost equal to the system load factor is allocated on energy and the excess of costs on a measure of peak loads (Coyle, 1982, pp . 51-52) .
+
 [^89]: This average-and-peak allocator should not be confused with the averageand-excess demand allocator described in the 1992 NARUC _Electric Utility Cost Allocation Manual,_ which allocates a portion of costs in proportion to average load and the excess in proportion to each class’s excess of peak load over its average use . That legacy average-and-excess allocator is essentially just a peak allocator (Meyer, 1981) .
+
+[PDF p. 115 | printed p. 113]
 
 generation classes can be defined using operating factor (the ratio of output to equivalent availability). At an extreme, each generation type, or even each unit, can be classified separately.
 
@@ -145,8 +172,6 @@ One of the challenges of the base-peak approach relates to the changing usage of
 
 Recent technological changes pose additional challenges and opportunities for expanding the base-peak approach from two generation profiles, or the three profiles of the BIP method, to a full analysis of the use of generation resources. Decades ago, it was reasonably accurate to treat generation resources as being stacked neatly under the load duration curve in order of variable costs. The growing role of variable
 
-[^90]: Some coal plants that once ran as baseload resources have been taken out of service in low-load months to reduce O&M costs . This includes Nova Scotia Power’s Lingan 1 and 2 (Barrett, 2012), Luminant’s Monticello and Martin Lake (Henry, 2012) and the Texas Municipal Power Agency’s Gibbons Creek (Institute for Energy Economics and Financial Analysis, 2019) .
-
 output renewable resources, additional storage and economic demand response reduces the accuracy of those simple models. Resources like wind and solar do not fit neatly into the BIP categories, providing service in distinct time patterns that may not be related to system loads. At the same time, many utilities have access to much more granular detail on hourly consumption by customer.[^91] The BIP method can be expanded to reflect conditions (output by several classes of conventional generation, solar, wind and storage; energy use for storage; usage by class) in as many time periods (or load levels, or bins combining consumption and generation conditions) as desired, even down to an hourly allocation method. Usage and hence costs could thus be assigned directly to the classes using power at the times that each resource provides service.[^92]
 
 ###### Equivalent Peaker Method
@@ -155,17 +180,19 @@ The equivalent peaker method,[^93] discussed at length in the 1992 NARUC _Electr
 
 If only peak load had been higher (and other needs were already satisfied) in the years in which the utility made the bulk of its generation construction decisions, it would have likely met that increased load by adding peaker capacity.[^95] Utilities historically have justified building baseload capacity by relying on these plants’ long hours of use and lower fuel
 
-> way: 34% (the ratio of minimum to peak load) to energy; 36% (the 90% ratio of winter peak to summer peak, minus the 34% energy allocation, or 56%, times the 65% of the peak-period hours that occur in winter) to the winter peak demand; and the remaining 30% to the summer peak demand (Seelye, 2016, Exhibit WSS-11) . This approach has no cost basis .
+[^90]: Some coal plants that once ran as baseload resources have been taken out of service in low-load months to reduce O&M costs . This includes Nova Scotia Power’s Lingan 1 and 2 (Barrett, 2012), Luminant’s Monticello and Martin Lake (Henry, 2012) and the Texas Municipal Power Agency’s Gibbons Creek (Institute for Energy Economics and Financial Analysis, 2019) .
 
 [^93]: In some jurisdictions, this is called the peak credit method .
 
 [^91]: Most utilities have long known the hourly generation by unit .
 
-[^92]: Some utilities refer to their classification method as BIP, even though it does not reflect the differences in costs among the various types of generation . For example, the Louisville Gas & Electric and Kentucky Utilities 2018 “BIP” computation classified nondispatch generation costs this
+[^92]: Some utilities refer to their classification method as BIP, even though it does not reflect the differences in costs among the various types of generation . For example, the Louisville Gas & Electric and Kentucky Utilities 2018 “BIP” computation classified nondispatch generation costs this way: 34% (the ratio of minimum to peak load) to energy; 36% (the 90% ratio of winter peak to summer peak, minus the 34% energy allocation, or 56%, times the 65% of the peak-period hours that occur in winter) to the winter peak demand; and the remaining 30% to the summer peak demand (Seelye, 2016, Exhibit WSS-11) . This approach has no cost basis .
 
 [^94]: This approach is sketched out in Johnson (1980, pp . 33-35) and described in more detail in Chernick and Meyer (1982, pp . 47-65) .
 
 [^95]: To some extent, the peakier load would likely allow for development of more demand response and load management . Estimating the potential and costs for these resources under hypothetical load shapes may be difficult .
+
+[PDF p. 116 | printed p. 114]
 
 costs.[^96] This incremental capital cost (often called capitalized energy or “steel for fuel”) is attributable to energy requirements, not demand. The investment-related costs of baseload resources above and beyond the cost of peaking units are incurred to serve energy load, not demand. Treating these costs as demand-related overstates the cost of meeting demand and understates the costs incurred to meet energy requirements. This phenomenon has been understood since the 1970s and 1980s:
 
@@ -175,25 +202,25 @@ However, there are several additional issues with this concept in the modern ele
 
 Under the equivalent peaker method, the demand- or
 
-[^96]: Similar reasoning applies to the decision to add renewable resources, substituting investment for fuel costs . See footnote 120 .
-
-[^97]: During the 2000-2001 California energy crisis, oil-fired peakers in the Pacific Northwest operated at high monthly capacity factors because they were exempt from both gas supply constraints and California emissions regulations . U .S . Energy Information Administration Form 906 for 2000 and 2001 demonstrates the incremental oil burn in 2000 and 2001, particularly for Puget Sound Energy .
-
-[^98]: In the future, the reference peaking capacity might be an increase in
-
 reliability-related portion of the cost of each generation unit is estimated as the cost per kW of a peaker (usually a simplecycle combustion turbine) installed in the same period, times the effective capacity of that unit, adjusted for the equivalent availability of a peaker.[^98] The cost of the unit in excess of the equivalent gas turbine capacity is energy-related.
 
 However, the simple version of this calculation typically will overstate the reliability-related portion of plant cost because it assumes a steam plant supports as much firm demand as would the same capacity of (smaller) combustion turbines. Due to higher forced outage rates, lengthy maintenance shutdowns and the size of units, a kilowatt of steam plant capacity typically supports less firm load than a kilowatt of capacity from a small peaker. A system with a peak load of about 6,500 MWs and a 65% load factor could achieve the same level of reliability with 80 units of 100 MWs (8,000 MWs, or a 23% reserve) or 19 units of 600 MWs (11,400 MWs, or a 75% reserve), assuming the units all have a 6% **equivalent forced outage rate** and that the load shape can accommodate all required maintenance off-peak. Increasing the equivalent forced outage rate to 10% would increase the required reserve for the 100-MW units to about 40% and for the 600-MW units to 90%. Even with the 6% equivalent forced outage rate, if the load factor were 96%, the reserve requirement would rise to 30% with 100-MW units and 90% with 600-MW units.
 
 Figure 32 on the next page shows the gross plant per kW for combustion turbines as of 2011, from FERC Form 1 data (Federal Energy Regulatory Commission, n.d.). These values include the original cost of the units, plus capital additions since the plants entered service, minus the cost of any equipment retired. This tabulation includes all nonCHP simple-cycle combustion turbines for which cost data were available.[^99] Some of the later combustion turbines in this sample may not be pure peakers, since manufacturers
 
-> demand response cost or storage peak output capacity, without an increase in energy generating capability . The reference peaker should always be the least-cost option for providing reliability .
-
-[^99]: Municipal and cooperative utilities and non-utility generators (both those under contract with utilities and those operating in the merchant markets) do not file FERC Form 1 reports, so their units are not included in this analysis . The municipal and cooperative utilities typically retain financial and operating records that are compatible with the FERC system of accounts, allowing comparison of the data for a specific utility’s nonpeaking resources with national data on contemporaneous peaker costs .
-
 Figure 32. Cost of combustion turbine plant in service in 2011<br>$600<br>Average for year<br>$500<br>Five-year rolling average<br>$400<br>$300<br>$200<br>$100<br>$0<br>1960 1965 1970 1975 1980 1985 1990 1995<br>Plant in-service year<br>Gross plant cost per kilowatt of capacity<br>
 
 Data source: Federal Energy Regulatory Commission Form 1 database
+
+[^96]: Similar reasoning applies to the decision to add renewable resources, substituting investment for fuel costs . See footnote 120 .
+
+[^97]: During the 2000-2001 California energy crisis, oil-fired peakers in the Pacific Northwest operated at high monthly capacity factors because they were exempt from both gas supply constraints and California emissions regulations . U .S . Energy Information Administration Form 906 for 2000 and 2001 demonstrates the incremental oil burn in 2000 and 2001, particularly for Puget Sound Energy .
+
+[^98]: In the future, the reference peaking capacity might be an increase in demand response cost or storage peak output capacity, without an increase in energy generating capability . The reference peaker should always be the least-cost option for providing reliability .
+
+[^99]: Municipal and cooperative utilities and non-utility generators (both those under contract with utilities and those operating in the merchant markets) do not file FERC Form 1 reports, so their units are not included in this analysis . The municipal and cooperative utilities typically retain financial and operating records that are compatible with the FERC system of accounts, allowing comparison of the data for a specific utility’s nonpeaking resources with national data on contemporaneous peaker costs .
+
+[PDF p. 117 | printed p. 115]
 
 developed more expensive and more efficient designs, including steam injection.
 
@@ -207,19 +234,17 @@ The capital costs of various types of generating capacity can be compared with t
 
 - • Comparing the cost of building the actual mix of generation today with the cost of building a peaking-only system today.[^101] This approach avoids the problem of
 
-[^100]: These cost ratios are provided to explain the importance of identifying the demand-related portion of generation investment . Any application of the equivalent peaker method should compare the costs of the utility’s existing plants to the costs of contemporaneous peakers, using the most
-
-> comparable estimates of the costs of peakers, reflecting geographical and other differences .
+[^100]: These cost ratios are provided to explain the importance of identifying the demand-related portion of generation investment . Any application of the equivalent peaker method should compare the costs of the utility’s existing plants to the costs of contemporaneous peakers, using the most comparable estimates of the costs of peakers, reflecting geographical and other differences .
 
 [^101]: The peaking-only system might include combustion turbines, demand response and storage resources .
+
+[PDF p. 118 | printed p. 116]
 
 estimating the cost of building peakers at various times in the past. But many existing plants could not be built today as they currently exist — a new coal plant may require scrubbers, nitrogen oxide reduction, closedsystem cooling and other features that the existing coal plant does not have.[^102] Other plant types, such as oil- and gas-fired boiler units, no longer make economic sense and would not be built today. Determining the cost of building a new 1970s-style coal plant or a gas-fired steam plant may be much more difficult than determining the cost of peakers in the 1970s. And for some technologies, the costs of new construction do not meaningfully reflect the costs of the plants currently embedded in rates. For example, as expensive as the nuclear units of the 1980s were, the nuclear units currently under construction are much more expensive. Conversely, the costs of wind turbines have fallen dramatically since the 1980s. Comparing today’s costs for those resources to the costs of new peakers would probably overstate the energyrelated portion of the costs of an old nuclear unit and understate the energy-related portion of the costs of an old wind farm.
 
 Whether the comparison uses gross plant in service, net plant in service or hypothetical new construction, the data sources should be as consistent as possible. It would not be appropriate to compare the current book value of an actual plant with the cost of a hypothetical plant in today’s dollars (Nova Scotia Utility and Review Board, 1995, p. 18).
 
 Table 14 shows the equivalent peaker method analysis that Northern States Power Co.-Minnesota (a subsidiary of Xcel Energy) used in its 2013 rate case filing (Peppin, 2013, Schedule 2, p. 4).[^103] The capacity portion for each plant type is the ratio of the peaking cost ($770 per kW) to the plant type cost. For example, the peaking cost is 20.9% of the cost of the nuclear plant, so 20.9% of the nuclear investment is treated as capacity-related. The company uses its estimates of the replacement costs of each type of generation and applies the results to each capital cost component (gross plant, accumulated depreciation, deferred taxes, etc.).
-
-[^102]: Many hydroelectric projects could not be licensed if they were proposed today .
 
 Table 14. Equivalent peaker method analysis using replacement cost estimates
 
@@ -243,9 +268,13 @@ The results of the two analyses are generally consistent, except for the classif
 
 The equivalent peaker method does have limitations. Perhaps most importantly, it requires cost comparisons of individual generation units with peakers of the same vintage. Utilities installed combustion turbines as far back as the early 1950s, but the technology was widely installed only in the late 1960s. The oldest remaining combustion turbine owned
 
+Table 15. Equivalent peaker method analysis using 2017 gross plant in service
+
+[^102]: Many hydroelectric projects could not be licensed if they were proposed today .
+
 [^103]: The company calls this a plant stratification analysis .
 
-Table 15. Equivalent peaker method analysis using 2017 gross plant in service
+[PDF p. 119 | printed p. 117]
 
 |                        |                   | Plant in ser   | vice           | Excess over combus | tion turbine   |                                 |
 | ---------------------- | ----------------- | -------------- | -------------- | ------------------ | -------------- | ------------------------------- |
@@ -281,6 +310,8 @@ Table 16. Equivalent peaker method classification of nonfuel operations and main
 
 Data source: Federal Energy Regulatory Commission Form 1 database records for Northern States Power Co.-Minnesota
 
+[PDF p. 120 | printed p. 118]
+
 costs; the data are 2017 numbers from FERC Form 1, Page 402, for Northern States Power Co.-Minnesota (Federal Energy Regulatory Commission, n.d.).
 
 Table 16 does not include the company’s wind resources, which average about $30 per kW-year in O&M, since MISO credits wind with unforced capacity value at only about 15% of rated capacity, or about 17% of the value of an installed MW of typical conventional generation. The demand-related portion of the wind capacity is thus less than $1 per kW-year, and the wind O&M is almost all energy-related.[^104]
@@ -290,10 +321,6 @@ Table 16 does not include the company’s wind resources, which average about $3
 The operational characteristics methods classify generation resources (units, resource types, purchases) based on their capacity factors or operating factors. Newfoundland Hydro classifies as energy-related a portion of the cost of each oil-fueled steam plant equal to the plant’s capacity factor (Parmesano, Rankin, Nieto and Irastorza, 2004, p. 22). At first blush, this approach appears to roughly follow the use of the resource, with plants that are used rarely being treated as primarily demand-related and those used in most hours classified as predominantly energy-related. Unfortunately, the use of capacity factor effectively classifies more of the cost to demand as the reliability of the resource declines.
 
 A better approach would be to use the resource’s operating factor, which is the ratio of its output to its equivalent availability (that is, its potential output, if it were used whenever available). This approach would classify any resource that is dispatched whenever it is available (e.g., nuclear, wind and solar) as essentially 100% energy-related. That may be seen as an overstatement, since those resources generally provide some demand-related benefits and are sometimes built to increase generation reliability, as well as to produce energy with little or no fuel cost.
-
-[^104]: The nonfuel O&M costs per kW for Northern States Power’s two small waste-burning plants and its small run-of-river hydro plant are even higher than the nuclear O&M and hence are effectively entirely energy-related, even if the hydro plant provides firm capacity .
-
-[^105]: The Massachusetts Department of Public Utilities explained its preference for this method as follows: “The modified peaker POD results
 
 #### 9.1.3 Joint Classification and Allocation Methods
 
@@ -307,11 +334,15 @@ Off-system sales and purchases can be added or subtracted from the load duration
 
 Figure 34 shows the composition of demand in each hour for the same illustrative system, divided among three customer classes. In this example, the residential class peak load occurs when load is high but not near the system peak.
 
-> in a fair allocation of embedded capacity costs because this method recognizes the factors that cause the utility to incur power plant capital costs and because this method allocates to the beneficiaries of fuel savings the capitalized energy costs that produce those savings” (1989, p . 113) .
+Figure 33. Simplified generation dispatch duration illustrative example
+
+[^104]: The nonfuel O&M costs per kW for Northern States Power’s two small waste-burning plants and its small run-of-river hydro plant are even higher than the nuclear O&M and hence are effectively entirely energy-related, even if the hydro plant provides firm capacity .
+
+[^105]: The Massachusetts Department of Public Utilities explained its preference for this method as follows: “The modified peaker POD results in a fair allocation of embedded capacity costs because this method recognizes the factors that cause the utility to incur power plant capital costs and because this method allocates to the beneficiaries of fuel savings the capitalized energy costs that produce those savings” (1989, p . 113) .
 
 [^106]: For an example of the POD method, see La Capra (1992) .
 
-Figure 33. Simplified generation dispatch duration illustrative example
+[PDF p. 121 | printed p. 119]
 
 7,000<br>Demand response/storage/combustion turbines<br>Combined cycle<br>6,000<br>Coal<br>5,000 Nuclear<br>4,000<br>3,000<br>2,000<br>1,000<br>0<br>1,000 2,000 3,000 4,000 5,000 6,000 7,000 8,000<br>Hour of the year, sorted by load<br>Higher load Lower load<br>This situation might arise for a winter-peaking residential industrial class might peak in the morning, the secondary<br>class in a summer-peaking system, or an evening-peaking commercial class at 1 p.m., and the residential class in the<br>residential class in a midday-peaking system. evening. Large commercial buildings typically experience<br>Note that the three customer classes need not peak at their peak load in the summer, since large buildings require<br>the same time. On a high-load summer day, the primary cooling in most climates. If a large percentage of home<br>Figure 34. Illustrative customer class load in each hour<br>7,000<br>Residential<br>Secondary commercial<br>6,000<br>Primary industrial<br>5,000<br>4,000<br>3,000<br>2,000<br>1,000<br>0<br>1,000 2,000 3,000 4,000 5,000 6,000 7,000 8,000<br>Hour of the year, sorted by load<br>System total megawatts<br>Total megawatts<br>
 
@@ -331,6 +362,8 @@ Table 17. Class share of each generation type under probability-of-dispatch allo
 | **Secondary commercial** | <br>28% | 29%           | 39%                               | 42%                      |
 | **Primary industrial**   | 38%     | 37%           | 29%                               | 27%                      |
 
+[PDF p. 122 | printed p. 120]
+
 heating is electric, the residential class is likely to experience its highest load in the winter, even in places like Florida. The industrial class loads may peak in a variety of seasons, driven by vacation and maintenance schedules, variation in inputs (e.g., agricultural products) and demand, and other factors. The system peak may occur at a time different from all of the customer class NCP demands.
 
 Table 17 shows how the costs of each generation resource would be allocated to the classes in the illustrative example in Figure 34. In the lowest-load hours, when nuclear is serving 80% of the energy load, the industrial class uses half the system energy and hence half the nuclear output; in the highest-load hours, when nuclear is serving about 29% of the load, the industrial class uses about 27% of the system energy. Averaged over the year, the industrial class uses 38% of the nuclear output. In the hours that the combustion turbines are running, the industrial class uses only 27% of the peaking resources’ output, since the residential and commercial classes dominate loads in that period.
@@ -339,15 +372,17 @@ The commercial class is responsible for the largest share of the summer peak and
 
 The POD method has been applied with a wide range of detail. The generation “dispatch” over the year may represent historical or forecast operation, equivalent availability or capacity factor, seasonal variation (due to maintenance
 
-[^107]: If this example had included a street lighting class, that class might not have been allocated any combustion turbine costs if the lights would not be on in the summer peak hours . In a more realistic example, including outages of the baseload plants, the combustion turbines probably would operate in some hours with street lighting loads and the lighting class would be allocated some combustion turbine costs .
-
 outages, hydro output, natural gas price, off-system purchases and sales), actual hourly output (reflecting planned and random outages and unit ramping constraints) and other variants. The POD method is thus one approach to hourly allocation. Ideally, dispatch and class loads should use the available data to match costs with usage as realistically as possible.
 
 The POD approach has some limitations. Most importantly, it does not consider the reason that investments were incurred, only the way they are currently used. The costs of an expensive coal plant no longer needed for baseload service and converted to burn natural gas and operating at a 10% capacity factor to meet peak loads might be allocated in exactly the same way as the costs of a much less expensive combustion turbine operating at 10% capacity factor.[^108] The excess costs of the converted coal plant are due to its historical role of providing large amounts of energy at then-attractive fuel costs; those costs were not incurred for the 10% of hours with highest demand. The same considerations arise for other steam plants that operate at much lower capacity factors than they were planned for and justified by. Some hydro plants have also changed operating patterns from their original use, either running for more hours to maintain downstream flow or for fewer hours due to reduced water supply. Peaking capacity is used to provide a range of ancillary services at many load levels, including upward ramping services (when load surges during the day or wind and solar output falls) and operating reserves (especially to back up large generation and transmission facilities). Reflecting these considerations may require modification of the inputs to the POD analysis, which considers only current use, not historical causation.
 
 Second, the POD method spreads the cost of each resource equally to all hours or energy output, assigning the same cost of a totally baseload plant (with a 100% capacity factor) to the lowest-load off-peak hour as to the system peak hour. That approach comports with some concepts of equity and cost responsibility: The cost of each resource is allocated
 
+[^107]: If this example had included a street lighting class, that class might not have been allocated any combustion turbine costs if the lights would not be on in the summer peak hours . In a more realistic example, including outages of the baseload plants, the combustion turbines probably would operate in some hours with street lighting loads and the lighting class would be allocated some combustion turbine costs .
+
 [^108]: In the simpler forms of POD, the costs of both plants would be spread over the top 10% of hours . In more sophisticated approaches that map generation to actual operating hours, the steam plant would generate in many hours with load lower than the top 10%, while missing some of the top 10%, due to limits on load following .
+
+[PDF p. 123 | printed p. 121]
 
 proportionately to the classes that use it. On the other hand, it can be argued that the hours with higher marginal energy costs contribute more of the rationale for investing in that resource and that, in a sense, each kWh of usage at high-load times should bear more of the resource’s investment-related costs than should each kWh in the off-peak hours. This concern can be addressed by weighting the energy over the hours, such as in proportion to some measure of hourly market price.
 
@@ -374,6 +409,8 @@ The decomposition approach conflicts with reality in many ways, including:
 4. The decomposition approach is usually designed to assign the lowest-cost resources to the industrial class,
 
 [^109]: A decomposition method that accounts for all relevant factors may not show an advantage for industrial customers . In Alberta, a related method to the decomposition method was presented to demonstrate that baseload power for industrial customers would be considerably more expensive than the demand-based cost allocation of the existing system for the industrial class (Marcus, 1987) .
+
+[PDF p. 124 | printed p. 122]
 
 ##### Figure 35. Illustration of decomposition approach to allocating resource mix
 
@@ -403,9 +440,7 @@ Many fuel conversion investments have been undertaken to reduce fuel costs or in
 
 - Conversion of coal-fired plants to partial or full operation on gas to achieve environmental compliance.
 
-- Conversion of coal-fired plants to partial or full
-
-operation on biomass to achieve environmental compliance and RPS credit.[^110]
+- Conversion of coal-fired plants to partial or full [PDF p. 125 | printed p. 123] operation on biomass to achieve environmental compliance and RPS credit.[^110]
 
 - Conversion of coal-fired plants to partial or full operation on petroleum coke, tire-derived fuel or other waste to reduce fuel costs.
 
@@ -417,10 +452,6 @@ Most pollution control retrofit costs are incurred to comply with regulatory req
 
 Utilities sometimes add generation that is not needed to maintain adequate reliability. Some of that excess capacity may result from the lumpiness of generation additions or declining load, with no clear connection to the classification of the additional costs. Other times the excess is the result of the long lead times for certain baseload generation (especially nuclear, but also some coal and hydro facilities), which can result in a plant being completed after the need for its
 
-[^110]: In principle, biomass conversion might also reduce fuel costs, although that is not necessarily the case .
-
-[^111]: Nova Scotia Power uses this adjustment to the average-and-peak approach (Nova Scotia Power, 2013a, p . 37) .
-
 capacity has vanished and the value of its energy output has decreased dramatically. One or both of those outcomes befell many of the nuclear plants and some coal plants in the late 1970s and 1980s. The long lead times are generally the result of choices to build plants to produce large amounts of energy at low variable costs; in those cases, there is a reasonable presumption that the costs of the excess capacity are due to anticipated or actual energy requirements.[^112]
 
 Excess capacity can be priced at the costs of contemporaneous peaking capacity and allocated among classes in proportion to the differences between projected class contribution to peak loads (at the time commitments were undertaken) and actual current class loads. Excess capitalized energy costs (net of equivalent peaking capacity costs and any fuel savings) similarly can be allocated in proportion to the differences between class projected energy requirements and their actual energy requirements.
@@ -431,11 +462,17 @@ This adjusted peak load could be used in allocating peaking resources or the pea
 
 Another source of excess capacity is the addition of clean resources to allow the reduced use of dirty older generation, which thus allows the utility to meet environmental
 
+##### Table 18. Allocation of 400 MWs excess capacity to reflect load risk
+
+[^110]: In principle, biomass conversion might also reduce fuel costs, although that is not necessarily the case .
+
+[^111]: Nova Scotia Power uses this adjustment to the average-and-peak approach (Nova Scotia Power, 2013a, p . 37) .
+
 [^112]: Accounting for a suboptimal system resource mix (and other inefficiencies) is also discussed in detail in Chapter 18 .
 
 [^113]: Any load shortfall due to increased utility efficiency efforts since the commitment to build the capacity should generally be excluded from the shortfall .
 
-##### Table 18. Allocation of 400 MWs excess capacity to reflect load risk
+[PDF p. 126 | printed p. 124]
 
 |                          | Forecast<br>load<br>(MWs) | Actual load<br>(MWs) | Load<br>differential | Share of load<br>shortfall | Allocated<br>excess<br>(MWs) | Load for<br>allocation<br>(MWs) |
 | ------------------------ | ------------------------- | -------------------- | -------------------- | -------------------------- | ---------------------------- | ------------------------------- |
@@ -462,7 +499,9 @@ The classification of hydroelectric generation presents some issues that differ 
 
 [^116]: Excess costs can also be associated with underutilized or repurposed facilities . For example, a retired steam power plant may be used to warehouse distribution equipment; the generator may be operated as a synchronous condenser to support the transmission system; or a portion of the plant site may remain in service to house a combustion turbine, a transmission switching station or a control center . Sometimes this is intentionally done to avoid (or evade) a rate base disallowance for a unit retired prior to being fully depreciated . Most of those costs continue to be attributable to the original purpose of the steam plant and hence to energy and demand . Similarly, the utility may face cleanup costs for a former coal gasification site or any site contaminated by hazardous materials (e .g ., heavy metals, waste lubricating oil or PCB-contaminated transformer oil) . Regardless of how that site is used today or was most recently used, the cleanup costs are attributable to the activity that generated the contamination, not the current use .
 
-- 117 The treatment of pumped storage, where water is pumped uphill off-peak and released to produce electricity during peak periods, is addressed with other storage technologies in Subsection 9 .1 .4 .
+[^117]: The treatment of pumped storage, where water is pumped uphill off-peak and released to produce electricity during peak periods, is addressed with other storage technologies in Subsection 9 .1 .4 .
+
+[PDF p. 127 | printed p. 125]
 
 demand values of the facility. Adding a turbine may increase the facility’s capacity at peak load times without increasing energy output, since total energy output is limited by the amount of water flowing in the river. At another hydro facility, adding an additional turbine will not increase the output in periods of peak need (usually summer and winter) because there is not enough water to run the additional turbine, but it may increase energy output in the spring flood; this energy has value, even if it does not contribute to meeting peak load. Adding additional water storage (such as in an upstream reservoir to hold water from the spring flood) may allow the plant to operate longer hours each day but may not increase the contribution in peak hours. Increasing the height of a dam may increase capacity by raising the hydraulic head and also increase energy output because of both the greater head and the increased storage volume.
 
@@ -476,10 +515,6 @@ Hydro is distinct in that the fuel supply (water) is limited, and although the u
 
 Other utilities, including Idaho Power, Hydro-Québec, and Newfoundland and Labrador Hydro, use the averageand-peak approach for legacy hydro.
 
-[^118]: Many of these resources will also operate with little or no flexibility in the spring flood, with minimum flow constraints (which may change by season) and with requirements for flow variation for streambed maintenance, recreational activities, flood control and other factors .
-
-[^119]: Many hydro resources bear the costs of providing services unrelated to electric generation, such as flood control, recreation, water supply
-
 In selecting classification and allocation methods it is important to recognize the usage of each type of hydro resource. Some are run-of-river, with each hour’s output determined by the amount of water flowing through the system. Other hydro resources have limited flexibility in dispatch due to environmental constraints. Both of these categories of hydro resources should be treated as variable, similar to wind and solar.
 
 Other categories of hydro resources have some storage capacity, allowing the operator to optimize dispatch over a day, a week or even a year.[^118] These resources are generally operated under a reliability-constrained economic dispatch regime, but since the variable cost is zero or minimal, they are dispatched to maximize the value of their limited energy supply rather than in merit dispatch order. For example, a hydro resource may be able to generate 100 MWhs in the hour ending at 2 a.m. at no cost, but the dispatcher is likely to prefer to keep the water in the reservoirs to be used for operating reserves, load following and avoidance of fuel costs in higher-cost hours later in the day.
@@ -488,7 +523,11 @@ The difference between the dispatch of hydro and thermal resources requires some
 
 It may be appropriate to recognize that some hydro resources are justified primarily by avoiding fuel costs in highload hours, resulting in allocation of the investment-related hydro costs in proportion to some measure of hourly market or marginal energy costs.[^119]
 
-> and environmental protection . Other resources, especially those built in recent decades, may also bear the costs of endangered species protection, conservation easements, access to open space, aesthetic screening around a plant or payments in lieu of taxes . If the non-energy benefits are conditions of a license or permit, those are simply the costs of building or running the plant .
+[^118]: Many of these resources will also operate with little or no flexibility in the spring flood, with minimum flow constraints (which may change by season) and with requirements for flow variation for streambed maintenance, recreational activities, flood control and other factors .
+
+[^119]: Many hydro resources bear the costs of providing services unrelated to electric generation, such as flood control, recreation, water supply and environmental protection . Other resources, especially those built in recent decades, may also bear the costs of endangered species protection, conservation easements, access to open space, aesthetic screening around a plant or payments in lieu of taxes . If the non-energy benefits are conditions of a license or permit, those are simply the costs of building or running the plant .
+
+[PDF p. 128 | printed p. 126]
 
 ###### Renewable Energy
 
@@ -502,8 +541,6 @@ In the classification of costs between capacity and energy, renewable costs that
 
 Many power purchase agreements with utilities or nonutility generators (especially fossil-fueled generation) have been structured with two types of charges: predetermined monthly charges the utility must pay regardless of how
 
-[^120]: Xcel Energy touted its renewable energy investments as “steel for fuel,” in which “capital recovery costs [are] offset by lower fuel and O&M costs” and wind “displaces coal and natural gas fuel,” resulting in “significant customer savings” (2018) . MidAmerican Energy justified its aggressive wind generation plan on eliminating exposure to fossil fuel costs (Hammer, 2018) . Northern Indiana Public Service Co . found that replacing its coal plants’ fuel and operating costs with wind and solar would reduce customer costs, uncertainty and risk (2018, p . 6) .
-
 much energy it takes from the power producer, as long as the supplier meets contracted requirements for availability; and variable charges per MWh that the buyer pays for the energy it takes. The charges may reflect the projected cost of a single unit or plant (traditionally fossil fueled, increasingly renewable) at the time the contract was signed, or the actual cost of service for a unit or a portfolio of resources.
 
 Another large set of power purchase agreements — including PURPA contracts, some dating back to the 1980s, and most 21st century renewable projects — pay the provider a rate per kWh delivered (perhaps with different rates by time of delivery). This cost structure fits well into an hourly allocation framework, although it is also possible to extract a demand component of the resource’s value for inclusion in a traditional demand/energy framework.
@@ -512,7 +549,11 @@ Many utilities classify the monthly guaranteed portion of payments to independen
 
 Others classify purchased power to mimic the classification of generation plant, as if the purchase were the equivalent of plant capital, without fuel.[^121] This treatment is similarly inconsistent with cost causation. Many power purchase agreements are structured to recover the costs of a baseload or intermediate resource, such as by charging a relatively high nonbypassable capacity charge and a low energy charge based on the usage of the resource. These contracts are typically not the lowest-cost way to meet peak loads. The only rational reason to enter into these contracts
 
+[^120]: Xcel Energy touted its renewable energy investments as “steel for fuel,” in which “capital recovery costs [are] offset by lower fuel and O&M costs” and wind “displaces coal and natural gas fuel,” resulting in “significant customer savings” (2018) . MidAmerican Energy justified its aggressive wind generation plan on eliminating exposure to fossil fuel costs (Hammer, 2018) . Northern Indiana Public Service Co . found that replacing its coal plants’ fuel and operating costs with wind and solar would reduce customer costs, uncertainty and risk (2018, p . 6) .
+
 [^121]: The contract may require the purchaser to take all of the available energy, so even a rate denominated in MWhs can be thought of as investmentrelated and thus similar to generation plant costs . In reality, the purchase contract replaces both the investment-related and variable costs of a comparable resource built by the purchasing utility .
+
+[PDF p. 129 | printed p. 127]
 
 would be to access lower-priced energy and higher efficiency. The classification process should look beyond the contract pricing terms to ascertain the true cost causation factors and where the benefits accrue.
 
@@ -532,10 +573,6 @@ Energy storage takes many forms, including:
 
 - A host of other electricity storage technologies, including
 
-[^122]: Some utilities in these pools own generation, which is sold into the regional market . The revenue from those sales can be credited against the costs of the generator before those costs are allocated to classes .
-
-[^123]: Since costs for purchased power may be recovered through both base rates and a power cost recovery mechanism, and the allocation of these costs may be reflected in both base rates and the power-cost mechanism, some care should be taken to ensure that the allocation is applied only once, just as the costs are recovered only once . For example, the costs for purchased power may be included in the cost of service study, with the anticipated purchased-power revenues from each class subtracted from
-
 compressed air, flywheels and gravity (moving weights upward to store energy, using the potential energy to drive a generator as needed).
 
 - Thermal storage as molten salt in solar thermal plants, ice or hot water at customer premises.
@@ -546,9 +583,13 @@ Batteries can provide a range of services, including contributing to bulk supply
 
 Storage operates as both a load and a supply resource and thus may operate at very different times than conventional generation. As a result, storage fits well into hourly allocation
 
-> the allocated costs . Alternatively, the purchase costs may be excluded from the base rate cost of service study and allocated separately on an appropriate basis in the fuel and purchased power cost recovery mechanism .
+[^122]: Some utilities in these pools own generation, which is sold into the regional market . The revenue from those sales can be credited against the costs of the generator before those costs are allocated to classes .
+
+[^123]: Since costs for purchased power may be recovered through both base rates and a power cost recovery mechanism, and the allocation of these costs may be reflected in both base rates and the power-cost mechanism, some care should be taken to ensure that the allocation is applied only once, just as the costs are recovered only once . For example, the costs for purchased power may be included in the cost of service study, with the anticipated purchased-power revenues from each class subtracted from the allocated costs . Alternatively, the purchase costs may be excluded from the base rate cost of service study and allocated separately on an appropriate basis in the fuel and purchased power cost recovery mechanism .
 
 [^124]: Renewable incentives and tax policy may encourage co-location of storage with centralized renewable generation . Moving the storage to support transmission, distribution or customer resilience would typically increase both the value and the cost of the resource; those incremental costs should be classified as due to the incremental service .
+
+[PDF p. 130 | printed p. 128]
 
 schemes. Storage usually delivers power into the grid at high-cost hours, so assigning the capital and operating costs, including the costs of charging storage, to those hours usually will result in an equitable tracking of costs to benefits.
 
@@ -559,8 +600,6 @@ In addition, some utility systems experience high ramp rates in net load at time
 ###### System Control and Dispatch
 
 The costs of scheduling, committing and dispatching generation units, recorded in FERC Account 556, are fixed in the short term but vary with the generation mix, load shapes and variability and other considerations. Costs of forecasting
-
-[^125]: One possible complication with time differentiation is that some steam plants must be operated in low-load hours, when they are not really needed, so that they will be available when needed in higher-load hours . The costs of fuel and reagents used in low-load hours may be required to
 
 load and supply and optimizing dispatch may vary depending on the amount of weather-related load, the existence of large loads and large generators that may suddenly trip off line, the extent of integration with other utilities, the length of time required for major plants to start up and the amount of variable renewable generation. Some dispatch costs would be required, even if the utility only needed to dispatch generation on a few peak hours, while others are required for multiday planning, 24-hour operation and other energyrelated factors.
 
@@ -576,9 +615,11 @@ Energy-classified generation costs are often allocated to all classes in proport
 
 The energy-related capital investment and nondispatch O&M costs can be allocated to classes in proportion to
 
-> serve high-load hours, but the plants may also be supplying energy in the low-load hours; sorting out generation and fuel use among periods within a week or day can be very complicated .
-
 Table 19. Attributes of generation classification options
+
+[^125]: One possible complication with time differentiation is that some steam plants must be operated in low-load hours, when they are not really needed, so that they will be available when needed in higher-load hours . The costs of fuel and reagents used in low-load hours may be required to serve high-load hours, but the plants may also be supplying energy in the low-load hours; sorting out generation and fuel use among periods within a week or day can be very complicated .
+
+[PDF p. 131 | printed p. 129]
 
 | Method                                                                                            | Data and<br>computational<br>intensity | Accuracy<br>of cost<br>causality | Allows joint<br>classification/<br>allocation | Applicability                                                                          |
 | ------------------------------------------------------------------------------------------------- | -------------------------------------- | -------------------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------- |
@@ -640,6 +681,8 @@ Note: Numbers may not add up to total because of rounding.
 
 transmission constraints preclude additional exports. That approach recognizes that using energy in some time periods is more expensive for Manitoba Hydro (in terms of lost export revenues) than consumption in other time periods.
 
+[PDF p. 132 | printed p. 130]
+
 - The class contributions to three or four seasonal peaks (3 CP or 4 CP).
 
 - The average of the class contributions to multiple highload hours, such as:
@@ -668,15 +711,13 @@ Frequently used demand allocators include:
 
 As discussed in Chapter 5, generation capacity requirements have always been driven by more than a few hourly loads. Moreover, with peak loads being offset by solar generation and expanding demand response available to serve the highest-load or highest-cost hours, capacity requirements are driven by an even broader group of hours, which should be reflected in the development of the demand allocation factors. Broader allocation factors also have the virtue of limiting the instability resulting from the use of a limited number of peak hours. For example, ERCOT experienced an annual peak in 2017 at approximately
 
+[PDF p. 133 | printed p. 131]
+
 69,500 MWs on July 28 at 5 p.m. However, there were 13 other hours within 2% of that annual peak in 2017, in the hours ending at 3 p.m. to 7 p.m. (Electric Reliability Council of Texas, 2018, and calculations by the authors). Changes in temperature or cloud cover could shift the peak load to any of those hours. The peak timing in the load data can be very important in determining the allocators. The residential class typically will have a greater share of a peak load occurring at 7 p.m. than one occurring at 3 p.m. or 4 p.m.[^126]
 
 Utilities have sometimes allocated generation demand costs on the class NCP at the system level.[^127] This approach may have been roughly appropriate for some utilities serving distinct classes with peak demands in different seasons, such as winter-peaking ski resorts and summer-peaking irrigation pumping, with both seasons contributing to the need for generation capacity. The class NCP would not recognize whatever load the ski resorts’ summer operations contribute to the pumping-dominated peaks and would allocate demand costs to other classes based on their summer or winter peaks — but not their contributions to either of the seasons’ high-load hours. Since reliability computations and the need for generation capacity are driven by combined system load, some measure of the combined loads on the system is relevant. With the hourly data collection technologies now available, this class NCP approximation is no longer necessary.
 
 Traditionally, without access to the kind of sophisticated hourly data we can obtain today, utilities have tended to allocate demand costs on a single annual coincident peak,
-
-[^126]: The range of loads in these 14 hours was only about 1,400 MWs, roughly the size of one large nuclear unit or two large coal units . The differences in loads over those hours are of little significance in terms of reliability .
-
-[^127]: In some jurisdictions, the class NCP is referred to as the maximum class peak, maximum diversified demand or something similar, and “NCP” is used to designate the sum of the individual customer noncoincident peaks within each class . We refer to class NCP and customer NCP in this manual to distinguish between the two methods .
 
 the average of the four monthly peaks in the high-load summer season, the average of some number of summer and winter monthly peaks, a defined number of peak hours when peaking resources are expected to operate, or the average of the 12 monthly peaks.[^128] The number of months included in the computations of the demand allocator often reflects the following factors:
 
@@ -687,8 +728,6 @@ the average of the four monthly peaks in the high-load summer season, the averag
 - Whether requirements for maintenance outages reduce available capacity in off-peak months enough that available reserves in those months are comparable to the reserves in the peak months.
 
 A more comprehensive approach to these factors would develop the demand allocator from all the hours identified in a loss-of-energy expectation study, after accounting for maintenance scheduling. Depending on the system, that may be several hours or several hundred hours. If data are not available for a comprehensive loss-of-energy expectation analysis, a demand allocator based on all hours within a specified percentage of the peak (e.g., 80% to 95%) or based on a significant number of the highest hours in the year (e.g., 100) is preferable to a coincident peak analysis. In sum, averaging or weighting a small number of coincident peaks incorrectly assumes that the need for capacity is a simple function of the amount of the system monthly peak, even though capacity requirements are driven by many hours,
-
-[^128]: FERC has a set of guidelines for determining whether wholesale demandclassified costs should be allocated on 3 CPs or 12 CPs (for example, see Federal Energy Regulatory Commission, 2008, pp . 30-35) . FERC’s approach does not contemplate that any other number of months (such as four or eight) might be responsible for the need for capacity .
 
 Table 22. Attributes of generation demand allocation options
 
@@ -701,6 +740,14 @@ Table 22. Attributes of generation demand allocation options
 | **Loss-of-energy expectation**                            | High                                   | High                             | No                                            | Broad                                                                                                  |
 | **Complex base-intermediate-peak**                        | High                                   | High                             | Yes                                           | Broad                                                                                                  |
 | **Probability of dispatch**                               | Medium to high                         | High                             | Yes                                           | Broad                                                                                                  |
+
+[^126]: The range of loads in these 14 hours was only about 1,400 MWs, roughly the size of one large nuclear unit or two large coal units . The differences in loads over those hours are of little significance in terms of reliability .
+
+[^127]: In some jurisdictions, the class NCP is referred to as the maximum class peak, maximum diversified demand or something similar, and “NCP” is used to designate the sum of the individual customer noncoincident peaks within each class . We refer to class NCP and customer NCP in this manual to distinguish between the two methods .
+
+[^128]: FERC has a set of guidelines for determining whether wholesale demandclassified costs should be allocated on 3 CPs or 12 CPs (for example, see Federal Energy Regulatory Commission, 2008, pp . 30-35) . FERC’s approach does not contemplate that any other number of months (such as four or eight) might be responsible for the need for capacity .
+
+[PDF p. 134 | printed p. 132]
 
 depending on load; the amount of generation capacity that is available, not just installed; and the scheduling of maintenance outages.
 
@@ -717,6 +764,8 @@ As variable renewable capacity (mostly wind and solar) on a system increases, th
 Cost of service studies can also combine features of the various classification approaches, such as classifying peakers as 100% demand-related; classifying fuel conversion costs, environmental costs and generation without firm transmission as 100% energy-related; and applying the average-and-peak
 
 Table 23. Summary of conceptual generation classification by technology
+
+[PDF p. 135 | printed p. 133]
 
 | Resource type                                                                   | Function                       | Classification                     |
 | ------------------------------------------------------------------------------- | ------------------------------ | ---------------------------------- |
@@ -752,7 +801,9 @@ approach to the remaining costs. A hybrid approach is only as equitable as the c
 
 that might be applied to the capital and nondispatch O&M costs for various types of generation resources, whether utility-owned or purchased.[^129] This summary is, by its very nature, highly simplified, ignoring many of the complexities discussed in sections 9.1, 9.2 and 9.3.
 
-129 The probability-of- dispatch and hourly approaches can also be applied to the short-run variable costs of the resources .
+[^129]: The probability-of- dispatch and hourly approaches can also be applied to the short-run variable costs of the resources .
+
+[PDF p. 136 | printed p. 134]
 
 For simplicity, we show an illustration only for generation investment-related costs. Table 25 shows the amount of investment in each category, which we will then divide using multiple allocation methods.
 
@@ -796,3 +847,5 @@ Table 27. Modern hourly allocation of generation capacity costs
 | **Composite hourly factor** | 33%         | 35%                     | 30%                   | 2%                 | 100%         |
 
 Note: Numbers may not add up to total because of rounding.
+
+[PDF pp. 137-276 not transcribed: Chapter 10 to Glossary and back cover, in 10_transmission_embedded.md to glossary.md of this folder]

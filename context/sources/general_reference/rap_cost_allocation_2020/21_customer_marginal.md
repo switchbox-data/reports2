@@ -1,6 +1,23 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 209-215 (printed pp. 207-213), Chapter 21; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 209-215 (printed pp. 207-213) of the manual, Chapter 21; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back. Footnote 228, which the first extraction split across the page's columns, is rejoined._
+
+[PDF pp. 1-208 not transcribed: front matter to Chapter 20, in 00_front_matter.md to 20_transmission_distribution_marginal.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 209 | printed p. 207]
+
 ## 21. Customer Connection and Service in Marginal Cost of Service Studies
 
-he customer connection costs, also known as point of delivery costs, include the service drop and meter **T** and may include the final line transformer and any secondary distribution lines that are not networked with other transformers.[^227] Primary lines are typically not point of delivery costs, although several utilities include either line extension costs or some type of minimum system as customer costs. The basic customer method primarily includes the service and meter, although some states include a transformer. As a matter of calculation, it is necessary to determine a meter cost for each customer class. Additionally, customers cause the utility to incur costs of billing, collections and similar items.
+The customer connection costs, also known as point of delivery costs, include the service drop and meter and may include the final line transformer and any secondary distribution lines that are not networked with other transformers.[^227] Primary lines are typically not point of delivery costs, although several utilities include either line extension costs or some type of minimum system as customer costs. The basic customer method primarily includes the service and meter, although some states include a transformer. As a matter of calculation, it is necessary to determine a meter cost for each customer class. Additionally, customers cause the utility to incur costs of billing, collections and similar items.
 
 ### 21.1 Traditional Computation Methods
 
@@ -16,15 +33,13 @@ Besides these computational issues, there are significant theoretical issues tha
 
 [^227]: A secondary distribution line that is not networked is installed to reduce costs (including line losses) relative to running all services directly off a single transformer . It is thus an economic substitute for longer service lines .
 
-[^228]: The exception to this concern is Nevada, where separate marginal customer costs are calculated for single-family and multifamily homes based on new costs but are applied to the existing stock of each type of
+[^228]: The exception to this concern is Nevada, where separate marginal customer costs are calculated for single-family and multifamily homes based on new costs but are applied to the existing stock of each type of housing . This practice has been in place since at least 1999 when the utilities presented the division of the residential class in Public Utilities Commission of Nevada dockets 99-04001 and 99-04005 . San Diego Gas & Electric calculates customer connection costs based on the noncoincident demand of the customers and uses demand estimates of existing customers, which also ameliorates this problem to some degree (Saxe, 2016, pp . 6-10) .
 
-> housing . This practice has been in place since at least 1999 when the utilities presented the division of the residential class in Public Utilities Commission of Nevada dockets 99-04001 and 99-04005 . San Diego Gas & Electric calculates customer connection costs based on the noncoincident demand of the customers and uses demand estimates of existing customers, which also ameliorates this problem to some degree (Saxe, 2016, pp . 6-10) .
+[PDF p. 210 | printed p. 208]
 
 method. Aside from computational inaccuracies from not using the standing stock, the rental method is not the outcome of a true competitive market. The NCO method reflects as marginal only those costs that are avoidable — incurred at the time when the choice to spend or not spend money on new hookups is made — when the customer chooses to connect to the utility system or when a hookup is replaced. It is thus a shorter-run marginal cost method than the rental method, making the NCO method more consistent with the other short- and intermediate-term means of calculating costs included in the rest of the NERA method. The cost analyst must carefully examine the consistency between the NCO method, which considers the full costs of system replacement, and the methods used for G&T. If replacement costs are used for one category, they should be used for all categories, moving the study toward a total service long-run incremental cost study (see Section 25.1).
 
 The NCO method also comports better with competitive markets and consumer behavior. Consumers typically have the choice to either own or rent any equipment affixed to their homes that costs several hundred to a few thousand dollars. In many cases, consumers nearly always own the equipment, as in the case of curtains or chandeliers. In other cases, there is consumer choice as to ownership or rental, as with propane tanks, solar energy systems,[^229] internet routers and (in some parts of North America) water heaters. Even where the rental option is present, the consumer can choose to purchase the equipment. In contrast, the rental method does not simulate the outcome of a competitive market. It is equivalent to assuming there are enough landlords that there is a competitive rental market, who own all the property in a given community. Anyone who wants to live in that community has to rent from one of these owners; no one is allowed to buy property. Rather, this is a market with barriers to entry that prevent true competition. Thus, the analogy of the current rental method to the housing market places an anti-competitive constraint on consumers that would limit their economic choices while
-
-[^229]: Solar systems may be a special case . Renting the equipment generates some tax benefits that can be passed to the consumer in lower rent, while ownership would not have the same tax advantages . This will change if the solar investment tax credit is allowed to expire after 2020 as would occur under current law .
 
 protecting the profits of the landlord — or the utility, in this case — from the vagaries of competition.
 
@@ -36,7 +51,11 @@ For utilities installing smart meters, a joint product issue arises. A smart met
 
 The NERA method provides a theoretical underpinning that customer connections (analogous to generation capacity) should be provided by the least-cost method. In evaluating past smart meter cases, about 70% of the cost of the AMI system was covered by meter reading benefits; the remainder of the cost was justified by other benefits. Therefore, California
 
+[^229]: Solar systems may be a special case . Renting the equipment generates some tax benefits that can be passed to the consumer in lower rent, while ownership would not have the same tax advantages . This will change if the solar investment tax credit is allowed to expire after 2020 as would occur under current law .
+
 [^230]: There is an accounting issue for meter replacement, because the cost of the meter is capitalized but the cost of meter replacement O&M is often expensed (see Section 21 .3) . It is important not to count the same cost twice .
+
+[PDF p. 211 | printed p. 209]
 
 ratepayer advocates typically have argued that only 70% of the cost was a customer connection and billing cost and the remainder was not a marginal customer cost. Alternatively, in other studies, more than 100% of the smart meter and data collection installation cost is justified by other savings in power supply and line losses, rendering the metering and meter reading function as a cost-free byproduct.
 
@@ -58,6 +77,8 @@ A third issue is that some of the costs in Account 588 are not marginal costs at
 
 In addition, if smart metering is in the process of being installed or has just been installed, O&M costs of smart meter installation may be part of accounts 586 and 587 in some historical years. In that case, it will be necessary to identify and remove those costs or use a historical period of time entirely after smart meter installation.
 
+[PDF p. 212 | printed p. 210]
+
 ### 21.4 Billing and Customer Service Expenses
 
 A marginal cost analysis of billing and customer service expenses is usually done in one of two ways. The most common way, following the NERA method, is to average costs over a number of historical and projected years. These costs are calculated per weighted customer, recognizing that certain activities are more heavily related to some customers than others. The second method is to use the costs of revenue cycle services, which are **short-run incremental costs** used to pay competitive service providers, plus similar short-run calculations for call centers and other activities. These costs are less than embedded costs of the same functions used in the NERA method. PG&E chose this method in Phase 2 of its 1999 general rate case to be consistent with the lower marginal costs it calculated for paying competitors; it has kept this design ever since. A method based on revenue cycle services is more consistent with a short-run marginal cost theory, but many utilities may not have the ability to implement it.
@@ -66,9 +87,7 @@ Many of the issues related to the appropriate calculation of marginal costs of b
 
 As with customer-related distribution costs, in jurisdictions using long averages with both present and future costs, the future cost forecast must be reasonable. In the specific case of customer accounting costs, a trend toward declining costs and increasing productivity has persisted for almost a decade. More customers are receiving and paying bills online or through automatic bank transactions, both of which are less expensive to the utility than mailing bills and payment envelopes to the customer and then opening and processing return envelopes with payments from customers. Phone calls to the utility are being replaced with internet transactions (even for items such as changing service or making payment arrangements) and the use of interactive voice response units. Even though utilities may claim that the remaining calls may be more complex, customer service representatives are logging fewer total hours. As a result, it is important to examine any set of averaged costs carefully. If costs are declining, as they should be, then an average would include costs from a period of worse productivity than the present and should not be used. Similarly, if the future is projected to be more expensive than recent history, that assumption should be probed for reasonableness.
 
-Some customer accounting and customer-related metering and distribution O&M expenses are paid by fees, not rates (see Chapter 15). As a result, they are not marginal costs associated with the general body of ratepayers. Costs of activities such as establishing service; disconnection and reconnection after customer nonpayment; field collections; meter testing; and returned checks are offset by fees received from individual customers (largely residential customers). If the costs paid by the fees are allocated heavily to residential customers, but the fees are not included in the revenue to be allocated, this would effectively cause residential customers to pay twice: once in the rate and a second time when assessed the fee. This problem can be dealt with in either of two ways. Nevada includes the fees in the revenue to be allocated and directly assigns the fees as revenues received from the classes that pay them. California generally removes an amount equal to the fees from the marginal customer accounting cost. The methods are not identical, but both will address the double counting. Costs (and uncollectible
-
-accounts if necessary) related to billing and collecting money from non-energy activities such as line extension advances and other products and services besides the utility’s energy bills may be in accounts 901 through 905, but they are not marginal costs of serving electric customers and should be excluded from marginal customer costs. This is similar to the approach in Section 15.2 for embedded costs.
+Some customer accounting and customer-related metering and distribution O&M expenses are paid by fees, not rates (see Chapter 15). As a result, they are not marginal costs associated with the general body of ratepayers. Costs of activities such as establishing service; disconnection and reconnection after customer nonpayment; field collections; meter testing; and returned checks are offset by fees received from individual customers (largely residential customers). If the costs paid by the fees are allocated heavily to residential customers, but the fees are not included in the revenue to be allocated, this would effectively cause residential customers to pay twice: once in the rate and a second time when assessed the fee. This problem can be dealt with in either of two ways. Nevada includes the fees in the revenue to be allocated and directly assigns the fees as revenues received from the classes that pay them. California generally removes an amount equal to the fees from the marginal customer accounting cost. The methods are not identical, but both will address the double counting. Costs (and uncollectible [PDF p. 213 | printed p. 211] accounts if necessary) related to billing and collecting money from non-energy activities such as line extension advances and other products and services besides the utility’s energy bills may be in accounts 901 through 905, but they are not marginal costs of serving electric customers and should be excluded from marginal customer costs. This is similar to the approach in Section 15.2 for embedded costs.
 
 In some cases, the difference between marginal and embedded cost analysis is that costs are excluded from marginal costs while being allocated differently from other costs as embedded costs. Examples are economic development rates and uncollectible accounts expenses. Economic development rates, as well as any costs for marketing and load retention, are not marginal costs. These programs are not needed for customer service and theoretically should pay for themselves by attracting or retaining loads or improving economic conditions in the area. Uncollectible accounts expenses are not marginal costs associated with current bill-paying customers and conceptually should not be included in marginal costs. This is a similar issue to the embedded cost issue, discussed in Section 12.2, regarding whether uncollectible accounts expenses are costs associated with present customers (direct assigned) or former customers (allocated by usage or revenue). California regulators removed uncollectible accounts expenses from marginal costs in 1989 (California Public Utilities Commission, 1989); the Nevada commission includes them (Public Utilities Commission of Nevada, 2002, p. 109). If uncollectible accounts are included, then late payment revenues must be treated consistently, by adding them to the distribution revenues to be allocated and subtracting them from the classes that pay them.
 
@@ -79,6 +98,8 @@ Lastly, a number of cost elements that are sometimes mistakenly classified as cu
 Tables 42 and 43 on the next pages illustrate a calculation of marginal customer costs using the NCO and rental methods, with a set of assumptions that are generally realistic but not tied to any specific utility.
 
 Table 44 on Page 213 shows the impact of the choice of marginal customer cost methods on the MCRR of distribution and thus on the overall allocation of distribution costs. To illustrate this impact, there is also an assumption as to demand distribution costs. Costs for primary customers are assumed to be lower than for other classes largely because they do not need line transformers. In this example, the residential class has 41% of the MCRR for distribution costs with the rental method but 38.8% with the NCO method.
+
+[PDF p. 214 | printed p. 212]
 
 Table 42. Illustrative example of new-customer-only method for marginal customer costs
 
@@ -136,6 +157,8 @@ Table 43. Illustrative example of rental method for marginal customer costs
 | **Number of customers**                                         | 1,000,000    | 100,000             | 10,000                        | 1,000                 |
 | **Marginal cost revenue requirement**<br>**for customer costs** | $106,000,000 | $16,400,000         | $10,100,000                   | $1,600,000            |
 
+[PDF p. 215 | printed p. 213]
+
 Table 44. Illustrative comparison of rental versus new-customer-only method for overall distribution costs
 
 |                                                                            | Residential  | Small<br>commercial | Secondary large<br>commercial | Primary<br>industrial |
@@ -155,3 +178,5 @@ Table 44. Illustrative comparison of rental versus new-customer-only method for 
 | Share of distribution costs                                                | 38 .8%       | 24 .3%              | 24 .1%                        | 12 .9%                |
 
 Note: Based generally on California examples, except transformer part of demand cost . Marginal demand cost is higher in commercial classes than residential because residential has more customers per transformer . Demand is lower in industrial class because no transformers or secondary lines are included . Percentages may not add up to 100 because of rounding .
+
+[PDF pp. 216-276 not transcribed: Chapter 22 to Glossary and back cover, in 22_admin_general_marginal.md to glossary.md of this folder]

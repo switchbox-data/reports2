@@ -164,6 +164,63 @@ def test_reworded_question_is_reported_with_the_point_of_divergence() -> None:
     assert "CIEC-1" in problems[0] and "give the estimate" in problems[0] and "provide the estimate" in problems[0]
 
 
+# ---------------------------------------------------------------------------
+# Citations in the responses
+# ---------------------------------------------------------------------------
+
+
+def _response(text: str) -> str:
+    return _qmd(body=f"\n## CIEC-1\n\n::: {{.question}}\nQ\n:::\n\n::: {{.response}}\n{text}\n:::\n")
+
+
+def test_well_formed_citations_pass() -> None:
+    assert ir.check_citations(_qmd()) == []
+    text = (
+        "a. Rate HP is calibrated on average.[^a]\n\n"
+        "   [^a]: [Velez Direct](https://pub.switch.box/x) at 85:2\u20137 [@velez_Docket260510Direct_2026].\n\n"
+        "   - The Company computed none.[^b] **[TK: confirm (PDF p. 12)]**\n\n"
+        "     [^b]: CL&P Response to CLF-SC-026, at 1 **[NOT INGESTED: inbox `x.pdf`, p. 3]**.\n\n"
+        "> **[DISCUSSION FOR JPV]** See Velez Direct at 85:14\u201319 and `madpu_Docket2508Order_2026`, p. 21.\n\n"
+        "```{python}\n# Exhibit CLP-MCOS-1 (Velez Direct p. 14 n. 8).\nx = 1\n```\n"
+    )
+    assert ir.check_citations(_response(text)) == []
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "a. Rate HP is calibrated on average (Velez Direct at 85:2\u20137).",
+        "a. The Company computed none (CL&P Response to CLF-SC-026 at 1).",
+        "a. The discount is anchored to marginal cost (id. at 28:5\u20136).",
+        "a. It covers new load (Exhibit CLP-RATES-1 at 24:19\u201325:1).",
+    ],
+)
+def test_inline_citation_is_reported(line: str) -> None:
+    problems = ir.check_citations(_response(line))
+    assert len(problems) == 1 and "move it to a footnote" in problems[0]
+
+
+def test_citation_key_and_page_abbreviation_are_reported_in_footnotes_too() -> None:
+    text = "a. The DPU directed it.[^a]\n\n   [^a]: `madpu_Docket2508Order_2026`, p. 21.\n"
+    problems = ir.check_citations(_response(text))
+    assert any("citation key used as a citation" in p for p in problems)
+    assert any("never p., pp. or PDF p." in p for p in problems)
+
+
+def test_footnote_problems_are_reported() -> None:
+    text = (
+        "a. First.[^a] Again.[^a] Missing.[^c]\n\n"
+        "   [^a]: Note.\n"
+        "   A paragraph that Pandoc would fold into the note.\n\n"
+        "   [^b]: Unused.\n"
+    )
+    problems = "\n".join(ir.check_citations(_response(text)))
+    assert "add a blank line after footnote [^a]" in problems
+    assert "[^a] is referenced 2 times" in problems
+    assert "[^c] is used but never defined" in problems
+    assert "[^b] is defined but never used" in problems
+
+
 def test_check_file_uses_source_extract(tmp_path: Path) -> None:
     extract = tmp_path / "extract.md"
     extract.write_text(EXTRACT, encoding="utf-8")

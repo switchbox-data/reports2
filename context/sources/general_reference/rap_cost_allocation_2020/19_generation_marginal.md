@@ -1,6 +1,23 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 198-203 (printed pp. 196-201), Chapter 19; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 198-203 (printed pp. 196-201) of the manual, Chapter 19; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back._
+
+[PDF pp. 1-197 not transcribed: front matter to Chapter 18, in 00_front_matter.md to 18_marginal_theory.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 198 | printed p. 196]
+
 ## 19. Generation in Marginal Cost of Service Studies
 
-he theory of marginal generation costs starts from the position that electric generation is a joint **T** product, producing energy as well as capacity or reliability. When marginal cost methods were introduced in the 1970s, they constituted a significant advance over the previously used embedded cost theory that assumed that generation capital investment and nondispatch O&M costs are all demand-related and only short-term variable costs are energy-related. The marginal cost paradigm recognizes in some way, albeit imperfectly, that with a variety of generating plant technologies, capital can be substituted for energy and that all capital is not related to the need to serve peak demand.
+The theory of marginal generation costs starts from the position that electric generation is a joint product, producing energy as well as capacity or reliability. When marginal cost methods were introduced in the 1970s, they constituted a significant advance over the previously used embedded cost theory that assumed that generation capital investment and nondispatch O&M costs are all demand-related and only short-term variable costs are energy-related. The marginal cost paradigm recognizes in some way, albeit imperfectly, that with a variety of generating plant technologies, capital can be substituted for energy and that all capital is not related to the need to serve peak demand.
 
 ### 19.1 Long-Run Marginal Cost of Generation
 
@@ -18,6 +35,8 @@ E3 divides the costs into energy and capacity, with the costs of a simple-cycle 
 
 [^215]: The description of this method is taken from Horii, Price, Cutter, Ming and Chawla, 2016 .
 
+[PDF p. 199 | printed p. 197]
+
 hourly load shape using information on load shapes over time (including changes resulting from renewable resource additions) and adds a projection of line losses, carbon dioxide costs and ancillary services to obtain a market price. To obtain the full marginal or avoided energy cost — to the extent that renewable resources (net of their resource-specific capacity credits) cost more than the energy-related cost of a combined cycle unit — the resulting extra costs of meeting the renewable portfolio standard over the 20-year period are added to the market-based costs.
 
 ### 19.2 Short-Run Marginal Energy Costs
@@ -30,9 +49,7 @@ cost analyses, tend to overstate the balance of costs for customer classes with 
 
 It is of key importance that reasonable natural gas price forecasts are used, particularly if looking out beyond a very short time horizon. In much of the country, the modeling outputs are very sensitive to this input factor, and key results can vary greatly depending on the natural gas forecast. The E3 long-run incremental cost forecast uses short-term forecasts from futures and a longer-term mix of forecasts from the U.S. Energy Information Administration and the California Energy Commission’s _Integrated Electric Policy Report_ (Horii et al., 2016, pp. 5-8). Utilities tend to use their own forecasts, but in California those forecasts are updated after intervenor testimony is filed.
 
-Greenhouse gas emissions are an important marginal cost, but there is not a consensus method to address it. Carbon cost is, in theory, internalized by California’s capand-trade system, although it becomes difficult to properly model the dispatch in the Western United States when only California resources and California imports carry carbon values. The **Regional Greenhouse Gas Initiative** market performs a similar function in the Northeastern United States. In all jurisdictions where carbon prices are included, carbon prices must be forecast if longer-term marginal cost methods are used. Prices need to be forecast over the full study duration where markets do not exist for these products. Even in California and the Regional Greenhouse Gas Initiative states, market-determined allowance prices extend out for only a three-year period. However, in places where carbon is not explicitly valued, a marginal cost method should include current or future carbon values associated with fossil-fueled generation to provide forward-looking price signals. In jurisdictions covered by electric sector cap-and-trade programs, there are still questions about whether the marginal cost from the program is sufficient or whether another measure, such as the social cost of carbon
-
-or marginal cost of long-term greenhouse gas reductions, is more accurate.
+Greenhouse gas emissions are an important marginal cost, but there is not a consensus method to address it. Carbon cost is, in theory, internalized by California’s capand-trade system, although it becomes difficult to properly model the dispatch in the Western United States when only California resources and California imports carry carbon values. The **Regional Greenhouse Gas Initiative** market performs a similar function in the Northeastern United States. In all jurisdictions where carbon prices are included, carbon prices must be forecast if longer-term marginal cost methods are used. Prices need to be forecast over the full study duration where markets do not exist for these products. Even in California and the Regional Greenhouse Gas Initiative states, market-determined allowance prices extend out for only a three-year period. However, in places where carbon is not explicitly valued, a marginal cost method should include current or future carbon values associated with fossil-fueled generation to provide forward-looking price signals. In jurisdictions covered by electric sector cap-and-trade programs, there are still questions about whether the marginal cost from the program is sufficient or whether another measure, such as the social cost of carbon [PDF p. 200 | printed p. 198] or marginal cost of long-term greenhouse gas reductions, is more accurate.
 
 The addition of renewable resources to utility portfolios, especially if added in advance of the need for capacity, depresses marginal energy costs by adding energy with zero fuel costs (or even negative costs in the case of wind energy with the production tax credit). The result is to reduce marginal costs in two ways. It reduces the heat rates of gasfired generators on the margin. It also decreases the number of hours when a gas-fired resource is on the margin in some places where cheaper coal or surplus hydro (the Pacific Northwest or Canada) can be a marginal source of energy or when renewables are curtailed. In other words, the short-run model reduces energy costs relative to capacity costs when new renewable resources are constructed.
 
@@ -40,13 +57,15 @@ It can be argued that costs of compliance with an RPS are short-run marginal cos
 
 Before deregulation, there was a debate over whether short-run marginal energy costs should be the instantaneous cost in the given hour as envisioned in the original NERA method or should reflect other factors such as unit commitment. Often the actual unit that varies with short-term
 
-[^216]: As an analogy, in most jurisdictions with retail choice, RPS requirements typically are implemented in a way that is a short-run cost . As a percentage requirement based on load served or retail kWh sales, it automatically varies based on kWhs in a predictable way . Therefore, treating RPS requirements similarly in jurisdictions where generation is regulated is appropriate .
-
 variation in loads is a flexible resource, not necessarily the least-cost resource, and the dispatch of hydro can change with changes in load. In California, the utilities commission adopted a method that computed marginal costs as the change in total costs for a large utility between a symmetrical increment of several hundred MWs above and several hundred MWs below current loads in each hour. This resulted in a more expansive definition of short-run marginal costs that included not just the incremental costs of a plant running in a given hour but the differences in how many power plants were committed if the load were different — thus causing changes in costs of startups and plants running at minimum load to be available the next day. These unit commitment costs generally increase the marginal costs experienced during peak hours above hourly marginal costs. In current wholesale markets, unit commitment costs tend to be reflected in day-ahead prices because bidders who need to commit a resource must include that cost in their bids.
 
 Several ancillary services defined by FERC and ISOs/ RTOs are purchased on an hourly basis. These include spinning reserves, nonspinning reserves available in a time frame of about 10 minutes, in some cases replacement reserves (plants that could fill another reserve type on a contingency basis if that reserve was used in real time) and frequency regulation (both upward and downward) on a minute-to-minute basis. Additionally, there are services that are not officially called ancillary services but that are related. These include the need to assure that enough generation is committed to meet energy requirements (residual unit commitment, acquired daily) and energy that can be dispatched to ramp upward or downward within a bid period to meet changes in demand and changes in variable (typically renewable) resource output that can be forecast hourly or subhourly (e.g., solar). Finally, there are out-of-market real-time costs necessary to maintain system reliability if generation is not available or if transmission contingencies occur. These costs are “uplift” (charged to system loads) by ISOs/RTOs. That said, uplift costs can be
 
+[^216]: As an analogy, in most jurisdictions with retail choice, RPS requirements typically are implemented in a way that is a short-run cost . As a percentage requirement based on load served or retail kWh sales, it automatically varies based on kWhs in a predictable way . Therefore, treating RPS requirements similarly in jurisdictions where generation is regulated is appropriate .
+
 [^217]: Those calculations established the principle, even though they were flawed because they included energy efficiency resources that were cheaper than market prices that could meet Nevada RPS requirements and because the energy efficiency costs did not consider a time value of money (Marcus, 2010c, pp . 7-8) .
+
+[PDF p. 201 | printed p. 199]
 
 incurred unnecessarily if ISOs/RTOs fail to optimize existing markets to provide necessary reserves and other ancillary services to provide necessary grid support.
 
@@ -78,6 +97,8 @@ In 2017-2018, Southern California Edison claimed that some of the need for syste
 
 [^218]: These costs do not include ramp, residual unit commitment or out-ofmarket costs .
 
+[PDF p. 202 | printed p. 200]
+
 loads in areas such as water supply and delivery (see Marcus, 2010b, and Lazar, 2016), one of the options the California ISO identified was gas-fired generation. New storage options may be especially well suited for dealing with problems of ramping because of the timing of both charging and discharging batteries or taking other actions like storing hot or chilled water.
 
 Equating a marginal capacity cost based on a peaker with very short-run energy costs creates a mismatch that is detrimental to customers with peakier load shapes. Several points must be considered here.
@@ -88,17 +109,19 @@ Equating a marginal capacity cost based on a peaker with very short-run energy c
 
 3. Even a peaking power plant would make money in the market (or save fuel and purchased power costs in a vertically integrated utility that is not closely affiliated with
 
-[^219]: A utility might have installed some of these smaller turbines for reasons such as alleviating transmission constraints, meeting time constraints (if the smaller turbines had less stringent siting requirements) or responding to specialized system needs such as black start capability .
-
 a market). Combustion turbines installed in the 1970s, when the NERA method was developed, had heat rates in the range of 15,000 Btu per kWh and burned expensive diesel oil. They were machines that provided essentially pure capacity — reserves that were turned on to keep the lights from going out. Much of the gas-fired load at that time came from less flexible steam plants with heat rates from 9,000 to 12,000 Btu per kWh. Modern peakers have a heat rate in the range of 10,000 Btu per kWh (or lower) and burn gas. They actually have better heat rates than many of the older intermediate steam plants, as well as greater flexibility. As a result, when modern peakers are used, they generally earn at least some money in the market or save fuel and purchased power costs.[^221] They also can earn revenue from selling dispatch rights in the 10-minute (nonspinning) reserve ancillary service market. This revenue should be netted against the cost of the combustion turbine, because it pays a portion of the cost of capacity.
 
 4. Peaking generation may not be the least-cost capacity resource. It is possible for an intermediate resource such as a combined cycle generator to have a lower net cost than a combustion turbine. In particular, the capital and long-term O&M cost of the combined cycle generator minus the revenue that it would earn in the market or the fuel it would save can be less than the cost of a combustion turbine. Even with excess capacity, this outcome can sometimes occur, particularly if a relatively expensive turbine is erroneously considered as the peaking unit (as discussed earlier in this list).
 
 5. Storage costs may be cheaper than combustion turbines. Under current conditions, it is possible that storage costs net of energy savings relative to market prices can be cheaper than conventional peaking generation. In particular, PG&E is installing and contracting for about 550 MWs of batteries with four-hour storage to meet system needs and replace 570 MWs of RMR peaking and
 
+[^219]: A utility might have installed some of these smaller turbines for reasons such as alleviating transmission constraints, meeting time constraints (if the smaller turbines had less stringent siting requirements) or responding to specialized system needs such as black start capability .
+
 [^220]: See, for example, Phillips (2018, pp . 5-11), where the testimony argues for the usage of a 50-MW turbine costing $1,600 per kW instead of a cheaper 100-MW turbine .
 
 [^221]: See Section 1 .1 for more discussion and quantitative examples of this phenomenon .
+
+[PDF p. 203 | printed p. 201]
 
 combined cycle generation (Maloney, 2018; California Public Utilities Commission, 2018). RMR generation receives payments on a cost of service basis including capital and operating costs, although the specific plants being replaced are partly depreciated.
 
@@ -106,10 +129,12 @@ combined cycle generation (Maloney, 2018; California Public Utilities Commission
 
 In sum, the combustion turbine peaker that is the typical choice for marginal capacity costs under the NERA method, as well as under long-run incremental costs, is likely to significantly overstate capacity costs given the economics of new large-scale storage facilities and significant capacity surpluses.
 
-[^222]: Similar capacity prices have prevailed in New York, outside the New York City load pocket (New York Independent System Operator, n .d .) . Capacity prices in MISO are even lower due to a continuing surplus and renewable additions, while prices in New England were higher for a few years after 2016 and have recently fallen to the California range .
-
 To the extent there is a marginal capacity cost for ramping capability, it can best be understood as an hourly capacity cost that is negative in the hour or two before the ramp begins, a positive hourly cost in the steepest several hours of the ramp and lower but still positive hourly cost as the ramp becomes flatter, continuing through and just beyond the evening peak.
 
 But, for allocation purposes, the cost needs to be first divided between ramp caused by customer loads and ramp caused by generation characteristics, which should be feasible. This is another example of how the emerging windand solar-dominated grid challenges traditional methods of cost allocation. To the extent that the need for capacity for ramping, and hence part of its cost, is caused by generation characteristics, it should not be a load-related marginal cost for allocation to the classes that contribute to the ramp.[^223] The generation-related ramp effectively becomes part of the cost of the generation resources causing the ramp under a short-run marginal cost theory, such as the one NERA defined. To the extent that generation-related ramping costs are recovered as incurred periodically in energy costs or ancillary service or other charges from the RTO, they should be part of marginal energy costs. Although these concepts are relatively clear, their implementation is not clear at all, with disagreements among parties on both the generationrelated portion of ramp costs, the definition of ramp hours (for example, whether more than one large ramp should be counted on a single day) and the method of allocating costs to both hours and classes. Storage units are more effective for ramping than thermal peakers because they can both charge in the preramp hours and discharge to clip the peak, reducing the total amount of ramp more than a thermal plant, whether the storage is installed as a bulk power resource or for other purposes.
 
+[^222]: Similar capacity prices have prevailed in New York, outside the New York City load pocket (New York Independent System Operator, n .d .) . Capacity prices in MISO are even lower due to a continuing surplus and renewable additions, while prices in New England were higher for a few years after 2016 and have recently fallen to the California range .
+
 [^223]: Although the generation-related cost should not be part of the class allocation, it may be appropriate to include some of that cost in rate design to provide a greater discouragement to ramping loads .
+
+[PDF pp. 204-276 not transcribed: Chapter 20 to Glossary and back cover, in 20_transmission_distribution_marginal.md to glossary.md of this folder]

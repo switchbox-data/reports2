@@ -1,6 +1,23 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 30-33 (printed pp. 28-31), Chapter 2; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 30-33 (printed pp. 28-31) of the manual, Chapter 2; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back._
+
+[PDF pp. 1-29 not transcribed: front matter to Chapter 1, in 00_front_matter.md to 01_economic_regulation.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 30 | printed p. 28]
+
 ## 2. Main Elements of Rate-Making
 
-he process of setting rates varies significantly among states and different types of utilities, such **T** as investor-owned utilities regulated by state utility
+The process of setting rates varies significantly among states and different types of utilities, such as investor-owned utilities regulated by state utility
 
 as investor-owned utilities regulated by state utility commissions and self-regulated **municipal** and **cooperative utilities** . However, the most basic and essential elements are typically the same. The discussion in this chapter focuses on the methods used for IOUs, with occasional notes on distinctions in other contexts.
 
@@ -21,6 +38,8 @@ Within the subset of costs identified by the regulated utility, the regulator ha
 [^6]: For a more detailed discussion of the determination of the revenue requirement, see Chapter 8 of Lazar (2016) .
 
 [^7]: This was the Public Service Company of New Hampshire and the Seabrook nuclear plant (Daniels, 1988) .
+
+[PDF p. 31 | printed p. 29]
 
 **Performance-based regulation** (PBR) may divert from the strict cost accounting approach of the conventional rate case, relying on the performance of the utility to meet goals set by the regulator as a determinant of all or a portion of the revenue requirement.[^8]
 
@@ -52,6 +71,8 @@ Although both embedded and marginal cost studies include precise calculations, m
 
 [^8]: For an example of a framework that divorces utility earnings from utility investment, see Lazar (2014) . For a broader discussion of performancebased regulation, see Littell et al . (2017) .
 
+[PDF p. 32 | printed p. 30]
+
 must be paid, however, to the reason the data were developed, and caution must be taken so that this information is used constructively in an appropriate manner.
 
 The final allocation of costs among the rate classes, as well as the other relevant data and analysis, is passed on to the next step in the process.
@@ -68,8 +89,6 @@ There are three basic rate components:
 
 1. **Customer charges** : fees charged every billing period
 
-[^9]: Rates that vary by season are often referred to as seasonal rates . However, some utilities also define “seasonal” customer classes for customers who have a disproportionate share of their usage during a particular time period . Rates for seasonal customer classes may also be referred to as seasonal rates, which can cause confusion .
-
 that generally do not vary with respect to any usage characteristics.
 
 2. **Volumetric energy charges** : prices based on metrics of kWh usage during the billing period.
@@ -80,9 +99,13 @@ variations based on season, time of day and type of demand measurement. All type
 
 Some rate analysts propose rates that rigorously follow the results of a cost allocation study, meaning that customerrelated costs must be recovered through customer charges and demand-related costs must be recovered through
 
+[^9]: Rates that vary by season are often referred to as seasonal rates . However, some utilities also define “seasonal” customer classes for customers who have a disproportionate share of their usage during a particular time period . Rates for seasonal customer classes may also be referred to as seasonal rates, which can cause confusion .
+
 [^10]: Note that in these cases kWs is a simplified description of kWhs per hour since it is not truly an instantaneous measurement .
 
 [^11]: Some analysts may describe certain types of demand charges as timevarying rates as well, such as those that are imposed only within certain time windows (e .g ., 2 to 6 p .m . on nonholiday weekdays) .
+
+[PDF p. 33 | printed p. 31]
 
 demand charges. However, most analysts do not and are careful to note that categorizations like “demand-related” are simplifications at best and, as this manual details, generally reflect an increasingly obsolete framework. Forward-looking efficiency is not a feature of embedded cost of service studies and additionally may require consideration of broader **externalities** that are not necessarily incorporated in the revenue requirement. Similarly, rate design must consider customer bill impacts and the related principles of understandability, acceptability and customer bill management.
 
@@ -93,3 +116,5 @@ Although procedures at state utility commissions vary greatly, there are typical
 automatically includes an official state consumer advocate. A wide range of stakeholders may join the process, including large industrial consumers, chambers of commerce, lowincome advocates, labor, utility investors, energy industries and environmental advocates. These non-utility parties can critique the utility proposal and can propose alternatives to utility cost allocation methods as well as other substantive elements of the rate case. Rate cases can be resolved through a final decision by the utility commission based on the record presented, or some or all aspects of a rate case can be resolved through a settlement among the various parties.
 
 The costs of a rate case for the regulated utility are considered part of the cost of service and ultimately become part of the revenue requirement determined in the rate case. Many states make explicit funding arrangements for the commission itself and any state consumer advocate, often ultimately recovered from ratepayers. In some states and most Canadian provinces, ratepayer funding was historically given to other intervenors who participated productively in the process, a practice that continues in California. However, it is much more common for stakeholders to bear the burden of any litigation costs, which limits the ability of many stakeholders to advance their interests at this level.
+
+[PDF pp. 34-276 not transcribed: Chapter 3 to Glossary and back cover, in 03_electric_system.md to glossary.md of this folder]

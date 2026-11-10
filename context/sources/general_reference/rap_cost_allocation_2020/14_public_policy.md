@@ -1,6 +1,25 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 169-172 (printed pp. 167-170), Chapter 14; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 169-172 (printed pp. 167-170) of the manual, Chapter 14; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's large initial letter, which the first extraction had moved out of the first word, is put back, and the first section heading, which had been run into that paragraph, is a heading again. Footnotes 184, 187, which the first extraction split across the page's columns, are rejoined._
+
+[PDF pp. 1-168 not transcribed: front matter to Chapter 13, in 00_front_matter.md to 13_admin_general.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 169 | printed p. 167]
+
 ## 14. Other Resources and Public Policy Programs in Embedded Cost of Service Studies
 
-**14.1 Energy Efficiency Programs** nergy efficiency costs have three effects on the revenue requirement that will be recovered through **E** rates. First, energy efficiency shrinks the size of the pie of non-energy efficiency costs that have to be split up, because the utility will need less generation, transmission and distribution in the long run, and utilities that own generation may be able to earn some export revenues to offset other costs. Since utilities generally undertake energy efficiency only if it is less expensive than the avoided costs (sometimes measured as short run, sometimes as long run, and including or excluding environmental costs), energy efficiency tends to reduce total costs, at least in the long term.
+### 14.1 Energy Efficiency Programs
+
+Energy efficiency costs have three effects on the revenue requirement that will be recovered through rates. First, energy efficiency shrinks the size of the pie of non-energy efficiency costs that have to be split up, because the utility will need less generation, transmission and distribution in the long run, and utilities that own generation may be able to earn some export revenues to offset other costs. Since utilities generally undertake energy efficiency only if it is less expensive than the avoided costs (sometimes measured as short run, sometimes as long run, and including or excluding environmental costs), energy efficiency tends to reduce total costs, at least in the long term.
 
 Energy efficiency programs typically reduce generation, transmission and distribution costs, and hence also some of the associated overheads, but not most retail service costs, such as metering and billing.[^182] In restructured utilities, energy efficiency load reductions tend to reduce the prices that all customers pay for generation services, as well as avoiding transmission and distribution investments. These benefits typically are dominated by energy savings, with a portion being demand-related. Some utilities collect energy efficiency costs from all customers, on an equal cents-perkWh basis or using an energy/demand allocator. Where this is done, the allocation of program costs should generally follow the framework for revenue collection.
 
@@ -14,9 +33,11 @@ The cost effects of energy efficiency differ between the short term and the long
 
 Energy efficiency costs are typically caused by the opportunity to reduce total costs to consumers. For most costs, revenue requirements would be lower if customers did less to require the utility to incur those costs. Customers
 
+The allocation of energy efficiency costs should reflect both the system benefits and the benefits to the participating classes, while avoiding making any class worse off .
+
 [^182]: Energy efficiency programs targeted to low-income customers can reduce collection costs, uncollectibles and other burdens on the utility and other customers .
 
-The allocation of energy efficiency costs should reflect both the system benefits and the benefits to the participating classes, while avoiding making any class worse off .
+[PDF p. 170 | printed p. 168]
 
 whose load growth requires upgrades to their service drops and transformers, extension of three-phase primary distribution and retention of more hydro energy that could have been exported would increase costs to the system. The same is true for customers who want their service drops underground for aesthetic reasons. Other customers should not bear those costs, so the costs are assigned or allocated to the participating class and billed (more or less) to the customer demanding the service. If customers do not want to pay the costs, they should not increase their load or request more expensive services.
 
@@ -36,9 +57,7 @@ The allocation of energy efficiency costs should reflect both the system benefit
 
 3. No energy efficiency, resulting in higher loads, higher energy costs, lower export revenues and higher T&D costs. The difference between case 1 and case 3 would show
 
-the effect on rate classes of assigning energy efficiency costs by class, and the difference between case 2 and case 3 would show the effect on rate classes of allocating energy efficiency costs in proportion to the system benefits. Based on that analysis, the cost of service study should use an allocation approach that is fair to all classes, avoiding a situation in which one class is paying for its own energy efficiency efforts
-
-that are disproportionately benefiting other classes or, conversely, paying for energy efficiency for other classes and receiving little of the benefit.
+the effect on rate classes of assigning energy efficiency costs by class, and the difference between case 2 and case 3 would show the effect on rate classes of allocating energy efficiency costs in proportion to the system benefits. Based on that analysis, the cost of service study should use an allocation approach that is fair to all classes, avoiding a situation in which one class is paying for its own energy efficiency efforts [PDF p. 171 | printed p. 169] that are disproportionately benefiting other classes or, conversely, paying for energy efficiency for other classes and receiving little of the benefit.
 
 ### 14.2 Demand Response Program and Equipment Costs
 
@@ -48,8 +67,6 @@ Utility demand response programs are designed to avoid capacity and energy costs
 
 The demand response costs should be functionalized across all affected functions and allocated based on metrics of peak usage that relate to the period for which they are incurred — the hours contributing to highest stress. Where demand response provides benefits outside the highest-stress hours, such as by providing operating reserves (which reduce the need to run uneconomic fossil-fueled generation), a portion of the demand response costs should be allocated to the hours when demand response provides those benefits.
 
-[^183]: It is generally inappropriate to pay customers to participate in a demand response program, subtract demand response capacity from the loads used for deriving allocation factors and also allocate the costs of the program to nonparticipating classes . Paying the participants and reducing their class loads pays twice for the same resource . The participants should be paid, of course, but all load should pay for the service that the program provides .
-
 Some investments provide not only demand response but also load shifting or energy efficiency. Examples include controls for water heaters, space cooling and space heating and swimming pool pumps. These programs can reduce energy costs, including increasing load in periods with excess renewables that would otherwise be curtailed. Allocation of these costs should reflect the mix of benefits, including peak reductions, reduced reserve costs and reduced energy costs.
 
 For programs that are operated only infrequently under conditions of bulk generation shortage (e.g., industrial interruptible load), the loads that were curtailed should be added back to the relevant class loads, and the costs of the programs — both outreach and incentive payments — should be treated as purchased power and allocated either to generation demand or to the specific hours when the program could be called.[^183] Some utilities remove interruptible demand from the associated class load before allocating costs and allocate the costs of the program back to the participating class; that approach can be reasonable, as long as the interruptibility provides benefits equivalent to the utility functions for which the class allocation is reduced.[^184] In no case should a cost of service study both reduce the participant class loads for demand response and allocate the costs to all classes; that would double count the benefit to the participating class.
@@ -58,11 +75,13 @@ Other programs with more frequent operations or wider benefits than emergency bu
 
 In certain cases, utilities may directly own demand
 
-> interruption and allow customers to ride through an interruption for a modest penalty . These rates may reduce the cost of serving the interruptible customers but do not fully replace equivalent amounts of generation and transmission .
+[^183]: It is generally inappropriate to pay customers to participate in a demand response program, subtract demand response capacity from the loads used for deriving allocation factors and also allocate the costs of the program to nonparticipating classes . Paying the participants and reducing their class loads pays twice for the same resource . The participants should be paid, of course, but all load should pay for the service that the program provides .
 
 [^185]: Although a program theoretically could be designed only to have targeted distribution benefits without bulk power benefits, that may not be the most cost-effective program design .
 
-[^184]: Many legacy interruptible rates require long lead times, allow only a limited number of annual interruptions, limit the length of each
+[^184]: Many legacy interruptible rates require long lead times, allow only a limited number of annual interruptions, limit the length of each interruption and allow customers to ride through an interruption for a modest penalty . These rates may reduce the cost of serving the interruptible customers but do not fully replace equivalent amounts of generation and transmission .
+
+[PDF p. 172 | printed p. 170]
 
 response or load management equipment at customer premises to enable utility or consumer control of space conditioning, water heating, irrigation pumping and other loads. This type of investment’s primary purpose is to enable peak load management, but it may also provide ancillary services and shifting of energy between periods. Although located within the distribution system, it is functionally different from most other distribution system plant in that it directly offsets the need for generation and transmission expenditures. For this reason, these costs should be classified and allocated differently from other distribution plant.
 
@@ -72,16 +91,16 @@ The decision to reduce the revenue responsibility of some customers increases th
 
 A common example is the difference between the revenues that low-income consumers would have paid under the standard residential tariff (or a tariff designed to recover the costs appropriately allocated to a low-income class)
 
-[^186]: For example, Nevada has a requirement that certain irrigators receive low rates: “IS-2 is a subsidized rate that NV Energy charges eligible agricultural customers who agree to interruptible irrigation pump service during certain situations . This service is applicable to electricity used solely to pump water to irrigate land for agricultural purposes . Agricultural purposes include growing crops, raising livestock or for other agricultural uses which involve production for sale, and which do not change the form of the agricultural product pursuant to NRS 587 .290” (NV Energy, n .d .) .
-
-[^187]: Low-income subsidies may be motivated by a combination of social concerns (such as reducing the burdens on needy customers and avoiding health-related problems of customers unable to heat or cool their homes), utility practicality (reducing bad debt and collection expenses) and cost causation . Low-income consumers are typically low-use customers and may tend to have less temperature-sensitive load
-
 and what they actually pay under discounted low-income tariffs.[^187] Where those subsidies exist, the cost of service study must address how to recover the subsidies through adding to the revenue responsibility of other customers. The decision as to whether the subsidy should be recovered from the class whose members receive the discount or from all customers is a matter of public policy, which is sometimes settled by the legislature[^188] and other times left to the regulator’s judgment. If the subsidy is recovered within the discounted class, the discount does not affect cost allocation to the class because the costs remain within the class and the subsidy shows up in the form of reduced revenues (and may thus result in higher rates for the remainder of the residential class). But if the subsidy is to be redistributed to other classes, it is appropriate for inclusion in the cost of service study as a cost or revenue adjustment to be apportioned across classes.[^189]
 
 As a practical matter, recovering a subsidy from the nondiscounted customers in the class receiving the discount may just push more of those customers into distress. Hence, the most reasonable manner of recovering a subsidy will vary: If the residential class is mostly affluent, with small pockets of poverty, dealing with a low-income discount entirely through rate design in the residential class may be appropriate. But if most of the residential class is in a tenuous financial condition, but the commercial and industrial classes in the territory are thriving, spreading the subsidy costs over all classes may be most appropriate, with a net credit to the residential class and charges to other classes, perhaps on an energy basis.
 
-that drives utility system peaks . Depending on the composition of the lowincome population, they may also be at home in a different pattern than higher-income customers . A time-differentiated cost study may illuminate these differences .
+[^186]: For example, Nevada has a requirement that certain irrigators receive low rates: “IS-2 is a subsidized rate that NV Energy charges eligible agricultural customers who agree to interruptible irrigation pump service during certain situations . This service is applicable to electricity used solely to pump water to irrigate land for agricultural purposes . Agricultural purposes include growing crops, raising livestock or for other agricultural uses which involve production for sale, and which do not change the form of the agricultural product pursuant to NRS 587 .290” (NV Energy, n .d .) .
+
+[^187]: Low-income subsidies may be motivated by a combination of social concerns (such as reducing the burdens on needy customers and avoiding health-related problems of customers unable to heat or cool their homes), utility practicality (reducing bad debt and collection expenses) and cost causation . Low-income consumers are typically low-use customers and may tend to have less temperature-sensitive load that drives utility system peaks . Depending on the composition of the lowincome population, they may also be at home in a different pattern than higher-income customers . A time-differentiated cost study may illuminate these differences .
 
 [^188]: For example, California Public Utilities Code § 327(a)(7) requires that the low-income electric rate for its IOUs be allocated by equal cents per kWh to all customers except recipients of the low-income rate and street lighting customers .
 
 [^189]: For example, a pro forma adjustment to revenue for each class (positive to the residential class; negative to other classes) would spread the subsidy across all the classes that the regulator concludes should contribute to this service .
+
+[PDF pp. 173-276 not transcribed: Chapter 15 to Glossary and back cover, in 15_revenues_offsets.md to glossary.md of this folder]

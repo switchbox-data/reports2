@@ -1,8 +1,25 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 1-11, front matter; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 1-11 of the manual, front matter; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on._
+
+[PDF p. 1]
+
 # Electric Cost Allocation for a New Era
 
 A Manual
 
 By Jim Lazar, Paul Chernick and William Marcus Edited by Mark LeBel
+
+[PDF p. 2]
 
 JANUARY 2020
 
@@ -20,6 +37,10 @@ Cover photo: Felix Lipov/Shutterstock.com
 
 Lazar, J., Chernick, P., Marcus, W., and LeBel, M. (Ed.). (2020, January). _Electric cost allocation for a new era: A manual._ Montpelier, VT: Regulatory Assistance Project.
 
+[PDF pp. 3-9 not transcribed: contents]
+
+[PDF p. 10 | printed p. 8]
+
 ## Acknowledgments
 
 Editorial assistance was provided by Ruth Hare, Camille Kadoch, Donna Brutkoski and Tim Simard .
@@ -36,6 +57,8 @@ Peter Bradford Eugene Coyle Phil Jones Sharon Nelson Tom Power George Sterzinger
 
 That said, responsibility for the information and views set out in this work lies entirely with the authors .
 
+[PDF p. 11 | printed p. 9]
+
 ## About the Authors
 
 Jim Lazar, senior advisor with the Regulatory Assistance Project, is an economist who studied economics and energy at Western Washington University and the University of Washington . He has maintained a consulting practice in utility regulation and pricing and has made more than 100 appearances as an expert witness in rate proceedings in many different jurisdictions . His first utility rate proceeding was in 1974 . As a RAP senior advisor, he has advised utility regulators across the United States and in Europe, India, Asia, Africa and South America . He is a former member of the U .S . Department of Energy Electricity Advisory Committee . Mr . Lazar has published more than 20 reference handbooks and topical papers on utility regulation and planning .
@@ -49,3 +72,7 @@ Taken together, the three authors have more than 120 years of experience in cost
 ## About the Editor
 
 Mark LeBel, associate at the Regulatory Assistance Project, has more than a decade of experience working on the overlapping economics and law of energy and environmental policy in the United States . As a member of RAP’s U .S . team, he focuses on rate design and regulatory reform, including compensation for distributed energy resources, the evolution of the electricity system and beneficial electrification .
+
+[PDF pp. 12-15 not transcribed: list of figures and list of tables]
+
+[PDF pp. 16-276 not transcribed: Introduction to Glossary and back cover, in 00_introduction.md to glossary.md of this folder]

@@ -1,18 +1,35 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 164-166 (printed pp. 162-164), Chapter 12; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 164-166 (printed pp. 162-164) of the manual, Chapter 12; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on. Corrections checked against the PDF: The chapter's opening paragraph, which the first extraction dropped, is restored, and the paragraphs of section 12.1 are put back in the PDF's order (one of them had been split in two), and footnote 172, which the first extraction split across the page's columns, is rejoined._
+
+[PDF pp. 1-163 not transcribed: front matter to Chapter 11, in 00_front_matter.md to 11_distribution_embedded.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 164 | printed p. 162]
+
 ## 12. Billing and Customer Service in Embedded Cost of Service Studies
 
-allocated according to appropriate measures of usage, rather than customer count.
-
-Manual reading of the meters of large customers typically takes longer than for small customers, both because of travel distance among larger customers and the complexity of metering typical of large customers (TOU or demandmetered). In some cases, small customer meters are read manually but large customers are remotely metered; the additional costs of the equipment for that remote metering should be assigned to the classes that use remote metering. As noted in Section 11.5, unmetered customers such as streetlights should not be allocated meter reading costs.
+Many utilities classify billing and customer service costs, often termed retail service costs, as almost entirely customer-related and allocate these costs across classes based on the number of customers. This chapter describes how these costs can be allocated in a more granular and detailed way.
 
 ### 12.1 Billing and Meter Reading
 
 Most utilities bill customers either monthly or bimonthly. The reason for this is relatively simple: If billed less frequently, the bills would be very large and unmanageable for some consumers; if billed more frequently, the billing costs would be an unacceptable part of the total cost. As noted in Subsection 3.1.5, billing closer to the time of consumption provides customers with a better understanding of their usage patterns from month to month, which may assist them in increasing efficiency. There are exceptions: Many water, sewer and even electric utilities serving seasonal properties may render bills only once or twice a year.[^171]
 
+It is important to recognize these cost drivers in the classification of billing costs. From a cost causation perspective, the reason for frequent billing is that usage drives the size of the bill. We receive annual bills for magazine subscriptions because the quantity we will use (one per week or month) is very small and predictable. In some states, rules of the regulatory commission require billing on a specified interval. For example, in Washington state, the rules require billing not less than bimonthly (Washington Administrative Code Title 480, Chapter 100, § 178[1][a]). In this situation, billing frequency in excess of that required by law or regulation is driven by consumption. The portion of the costs of reading meters and billing more frequently should be classified and allocated according to appropriate measures of usage, rather than customer count.
+
+Manual reading of the meters of large customers typically takes longer than for small customers, both because of travel distance among larger customers and the complexity of metering typical of large customers (TOU or demandmetered). In some cases, small customer meters are read manually but large customers are remotely metered; the additional costs of the equipment for that remote metering should be assigned to the classes that use remote metering. As noted in Section 11.5, unmetered customers such as streetlights should not be allocated meter reading costs.
+
 For utilities with AMI, any meter reading costs arising from customers opting out of AMI should be recovered either from the opt-out customers or functionalized, classified and allocated in proportion to the AMI costs, because opt-outs are part of the cost of obtaining the benefits of AMI.
 
 The costs of billing, payment processing and collections for special services (e.g., line extensions and relocations) can end up in Account 903 for some utilities. These are overhead costs, not customer costs, and should be either classified or allocated as an overhead expense.[^172]
-
-It is important to recognize these cost drivers in the classification of billing costs. From a cost causation perspective, the reason for frequent billing is that usage drives the size of the bill. We receive annual bills for magazine subscriptions because the quantity we will use (one per week or month) is very small and predictable. In some states, rules of the regulatory commission require billing on a specified interval. For example, in Washington state, the rules require billing not less than bimonthly (Washington Administrative Code Title 480, Chapter 100, § 178[1][a]). In this situation, billing frequency in excess of that required by law or regulation is driven by consumption. The portion of the costs of reading meters and billing more frequently should be classified and
 
 Some utilities provide on-bill financing for energy efficiency, renewable energy or demand response investments that the utility (or a third party) makes at the customer premises. Where this occurs, a portion of the billing cost should be assigned to the nonservice cost element.
 
@@ -22,9 +39,9 @@ Uncollectible accounts expenses are the expenses from customers who have not pai
 
 [^171]: This is also the case for California customers who opt out of AMI (California Public Utilities Commission, 2014) .
 
-> is direct assignment of uncollectibles, charges related to non-energy billings or claims should be segregated from the remainder of Account 904 and directly assigned as overhead expenses .
+[^172]: The same is true for any uncollectible charges for special services . If there is direct assignment of uncollectibles, charges related to non-energy billings or claims should be segregated from the remainder of Account 904 and directly assigned as overhead expenses .
 
-[^172]: The same is true for any uncollectible charges for special services . If there
+[PDF p. 165 | printed p. 163]
 
 distress, bankruptcy or departure from the service territory.[^173] Some analyses erroneously allocate the costs of former customers to the classes of current customers on a percustomer basis or by direct assignment. However, these costs are not caused by any current customer in any particular class.[^174] Although certain accounts have unpaid electric bills, those accounts are former customers who are no longer members of any class.
 
@@ -46,8 +63,6 @@ On the other hand, if uncollectible accounts expenses are directly assigned to t
 
 Although an allocation based on revenue is more appropriate, the consistent allocation of these four items by either revenue or direct assignment may not have a large effect
 
-[^173]: For most utilities, the residential class produces most of the uncollectible accounts expenses, in part because large customers are more often required to post deposits or demonstrate good financial standing . However, when large customers’ bills are uncollectible, often due to bankruptcy, the amounts can be very large .
-
 on the cost of service study, because direct-assigned late payment revenues and deposits partly offset direct-assigned uncollectible accounts expenses.
 
 The worst cost allocation outcome is inconsistency: assigning uncollectible accounts expenses largely to residential customers using direct assignment or a per-customer allocation while using a broad allocation method for late payment charges and customer deposits, even though both of these items are also largely paid by residential customers.
@@ -60,9 +75,13 @@ In general, larger customers have more complicated installations, metering and b
 
 The alternative to a simple customer allocator for customer service costs may be to use a weighted customer
 
+[^173]: For most utilities, the residential class produces most of the uncollectible accounts expenses, in part because large customers are more often required to post deposits or demonstrate good financial standing . However, when large customers’ bills are uncollectible, often due to bankruptcy, the amounts can be very large .
+
 [^174]: Texas has one of the strongest precedents on this issue for utilities not in ERCOT and therefore not subject to competition . See Public Utility Commission of Texas (2018, p . 47, findings of fact 303-305) .
 
 [^175]: Texas and California have treated these costs as overhead costs, allocated by revenue to all customer classes .
+
+[PDF p. 166 | printed p. 164]
 
 allocator — in which larger customers are assigned a multiple of the costs assigned to smaller customers — or a combination of customer number and class revenue. The retail allocators should be derived from the relative cost or effort required per customer for each class.
 
@@ -77,3 +96,5 @@ Sales and marketing costs are often erroneously allocated by the number of custo
 Some sales and marketing funds are used to promote important public policy programs (such as energy efficiency or electric vehicles, discussed further in sections 14.1 and 7.1.3, respectively). Other sales and marketing efforts, however, may promote programs that ratepayers arguably should not fund at all (e.g., promotion of inefficient electric resistance heating by a utility that is almost entirely fossil fuel-based, through sponsorships and advertising) and should be examined closely in revenue requirements cases.
 
 [^176]: A few large customers billed on multiple small or medium commercial tariffs may receive key-customer services, such as franchisees, government agencies and small accounts attached to large ones .
+
+[PDF pp. 167-276 not transcribed: Chapter 13 to Glossary and back cover, in 13_admin_general.md to glossary.md of this folder]

@@ -1,3 +1,20 @@
+---
+source_file: "Lazar et al. - Electric Cost Allocation for a New Era A Manual.pdf"
+citekey: lazar_ElectricCostAllocation_2020
+zotero_item: "2QPBQHWI"
+md5: "b49537f4ae1c630a5d0cc3399595bb99"
+document_type: report
+pages_total: 276
+extraction_scope: "partial: PDF pp. 106-108 (printed pp. 104-106), Works Cited in Part II; the other files of this folder hold the rest of the manual"
+citation_scheme: page
+---
+
+_Extractor note (not source text): this file holds PDF pp. 106-108 (printed pp. 104-106) of the manual, Works Cited in Part II; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on._
+
+[PDF pp. 1-105 not transcribed: front matter to Chapter 8, in 00_front_matter.md to 08_choosing_methods.md of this folder (the contents and the lists of figures and tables, PDF pp. 3-9 and 12-15, are not transcribed in any file)]
+
+[PDF p. 106 | printed p. 104]
+
 ## Works Cited in Part II
 
 Austin Energy (2017) . _Residential electric rates & line items_ [Webpage] . Retrieved from https://austinenergy .com/ae/rates/residential-rates/residential-electric-rates-and-line-items
@@ -30,6 +47,8 @@ International Telecommunication Union . (2009) . _Regulatory accounting guide._ 
 
 Kahn, A . (1970 and 1971) . _The economics of regulation: Principles and institutions_ (vols . 1 and 2) . New York, NY: John Wiley & Sons .
 
+[PDF p. 107 | printed p. 105]
+
 Lazar, J . (2016) . _Teaching the “duck” to fly_ (2nd ed .) . Montpelier, VT: Regulatory Assistance Project . Retrieved from https://www .raponline .org/knowledge-center/teaching-the-duck-to-fly-second-edition/
 
 Lazar, J ., and Baldwin, X . (2011) . _Valuing the contribution of energy efficiency to avoided marginal line losses and reserve requirements._ Montpelier, VT: Regulatory Assistance Project . Retrieved from https://www .raponline .org/ knowledge-center/valuing-the-contribution-of-energy-efficiency-to-avoided-marginal-line-losses-and-reserverequirements/
@@ -60,6 +79,8 @@ Slusarewicz, J ., and Cohan, D . (2018) . Assessing solar and wind complementari
 
 Trabish, H . (2017, November 2) . In new trend, utilities propose separate rate classes for solar customers without rate increase . _Utility Dive._ Retrieved from https://www .utilitydive .com/news/in-new-trend-utilities-propose-separaterate-classes-for-solar-customers-w/508393/
 
+[PDF p. 108 | printed p. 106]
+
 U .S . Department of Energy . (n .d .) . _Charging at home_ [Webpage] . Retrieved from https://www .energy .gov/eere/ electricvehicles/charging-home
 
 U .S . Energy Information Administration . (2019) . _Annual energy outlook 2019._ Table 9 . Washington, DC: Author . Retrieved from https://www .eia .gov/outlooks/aeo/data/browser/#/?id=9-AEO2019&cases=ref2019&sourcekey=0
@@ -69,3 +90,5 @@ Vermont Public Service Board . (2007, June 20) . _Investigation into least-cost 
 Vermont System Planning Committee . (n .d .) . _Planning for the future of Vermont’s electric power grid_ [Webpage] . Retrieved from https://www .vermontspc .com/
 
 Wood Mackenzie Power & Renewables and Solar Energy Industries Association . (2019, March) . _U.S. solar market insight._ Retrieved from https://www .seia .org/research-resources/solar-market-insight-report-2018-year-review
+
+[PDF pp. 109-276 not transcribed: Chapter 9 to Glossary and back cover, in 09_generation_embedded.md to glossary.md of this folder]

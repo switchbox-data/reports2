@@ -83,12 +83,16 @@ Two fixtures, both using `pytest.fixture` with generator cleanup:
 ### Constants (lines 40-56)
 
 ```python
-COLUMNS = ["E", "F", "G", "H", "I", "J"]    # Excel Model sheet columns
-SCENARIOS = [                                  # Maps column index to (fuel, zone)
-    ("natural_gas", "4"), ("natural_gas", "5"), ("natural_gas", "6"),
-    ("propane", "4"),     ("propane", "5"),     ("propane", "6"),
+COLUMNS = ["E", "F", "G", "H", "I", "J"]  # Excel Model sheet columns
+SCENARIOS = [  # Maps column index to (fuel, zone)
+    ("natural_gas", "4"),
+    ("natural_gas", "5"),
+    ("natural_gas", "6"),
+    ("propane", "4"),
+    ("propane", "5"),
+    ("propane", "6"),
 ]
-REL_TOL = 1e-4                                 # 0.01% relative tolerance
+REL_TOL = 1e-4  # 0.01% relative tolerance
 ```
 
 ### Test Pattern

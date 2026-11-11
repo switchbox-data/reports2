@@ -82,8 +82,6 @@ floor_100 = autoenroll[("floor", 1.0)]
 stock_100 = autoenroll[("stock", 1.0)]
 today_rate = sum(r.schedule_r_flat.values())
 empower_delta = h.all_fossil_annual_empower_maryland_delta
-bge_range = [overpayment(f, s) for f in ("dist", "both") for s in ("x040", "x046")]
-bge_range_total = [overpayment(f, s, total=True) for f in ("dist", "both") for s in ("x040", "x046")]
 ```
 
 **TO:** Maryland Public Service Commission\
@@ -198,11 +196,11 @@ begin: the customers EmPOWER has already rebated are verified.
 **Conclusion.** Even if every dollar of BGE's distribution and transmission marginal cost were
 caused in winter, a customer who replaces a fossil fuel heating system with a heat pump would still
 overpay by approximately **`{python} year_month(overpayment("both", "x100"))`** in distribution
-and transmission charges. That is the most extreme assumption possible, and it does not come close
-to eliminating the overcharge. At BGE's own figures for how much of its system peaks in winter,
-the overcharge is approximately `{python} span(min(bge_range), max(bge_range), dollar)` per year.
-The truth lies somewhere between these cases, and in every one of them heat pump customers are
-overcharged.
+and transmission charges, compared with
+`{python} year_month(overpayment("dist", "filed"))` in
+my filed analysis. That is the most extreme assumption possible. The true share of cost caused in
+winter lies somewhere between my filed analysis and this worst case, and at every point in between
+heat pump customers are overcharged.
 
 **BGE's data on winter peaking.** BGE reports that 46% of its feeders peak in winter and that
 40% of its customers are served by those feeders.[^dr-4] The marginal cost profile in my direct
@@ -211,7 +209,9 @@ testimony places most cost in summer: about
 `{python} pct(w.wf_filed_winter_share_tx)` of transmission cost fall in winter months (October
 through April), because BGE's system as a whole peaks on summer afternoons.[^summer] A heat pump
 adds load mostly in winter, so if winter drives more of BGE's costs than my profile assumes, a heat
-pump home causes more cost than I estimated.
+pump home causes more cost than I estimated. BGE's figures count feeders and customers; they do not
+say what share of BGE's marginal cost is caused in winter. Rather than guess at that share, I test
+the most extreme case: every dollar of marginal cost caused in winter.
 
 **What changes and what does not.** The overcharge is the difference between two numbers. The
 first is how much more a home pays in distribution and transmission charges after installing a
@@ -221,39 +221,44 @@ the season in which costs occur. The second is how much more distribution and tr
 the home causes: `{python} dollar(w.wf_dist_2025_filed_inc_td)` per year in my filed analysis.
 Only this second number moves when cost is shifted into winter.
 
-Table 2 shifts a growing share of BGE's marginal cost into winter, first for distribution alone and
-then for distribution and transmission together.
+Table 2 compares my filed analysis with two worst cases: all distribution cost in winter, and all
+distribution and transmission cost in winter.
 
 ```{python}
 #| label: memo2-winter
 
+_charges = h.all_fossil_annual_delivery_charges_delta
 _scenarios = [
-    ("As filed (about " + pct(w.wf_filed_winter_share_dist) + " of distribution cost)", "filed"),
-    ("40% (customers on winter-peaking feeders)", "x040"),
-    ("46% (feeders that peak in winter)", "x046"),
-    ("100% (every dollar in winter)", "x100"),
+    (
+        f"As filed ({pct(w.wf_filed_winter_share_dist)} of distribution and "
+        f"{pct(w.wf_filed_winter_share_tx)} of transmission cost in winter)",
+        "dist", "filed",
+    ),
+    ("All distribution cost in winter", "dist", "x100"),
+    ("All distribution and transmission cost in winter", "both", "x100"),
 ]
 _lines = [
-    "| Share of cost in winter | Distribution moved: per year | Per month | Distribution and transmission moved: per year | Per month |",
+    "| Case | Added charges per year | Added cost per year | Overcharge per year | Per month |",
     "|:--|--:|--:|--:|--:|",
 ]
-for _label, _key in _scenarios:
-    _d, _b = overpayment("dist", _key), overpayment("both", _key)
-    _lines.append(f"| {_label} | {dollar(_d)} | {dollar(_d / 12, 2)} | {dollar(_b)} | {dollar(_b / 12, 2)} |")
+for _label, _facet, _key in _scenarios:
+    _cost = getattr(w, f"wf_{_facet}_2025_{_key}_inc_td")
+    _over = overpayment(_facet, _key)
+    _lines.append(
+        f"| {_label} | {dollar(_charges)} | {dollar(_cost)} | {dollar(_over)} | {dollar(_over / 12, 2)} |"
+    )
 Markdown(
     "\n".join(_lines)
-    + "\n\n: Table 2. Representative heat pump home's overcharge in distribution and transmission charges, by the share "
-    "of BGE's marginal cost placed in winter (October to April). Including EmPOWER Maryland charges, which "
-    f"carry no marginal cost, adds {dollar(empower_delta)} per year ({dollar(empower_delta / 12, 2)} per month) "
-    "to each figure."
+    + "\n\n: Table 2. Representative heat pump home's added distribution and transmission charges, the added "
+    "marginal cost it causes, and the overcharge (the difference), with marginal cost as filed and with all of it "
+    "placed in winter (October to April). Including EmPOWER Maryland charges, which carry no marginal cost, adds "
+    f"{dollar(empower_delta)} per year ({dollar(empower_delta / 12, 2)} per month) to each overcharge."
 )
 ```
 
 Including EmPOWER Maryland charges, the overcharge falls from
 `{python} year_month(h.all_fossil_annual_total_overcharge)` as filed to
-`{python} year_month(overpayment("both", "x100", total=True))` in the all-winter case, and is
-approximately `{python} span(min(bge_range_total), max(bge_range_total), dollar)` per year at BGE's
-own winter-peaking figures.
+`{python} year_month(overpayment("both", "x100", total=True))` in the worst case.
 
 **Why the overcharge cannot close.** Even when all cost is placed in winter, the home's added
 distribution and transmission cost rises only to

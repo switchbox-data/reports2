@@ -214,23 +214,115 @@ def _profile(segment: str, group: pl.DataFrame) -> dict:
     return {"buildings": group.height, "homes": float(annual["weight"].sum()), "kwh": kwh_annual, "shortfall": shortfall}
 
 
+_RESSTOCK = {
+    "source": f"CAIRO billed annual grid kWh, batch {BATCH}",
+    "year": "ResStock AMY 2018 weather",
+    "includes_er": "No",
+    "kwh_base": kwh_total,
+    "kwh_base_source": "CAIRO residential kWh",
+}
 profiles = {
     "A": {
         "name": "Profile A, existing stock",
         "population": "BGE buildings that already heat with a heat pump, on their baseline load (upgrade 0)",
         **_profile(SEG_R_PRECALC, weights.filter(pl.col("has_hp"))),
+        **_RESSTOCK,
     },
     "B": {
         "name": "Profile B, simulated average",
         "population": "Every BGE building, retrofitted to an ENERGY STAR heat pump with electric backup (upgrade 1)",
         **_profile(SEG_R_CALIBRATED, weights),
+        **_RESSTOCK,
     },
 }
+```
+
+```{python}
+#| label: er-kwh
+#| output: false
+
+_er = annual_kwh_r.join(weights.filter(pl.col("heating_type") == "electrical_resistance"), on="bldg_id", how="inner")
+er_homes = float(_er["weight"].sum())
+er_kwh = float((_er["annual_kwh_grid"] * _er["weight"]).sum() / er_homes)
+report_vars.update(er_homes=er_homes, er_kwh=er_kwh, er_buildings=_er.height)
+```
+
+```{python}
+#| label: bge-heating-kwh
+#| output: false
+
+_ccan = pl.read_excel(PATH_CCAN_1_4, has_header=False)
+_labels = _ccan["column_1"].to_list()
+
+
+def _ccan_block(header: str) -> pl.DataFrame:
+    """The R, RH, RL and RLH rows under one block header, with the 12-month TOTAL column."""
+    start = next(i for i, label in enumerate(_labels) if label and header in label.upper()) + 1
+    block = _ccan.slice(start, 4).select(pl.col("column_1").alias("rate_code"), pl.col("column_14").cast(pl.Float64))
+    if block.height != 4 or "TOTAL" in str(block["rate_code"].to_list()):
+        raise RuntimeError(f"Unexpected CCAN 1-4 layout under {header}")
+    return block
+
+
+_customer_months = _ccan_block("ELECTRIC CUSTOMERS")["column_14"].to_list()
+_sales = _ccan_block("KWH")["column_14"].to_list()
+_heating = [1, 3]  # RH and RLH; rows 0 and 2 are R and RL
+bge_heating_customers = sum(_customer_months[i] for i in _heating) / 12
+bge_heating_kwh = sum(_sales[i] for i in _heating) / bge_heating_customers
+bge_nonheating_kwh = sum(_sales[i] for i in (0, 2)) / (sum(_customer_months[i] for i in (0, 2)) / 12)
+
+_electric_heat = annual_kwh_r.join(
+    weights.filter(pl.col("heating_type").is_in(["electrical_resistance", "heat_pump"])), on="bldg_id"
+)
+resstock_electric_heat_homes = float(_electric_heat["weight"].sum())
+resstock_electric_heat_kwh = float(
+    (_electric_heat["annual_kwh_grid"] * _electric_heat["weight"]).sum() / resstock_electric_heat_homes
+)
+report_vars.update(
+    bge_heating_customers=bge_heating_customers,
+    bge_heating_kwh=bge_heating_kwh,
+    bge_nonheating_kwh=bge_nonheating_kwh,
+    resstock_electric_heat_homes=resstock_electric_heat_homes,
+    resstock_electric_heat_kwh=resstock_electric_heat_kwh,
+)
+```
+
+```{python}
+#| label: profile-c
+#| output: false
+
+_path_rep = PATH_CACHE / "representative_home_vars.pkl"
+if not _path_rep.exists():
+    raise RuntimeError(f"Missing {_path_rep}: render representative_home.qmd first")
+# With USE_BGE_ACTUALS, the representative home's heat pump load is BGE's average kWh per RH + RLH customer.
+kwh_c = float(pickle.loads(_path_rep.read_bytes())["all_fossil_annual_kwh_after"])
+if abs(kwh_c / bge_heating_kwh - 1) > 0.005:
+    raise RuntimeError(f"Representative home kWh {kwh_c:,.0f} != CCAN 1-4 heating-code kWh {bge_heating_kwh:,.0f}")
+# Rough heat pump-only BGE usage: scale BGE's heating-code kWh by ResStock's heat pump / (heat pump + resistance) ratio.
+kwh_c_hp_only = kwh_c * profiles["A"]["kwh"] / resstock_electric_heat_kwh
+report_vars["kwh_c_hp_only"] = kwh_c_hp_only
+_shortfall_c = {name: kwh_c * discount[name] for name in COMPONENTS}
+_shortfall_c["Total"] = sum(_shortfall_c.values())
+profiles["C"] = {
+    "name": "Profile C, BGE heating-code customers",
+    "population": "BGE's RH + RLH customers (heat pump and electric resistance homes), billed usage",
+    "buildings": None,
+    "homes": bge_heating_customers,
+    "kwh": kwh_c,
+    "shortfall": _shortfall_c,
+    "source": "BGE billed kWh per RH + RLH customer, via representative_home.qmd",
+    "year": "BGE test year, April 2025 to March 2026",
+    "includes_er": "Yes",
+    "kwh_base": kwh_test_year,
+    "kwh_base_source": "BGE test-year residential kWh (Karas E-3)",
+}
+
 for _key, _p in profiles.items():
     report_vars[f"profile_{_key}_buildings"] = _p["buildings"]
     report_vars[f"profile_{_key}_homes"] = _p["homes"]
     report_vars[f"profile_{_key}_kwh"] = _p["kwh"]
     report_vars[f"profile_{_key}_shortfall"] = _p["shortfall"]
+    report_vars[f"profile_{_key}_kwh_base"] = _p["kwh_base"]
 
 _PROFILE_SHORTFALL_COLS = [f"shortfall_{name.lower()}" for name in [*COMPONENTS, "Total"]]
 profiles_table = pl.DataFrame(
@@ -244,18 +336,24 @@ profiles_table = pl.DataFrame(
             **dict(zip(_PROFILE_SHORTFALL_COLS, (_p["shortfall"][name] for name in [*COMPONENTS, "Total"]))),
         }
         for _p in profiles.values()
+    ],
+    schema_overrides={"buildings": pl.Int64},
+)
+kwh_inputs_table = pl.DataFrame(
+    [
+        {
+            "profile": _p["name"],
+            "source": _p["source"],
+            "year": _p["year"],
+            "includes_er": _p["includes_er"],
+            "kwh": _p["kwh"],
+            "kwh_base": _p["kwh_base"],
+            "kwh_base_source": _p["kwh_base_source"],
+            "kwh_vs_average": _p["kwh"] / (_p["kwh_base"] / customers),
+        }
+        for _p in profiles.values()
     ]
 )
-```
-
-```{python}
-#| label: er-kwh
-#| output: false
-
-_er = annual_kwh_r.join(weights.filter(pl.col("heating_type") == "electrical_resistance"), on="bldg_id", how="inner")
-er_homes = float(_er["weight"].sum())
-er_kwh = float((_er["annual_kwh_grid"] * _er["weight"]).sum() / er_homes)
-report_vars.update(er_homes=er_homes, er_kwh=er_kwh, er_buildings=_er.height)
 ```
 
 ```{python}
@@ -303,6 +401,7 @@ if abs(counts["stock_central"] / _cairo_hp_homes - 1) > 1e-6:
 
 SOURCES = {
     "floor": "[BGE EmPOWER reports, 2017 to mid-2026](https://pub.switch.box/bge_Docket97052026_2026) (latest, p. 6; full list below)",
+    "connected_rewards": "BGE data response: Connected Rewards participants, Oct 31, 2026 (all heating types)",
     "low": "[EIA RECS 2020 microdata](https://www.eia.gov/consumption/residential/data/2020/), 90% low end",
     "central": "[NREL ResStock 2024.2](https://data.openei.org/s3_viewer?bucket=oedi-data-lake&prefix=nrel-pds-building-stock%2Fend-use-load-profiles-for-us-building-stock%2F2024%2Fresstock_amy2018_release_2%2F)",
     "high": "[Brattle 2023](https://pub.switch.box/brattle_AssessmentElectrificationImpacts_2023), p. 50, with hybrids",
@@ -312,6 +411,11 @@ floor_homes = round(counts["hp_program_systems_cumulative"])
 central_homes = round(counts["stock_central"])
 enrollment = [
     ("Program floor", floor_homes, SOURCES["floor"]),
+    (
+        "Connected Rewards participants (8%, all heating types)",
+        round(counts["connected_rewards_customers"]),
+        SOURCES["connected_rewards"],
+    ),
     ("Stock low (RECS 2020)", round(counts["stock_low"]), SOURCES["low"]),
     ("Stock central (ResStock)", central_homes, SOURCES["central"]),
     ("Stock high (Brattle)", round(counts["stock_high"]), SOURCES["high"]),
@@ -324,7 +428,7 @@ enrollment.sort(key=lambda row: row[1])
 
 
 def impact(profile: dict, homes: int) -> dict:
-    kwh_paying = kwh_total - homes * profile["kwh"]
+    kwh_paying = profile["kwh_base"] - homes * profile["kwh"]
     if kwh_paying <= 0:
         raise RuntimeError(f"{homes:,} homes remove more kWh than the class has")
     shortfall = {name: homes * profile["shortfall"][name] for name in [*COMPONENTS, "Total"]}
@@ -491,9 +595,78 @@ for _key, _rows in impacts.items():
     for _label, _row in _rows.items():
         _slug = _label.split(" (")[0].lower().replace(" ", "_")
         report_vars[f"profile_{_key}_{_slug}"] = _row
+
+
+def _range(values: list[float], fmt) -> str:
+    low, high = min(values), max(values)
+    return fmt(low) if fmt(low) == fmt(high) else f"{fmt(low)} to {fmt(high)}"
+
+
+summary_range = []
+for _label, _homes, _source in enrollment:
+    _rows = {key: impacts[key][_label] for key in profiles}
+    summary_range.append(
+        {
+            "estimate": _label,
+            "homes": _homes,
+            "charge": _range([r["charge"]["Total"] for r in _rows.values()], lambda x: cents(x, 2)),
+            "charge_share": _range([r["share"]["Total"] for r in _rows.values()], pct),
+            "mean_bill": _range([r["mean_bill"] for r in _rows.values()], lambda x: dollar(x, 2)),
+            "low_profile": min(_rows, key=lambda k: _rows[k]["charge"]["Total"]),
+            "high_profile": max(_rows, key=lambda k: _rows[k]["charge"]["Total"]),
+        }
+    )
+report_vars["summary_range"] = summary_range
+_low_profiles = sorted({r["low_profile"] for r in summary_range})
+_high_profiles = sorted({r["high_profile"] for r in summary_range})
+
+
+def summary_range_table() -> GT:
+    return (
+        GT(pl.DataFrame(summary_range).drop("low_profile", "high_profile"), rowname_col="estimate")
+        .tab_header(title="Rate impact by enrollment count, range across Profiles A, B and C")
+        .tab_stubhead(label="Enrollment")
+        .cols_label(
+            homes="Homes enrolled",
+            charge=html("Added charge<br>per kWh"),
+            charge_share=html("Share of<br>today's rate"),
+            mean_bill=html("Average customer still on<br>Schedule R, per year"),
+        )
+        .fmt_number(columns="homes", decimals=0)
+        .tab_source_note(
+            md(
+                f"Lowest added charge: Profile {', '.join(_low_profiles)}. "
+                f"Highest: Profile {', '.join(_high_profiles)}. "
+                "Profiles A and B divide by CAIRO's residential kWh; Profile C divides by BGE's "
+                "test-year residential kWh. Bill figures for A and B are at ResStock's 2018 weather and "
+                f"usage, which runs {pct(1 / kwh_ratio - 1, 0)} above BGE's billed sales for the class and "
+                f"{pct(resstock_electric_heat_kwh / bge_heating_kwh - 1, 0)} above for electric-heat homes; "
+                "Profile C's are at BGE's test-year billing. They are not rescaled, because no single factor "
+                "fits both. " + _table_note()
+            )
+        )
+        .tab_options(**get_switchbox_gt_tab_options())
+    )
 ```
 
 ## Present this
+
+We estimate the impact with three load profiles for the enrolled home. **Profile A** is
+ResStock's existing heat pump homes, **Profile B** is every ResStock home retrofitted to a heat
+pump, and **Profile C** is BGE's own billed usage for its heating-code customers (RH and RLH).
+Profile C treats every heating-code customer as a heat pump home, though the group also
+includes electric resistance homes. The average one uses `{python} num(profiles["C"]["kwh"])`
+kWh a year, so R-HP would cut its bill by `{python} dollar(profiles["C"]["shortfall"]["Total"], 2)`.
+Profile C's added charge is spread over BGE's test-year residential kWh
+(`{python} f"{kwh_test_year / 1e9:,.2f}"` TWh); A and B use CAIRO's
+(`{python} f"{kwh_total / 1e9:,.2f}"` TWh). For each enrollment count, the table gives the
+range across the three profiles.
+
+```{python}
+#| label: tbl-summary-range
+
+display_gt(summary_range_table())
+```
 
 **Profile A** uses the `{python} num(profiles["A"]["buildings"])` BGE buildings in ResStock that
 already heat with a heat pump, on their baseline load (upgrade 0). They represent
@@ -538,8 +711,9 @@ cross-check and is lower.
 For each enrollment count $N$ and a profile with annual kWh $k$ and per-home shortfall $S$:
 
 - **Revenue shortfall:** $N \times S$, by component.
-- **kWh still paying:** $K - N \times k$, where $K$ is CAIRO's total residential kWh. The same
-  profile's $k$ is used for the shortfall and the kWh removed, so both are on one basis.
+- **kWh still paying:** $K - N \times k$, where $K$ is total residential kWh: CAIRO's for
+  Profiles A and B, BGE's test-year sales for Profile C, so each profile's $k$ and $K$ come from
+  the same source. The same profile's $k$ is used for the shortfall and the kWh removed.
 - **Per-kWh charge:** $N \times S / (K - N \times k)$, by component, and as a share of today's
   Schedule R charge (its annual flat rate).
 - **Average annual bill increase per customer still on Schedule R** (every customer that
@@ -570,6 +744,20 @@ display_gt(impact_table(profiles["B"], "Profile B: enrolled homes use the all-bu
 display_gt(rates_table(profiles["B"], "Profile B: delivery rates per kWh, today and after enrollment"))
 ```
 
+### Profile C, BGE heating-code customers
+
+```{python}
+#| label: tbl-impact-profile-c
+
+display_gt(impact_table(profiles["C"], "Profile C: enrolled homes use BGE's billed kWh per RH + RLH customer"))
+```
+
+```{python}
+#| label: tbl-rates-profile-c
+
+display_gt(rates_table(profiles["C"], "Profile C: delivery rates per kWh, today and after enrollment"))
+```
+
 ### Customers and kWh
 
 CAIRO batch `{python} BATCH`. Weights are scaled to BGE's test-year residential customer count.
@@ -592,14 +780,21 @@ today, under R-HP, and after each enrollment count.
 
 ### Load profiles
 
-Both profiles come from BGE's ResStock buildings (those CAIRO assigns to BGE), weighted to the
-test-year customer count. The kWh is CAIRO's billed annual grid kWh.
+Profiles A and B come from BGE's ResStock buildings (those CAIRO assigns to BGE), weighted to
+the test-year customer count. Their kWh is CAIRO's billed annual grid kWh. Profile C comes from
+BGE's billing data.
 
 - **Profile A, existing stock:** the buildings whose baseline heating type is a heat pump
   (`postprocess_group.has_hp`), on their baseline load (upgrade 0). The same buildings and
   weights give the stock central count.
 - **Profile B, simulated average:** every BGE building, whatever it heats with today, on its
   upgrade 1 load: an ENERGY STAR heat pump with electric backup.
+- **Profile C, BGE heating-code customers:** the representative home's heat pump load from
+  `representative_home.qmd`, which is BGE's average billed kWh per RH + RLH customer over the
+  test year. The homes column is the average RH + RLH customer count. Those codes include
+  electric resistance homes, which use more kWh than heat pump homes, so Profile C likely
+  overstates usage compared with a BGE home that heats only with a heat pump (not compared with
+  Profile A, which is at ResStock's higher usage).
 
 ```{python}
 #| label: show-profiles
@@ -610,7 +805,7 @@ display_gt(
     .tab_stubhead(label="Profile")
     .tab_spanner(label="Shortfall per enrolled home, per year", columns=_PROFILE_SHORTFALL_COLS)
     .cols_label(
-        population="ResStock population",
+        population="Population",
         buildings=html("ResStock<br>buildings"),
         homes=html("Homes they<br>represent"),
         annual_kwh=html("Annual kWh<br>per home"),
@@ -621,6 +816,41 @@ display_gt(
     )
     .fmt_number(columns=["buildings", "homes", "annual_kwh"], decimals=0)
     .fmt_currency(columns=_PROFILE_SHORTFALL_COLS, decimals=2)
+    .sub_missing(columns="buildings", missing_text="")
+    .tab_options(**get_switchbox_gt_tab_options())
+)
+```
+
+The three profiles differ in where their kWh comes from, which year it reflects, whether it
+includes electric resistance homes, and which residential total they divide by. The last column
+compares each profile's annual kWh with the average residential customer on the same basis
+($K / C$).
+
+```{python}
+#| label: tbl-kwh-inputs
+
+display_gt(
+    GT(kwh_inputs_table, rowname_col="profile")
+    .tab_header(title="kWh inputs by profile")
+    .tab_stubhead(label="Profile")
+    .cols_label(
+        source="kWh per enrolled home: source",
+        year="Usage year",
+        includes_er=html("Includes electric<br>resistance homes"),
+        kwh=html("Annual kWh per<br>enrolled home, k"),
+        kwh_base=html("Residential<br>kWh, K"),
+        kwh_base_source="K: source",
+        kwh_vs_average=html("k relative to the<br>average customer"),
+    )
+    .fmt_number(columns="kwh", decimals=0)
+    .fmt_number(columns="kwh_base", scale_by=1e-9, decimals=2, pattern="{x} TWh")
+    .fmt_number(columns="kwh_vs_average", decimals=2, pattern="{x}×")
+    .tab_source_note(
+        md(
+            f"CAIRO's residential kWh is {pct(1 / kwh_ratio - 1, 0)} above BGE's test-year billed sales. "
+            f"The average customer is K divided by {num(customers)} customers."
+        )
+    )
     .tab_options(**get_switchbox_gt_tab_options())
 )
 ```
@@ -639,47 +869,13 @@ print(f"Electric resistance homes: {report_vars['er_buildings']} buildings, {er_
 
 ### Check against BGE's billed usage
 
-BGE's heating rate codes (RH and RLH) mix electric resistance and heat pumps, so the profiles
-come from ResStock. This compares BGE's billed kWh per heating-code customer with ResStock's
+BGE's heating rate codes (RH and RLH) mix electric resistance and heat pumps, so Profiles A
+and B come from ResStock, and Profile C includes resistance homes. This compares BGE's billed kWh per heating-code customer with ResStock's
 electric resistance and heat pump homes combined.
 
 ```{python}
-#| label: bge-heating-kwh
+#| label: show-bge-heating-kwh
 
-_ccan = pl.read_excel(PATH_CCAN_1_4, has_header=False)
-_labels = _ccan["column_1"].to_list()
-
-
-def _ccan_block(header: str) -> pl.DataFrame:
-    """The R, RH, RL and RLH rows under one block header, with the 12-month TOTAL column."""
-    start = next(i for i, label in enumerate(_labels) if label and header in label.upper()) + 1
-    block = _ccan.slice(start, 4).select(pl.col("column_1").alias("rate_code"), pl.col("column_14").cast(pl.Float64))
-    if block.height != 4 or "TOTAL" in str(block["rate_code"].to_list()):
-        raise RuntimeError(f"Unexpected CCAN 1-4 layout under {header}")
-    return block
-
-
-_customer_months = _ccan_block("ELECTRIC CUSTOMERS")["column_14"].to_list()
-_sales = _ccan_block("KWH")["column_14"].to_list()
-_heating = [1, 3]  # RH and RLH; rows 0 and 2 are R and RL
-bge_heating_customers = sum(_customer_months[i] for i in _heating) / 12
-bge_heating_kwh = sum(_sales[i] for i in _heating) / bge_heating_customers
-bge_nonheating_kwh = sum(_sales[i] for i in (0, 2)) / (sum(_customer_months[i] for i in (0, 2)) / 12)
-
-_electric_heat = annual_kwh_r.join(
-    weights.filter(pl.col("heating_type").is_in(["electrical_resistance", "heat_pump"])), on="bldg_id"
-)
-resstock_electric_heat_homes = float(_electric_heat["weight"].sum())
-resstock_electric_heat_kwh = float(
-    (_electric_heat["annual_kwh_grid"] * _electric_heat["weight"]).sum() / resstock_electric_heat_homes
-)
-report_vars.update(
-    bge_heating_customers=bge_heating_customers,
-    bge_heating_kwh=bge_heating_kwh,
-    bge_nonheating_kwh=bge_nonheating_kwh,
-    resstock_electric_heat_homes=resstock_electric_heat_homes,
-    resstock_electric_heat_kwh=resstock_electric_heat_kwh,
-)
 display_gt(
     GT(
         pl.DataFrame(
@@ -801,12 +997,15 @@ display_gt(
   `{python} num(customers)` customers, from Karas Exhibit E-3
   ([Karas Direct](https://pub.switch.box/karas_Docket9888Direct_2026), PDF pp. 41–42). BGE's
   test-year residential sales of `{python} f"{kwh_test_year / 1e9:,.2f}"` TWh are from the same
-  exhibit, for comparison.
+  exhibit; they are Profile C's kWh base.
 - **Load profiles:** CAIRO's billed annual kWh for ResStock buildings, upgrade 0 for the
   existing heat pump homes and electric resistance homes, and upgrade 1 for all homes with an
-  ENERGY STAR heat pump.
+  ENERGY STAR heat pump. Profile C's kWh is the representative home's heat pump load in
+  [`representative_home.qmd`](representative_home.qmd), BGE's monthly billed kWh per RH + RLH
+  customer (`s3://data.sb/bge/bge_electric_monthly_residential_customers_kwh_revenues_202504_202605.xlsx`).
 - **BGE billed usage by rate code:** BGE's response to data request CCAN 1-4, Attachment 1
-  (customers and kWh by month, April 2025 to March 2026), used only for the check on scale.
+  (customers and kWh by month, April 2025 to March 2026), for Profile C's customer count and
+  to check its kWh (they must agree within 0.5%).
 - **Rates:** `{python} LINK_RATES_R` (April 2025 to March 2026, flattened to the average of
   the 12 monthly rates) and the
   `{python} LINK_RATES_RHP`, both from
@@ -820,7 +1019,8 @@ display_gt(
 - Static, one year, test-year rates, following the Connecticut method (CIEC-3 and CIEC-6).
   R-HP rates are applied as filed. Generation, the customer charge and the universal service
   charge are unchanged.
-- Every enrolled home uses the representative profile (A or B).
+- Every enrolled home uses the representative profile (A, B or C).
+- Profile C treats every RH + RLH customer as a heat pump home.
 
 **Caveats**
 
@@ -828,22 +1028,44 @@ display_gt(
   supplemental or cooling-only mini-splits in fossil-heated homes, so it overstates the
   eligible homes BGE's programs can identify. It is an enrollment floor, not a lower bound on
   the stock.
+- The Connected Rewards count is every customer in BGE's smart-thermostat program (8% of
+  residential customers), whatever its heating. BGE does not verify heat pumps, so it is a
+  sizing scenario, not a heat pump count: it applies heat pump usage to gas-heated participants
+  who could not enroll in R-HP. If heat pumps were as common among participants as in the
+  ResStock stock, participants would include about
+  `{python} num(round(counts["connected_rewards_customers"] * counts["resstock_hp_homes"] / counts["test_year_customer_count"], -3))`
+  heat pump homes, below the program floor. "Approximately 8%" also carries rounding of about
+  `{python} num(round(0.005 * counts["bge_res_customers"], -3))` homes either way.
 - RECS is a statewide share applied to BGE's customers, from 2020, with
   `{python} counts["recs_md_hp_respondents"]` Maryland heat pump respondents.
 - The Brattle figure rests on the AEG/Verdant 2022 survey, where main heating systems are
   self-reported and some respondents may have confused heat pumps with central air
   conditioning. Its split by configuration comes from Brattle's contractor survey, not the
   survey itself.
-- The enrollment counts use slightly different customer bases: RECS is applied to BGE's
+- The enrollment counts use slightly different customer bases: RECS and Connected Rewards are applied to BGE's
   `{python} num(counts["bge_res_customers"])` March 2026 residential customers and Brattle to
   its `{python} num(counts["stock_high"] / counts["verdant_bge_hp_share_incl_hybrid"])` 2022
   customers, against the `{python} num(customers)` test-year customers used here. The gaps are
   at most `{python} pct(max(abs(counts["bge_res_customers"] / customers - 1), abs(counts["stock_high"] / counts["verdant_bge_hp_share_incl_hybrid"] / customers - 1)))`
   and are not adjusted.
-- Profiles come from ResStock, not BGE: BGE's heating rate codes mix electric resistance and
-  heat pump homes, so BGE can't supply a heat pump load. ResStock's electric resistance and
-  heat pump homes use `{python} pct(resstock_electric_heat_kwh / bge_heating_kwh - 1, 0)` more
-  kWh than BGE's heating-code customers (see the check above).
+- Profiles A and B come from ResStock, not BGE: BGE's heating rate codes mix electric
+  resistance and heat pump homes, so BGE can't supply a heat pump-only load. ResStock's
+  electric resistance and heat pump homes use
+  `{python} pct(resstock_electric_heat_kwh / bge_heating_kwh - 1, 0)` more kWh than BGE's
+  heating-code customers (see the check above).
+- Profile C uses BGE's heating-code customers, which include electric resistance homes. Those
+  use more kWh than heat pump homes, so Profile C likely overstates the usage, and the revenue
+  lost, of a BGE home that heats only with a heat pump. The comparison is with that home, not
+  with Profile A: Profile A is at ResStock's usage, which runs higher than BGE's billed usage.
+  Scaling Profile C by ResStock's ratio of heat pump to all electric-heat usage gives roughly
+  `{python} num(kwh_c_hp_only)` kWh a year for a heat pump-only home, a rough figure because
+  it borrows ResStock's mix.
+- RH and RLH are opt-in, so some electric-heat homes are billed on R and RL, and the heating
+  codes undercount them. Homes that opt in may lean toward heavy winter users, which would
+  make Profile C overstate further. We have not tested this.
+- Profile C divides by BGE's test-year residential kWh and A and B by CAIRO's, which is
+  `{python} pct(1 / kwh_ratio - 1, 0)` higher. Each pairs its $k$ and $K$ from one source, but
+  the range across profiles mixes the two bases.
 - Profile A rests on `{python} num(profiles["A"]["buildings"])` ResStock buildings. Profile B is
   a simulated retrofit, mostly standard-efficiency (SEER 16 / 9.2 HSPF) equipment, and most of
   its homes keep gas water heating and appliances.

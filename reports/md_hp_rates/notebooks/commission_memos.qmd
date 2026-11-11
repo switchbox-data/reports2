@@ -1,0 +1,357 @@
+---
+title: "Memoranda on Schedule R-HP: Identifying Heat Pump Customers, Winter Peaking, and Auto-Enrollment Bill Impacts"
+subtitle: "Maryland PSC Case No. 9888 — prepared on behalf of the Chesapeake Climate Action Network"
+date: 2026-11-11
+author:
+  - name: Juan-Pablo Velez
+    email: jpv@switch.box
+    affiliations:
+      - Switchbox
+toc: false
+notebook-links: false
+bibliography: ../../references.yaml
+csl: ../../chicago-author-date-switchbox.csl
+# The footnotes are written out in full, so the keys are listed here for the bibliography tooling
+# rather than inline, where Word would show them as author-date tags.
+suppress-bibliography: true
+nocite: |
+  @bge_Docket9154BGEs_2017, @bge_Docket9154BGEs_2018, @bge_Docket94942018_2019,
+  @bge_Docket94942019_2020, @bge_Docket94942020_2021, @bge_Docket96482021_2022,
+  @bge_Docket9648Errata_2023, @bge_Docket96482023_2024, @bge_Docket97052024_2025,
+  @bge_Docket97052025_2026, @bge_Docket97052026_2026, @bge_Docket9888Response_2026,
+  @brattle_AssessmentElectrificationImpacts_2023, @hvacdistributors_MarylandRebates_2026,
+  @karas_Docket9888Prepared_2026, @mdpsc_Docket9705Order_2024, @velez_Docket9888Direct_2026
+execute:
+  echo: false
+format:
+  html:
+    page-layout: article
+    reference-location: margin
+    citation-location: margin
+    theme:
+      - ../../.style/switchbox.scss
+---
+
+```{python}
+#| echo: false
+
+import pickle
+from pathlib import Path
+from types import SimpleNamespace
+
+from IPython.display import Markdown
+
+# e: heat pump counts; w: winter-peaking sensitivity; r: Schedule R-HP rate impact; h: representative home
+PATH_CACHE = Path("../cache")
+e = SimpleNamespace(**pickle.loads((PATH_CACHE / "bge_hp_customer_estimate_vars.pkl").read_bytes()))
+w = SimpleNamespace(**pickle.loads((PATH_CACHE / "winter_feeder_vars.pkl").read_bytes()))
+r = SimpleNamespace(**pickle.loads((PATH_CACHE / "bge_rhp_rate_impact_vars.pkl").read_bytes()))
+h = SimpleNamespace(**pickle.loads((PATH_CACHE / "representative_home_vars.pkl").read_bytes()))
+
+
+def dollar(x, accuracy=0):
+    return f"${x:,.{accuracy}f}"
+
+
+def pct(x, accuracy=0):
+    return f"{x * 100:,.{accuracy}f}%"
+
+
+def num(x, accuracy=0):
+    return f"{x:,.{accuracy}f}"
+
+
+def cents(x, accuracy=2):
+    return f"{x * 100:,.{accuracy}f}¢"
+
+
+def year_month(x):
+    return f"{dollar(x)} per year ({dollar(x / 12, 2)} per month on average)"
+
+
+def span(low, high, fmt):
+    return fmt(low) if fmt(low) == fmt(high) else f"{fmt(low)} to {fmt(high)}"
+
+
+def overpayment(facet, scenario, total=False):
+    return getattr(w, f"wf_{facet}_2025_{scenario}_{'total' if total else 'td'}_overcharge")
+
+
+autoenroll = {(row["base"], row["share_enrolled"]): row for row in r.autoenroll}
+floor_100 = autoenroll[("floor", 1.0)]
+stock_100 = autoenroll[("stock", 1.0)]
+today_rate = sum(r.schedule_r_flat.values())
+empower_delta = h.all_fossil_annual_empower_maryland_delta
+bge_range = [overpayment(f, s) for f in ("dist", "both") for s in ("x040", "x046")]
+bge_range_total = [overpayment(f, s, total=True) for f in ("dist", "both") for s in ("x040", "x046")]
+```
+
+**TO:** Maryland Public Service Commission\
+**FROM:** Juan-Pablo Velez, Switchbox, on behalf of the Chesapeake Climate Action Network\
+**RE:** Case No. 9888, Schedule R-HP\
+**DATE:** November 11, 2026
+
+The three memoranda below answer three questions about my proposed heat pump rate, Schedule R-HP:
+whether BGE can identify its heat pump customers, whether the overcharge I found survives the
+fact that part of BGE's system peaks in winter, and what auto-enrollment would mean for other
+customers' bills.
+
+{{< pagebreak >}}
+
+## Memo 1: BGE can identify its heat pump customers
+
+**Conclusion.** BGE's own EmPOWER Maryland reports show that BGE paid rebates for at least
+**`{python} num(e.hp_program_systems_cumulative)` heat pump systems** in its residential service
+territory between January 2017 and June 2026, including
+`{python} num(e.hp_program_systems_2025)` in 2025 alone. BGE's main heat pump rebate requires the
+customer's installation address and BGE account number. BGE therefore already holds an
+account-level list of tens of thousands of heat pump customers, and could place them on Schedule
+R-HP without any new verification process.
+
+**BGE's position.** Ms. Karas testifies that BGE "currently does not have specific knowledge of
+customer heating sources,"[^karas-nodata] and that BGE would need a Commission-approved mechanism
+to verify that a customer installed a heat pump.[^karas-verify] In discovery, BGE stated that it
+"does not track customers by known heat source."[^dr-1-8]
+
+**Why the records already exist.** BGE may not tag billing accounts by heating source, but its
+EmPOWER programs record every heat pump they pay for. BGE reports the number of rebated air-source,
+ductless mini-split and geothermal heat pumps to the Commission every six months.[^empower-reports]
+The documentation for BGE's midstream heat pump rebate, through which most of these systems are
+paid, requires the "BGE customer installation address and associated account #."[^account] Since
+April 2025, BGE has also paid electrification incentives to customers who replace a fossil fuel
+heating system with a heat pump; its latest report counts
+`{python} num(e.hp_program_fuel_switch_homes)` participating homes in the HVAC program
+alone.[^fuel-switch] An EmPOWER rebate is the verification: BGE has already confirmed the
+installation before paying for it.
+
+BGE has other records that identify heat pump homes, though none is as direct:
+
+- **Connected Rewards**, BGE's smart-thermostat demand response program, enrolls about
+  `{python} pct(e.connected_rewards_share)` of residential customers (approximately
+  `{python} num(round(e.connected_rewards_customers, -3))`).[^connected-rewards] The thermostat
+  data records whether each home's system is a heat pump, though BGE does not verify the
+  equipment and participants include every heating type.
+- **Limited-income programs** run by the Department of Housing and Community Development work
+  through the customer's utility account, and have been allowed to fund electrification since
+  2024.[^order-91461]
+- **Home energy audits** under EmPOWER record each home's heating system. BGE already reports
+  completed audits by primary heating fuel.[^audits]
+
+**How many customers that is.** Table 1 sets the EmPOWER count against estimates of every heat
+pump home in BGE's territory. The EmPOWER figure is a floor in one sense and a ceiling in another.
+It is a floor on the heat pump stock: it misses systems installed without a rebate, and the
+independent estimates put the full stock at roughly
+`{python} num(round(e.stock_low, -3))` to `{python} num(round(e.stock_high, -3))` homes. And it is a
+ceiling on the number of homes the rebate records identify, because it counts systems, not homes:
+a home with two systems appears twice, and a home whose older heat pump was replaced with a
+rebated new one may appear twice as well.
+
+```{python}
+#| label: memo1-counts
+
+_rows = [
+    ("EmPOWER rebated heat pump systems, Jan. 2017 to June 2026", e.hp_program_systems_cumulative, "BGE EmPOWER reports"),
+    ("— of which installed in 2025", e.hp_program_systems_2025, "BGE EmPOWER reports"),
+    ("Homes paid electrification incentives (HVAC program), 2025 to June 2026", e.hp_program_fuel_switch_homes, "BGE EmPOWER report"),
+    ("Connected Rewards participants, all heating types", round(e.connected_rewards_customers, -3), "BGE data response"),
+    ("Heat pump stock, low estimate", round(e.stock_low, -3), "EIA RECS 2020, 90% low end"),
+    ("Heat pump stock, central estimate", round(e.stock_central, -3), "NREL ResStock 2024.2"),
+    ("Heat pump stock, high estimate", round(e.stock_high, -3), "Brattle 2023, including hybrid systems"),
+]
+_lines = [
+    "| Count | Number | Share of residential customers | Source |",
+    "|:--|--:|--:|:--|",
+    *[f"| {label} | {num(value)} | {pct(value / e.bge_res_customers, 1)} | {source} |" for label, value, source in _rows],
+]
+Markdown("\n".join(_lines) + f"\n\n: Table 1. Heat pump customers BGE can identify, and estimates of all heat pump homes in BGE's territory. Shares are of BGE's {num(e.bge_res_customers)} residential customers in March 2026.")
+```
+
+**Recommendation.** BGE should auto-enroll every customer whose heat pump EmPOWER has paid for,
+as I proposed in my direct testimony, and offer a simple attestation for customers whose heat
+pumps were installed without a rebate.[^enroll] BGE does not need a new verification process to
+begin: the customers EmPOWER has already rebated are verified.
+
+[^karas-nodata]: [Rebuttal Testimony of Jennifer A. Karas on behalf of Baltimore Gas and Electric Company](https://pub.switch.box/karas_Docket9888Prepared_2026) ("Karas Rebuttal"), at 22:1–2 (Oct. 16, 2026).
+
+[^karas-verify]: [Karas Rebuttal](https://pub.switch.box/karas_Docket9888Prepared_2026) at 22:5–14.
+
+[^dr-1-8]: [Direct Testimony of Juan-Pablo Velez on behalf of Chesapeake Climate Action Network](https://pub.switch.box/velez_Docket9888Direct_2026) ("Velez Direct") (Sep. 22, 2026), Ex. JPV-6, [BGE Response to CCAN DR 1-8](https://pub.switch.box/bge_Docket9888Response_2026).
+
+[^empower-reports]: BGE's semi-annual and year-end EmPOWER Maryland reports, residential heat pump measure quantities: Case No. 9154, [Q1–Q2 2017 report](https://pub.switch.box/bge_Docket9154BGEs_2017) at 24; [Q3–Q4 2017 report](https://pub.switch.box/bge_Docket9154BGEs_2018) at 26; Case No. 9494, [2018 year-end report](https://pub.switch.box/bge_Docket94942018_2019) at 21; [2019 year-end report](https://pub.switch.box/bge_Docket94942019_2020) at 21; [2020 year-end report](https://pub.switch.box/bge_Docket94942020_2021) at 24; Case No. 9648, [2021 year-end report](https://pub.switch.box/bge_Docket96482021_2022) at 25; [2022 year-end report (errata)](https://pub.switch.box/bge_Docket9648Errata_2023) at 23; [2023 year-end report](https://pub.switch.box/bge_Docket96482023_2024) at 22, 27; Case No. 9705, [2024 year-end report](https://pub.switch.box/bge_Docket97052024_2025) at 10; [2025 year-end report](https://pub.switch.box/bge_Docket97052025_2026) at 8; [2026 mid-year report](https://pub.switch.box/bge_Docket97052026_2026) at 6 (Aug. 17, 2026). Commercial units are excluded.
+
+[^account]: HVAC Distributors, [_Maryland Rebates_](https://pub.switch.box/hvacdistributors_MarylandRebates_2026) (last accessed Oct. 29, 2026) (BGE midstream program documentation required: "BGE customer installation address and associated account #").
+
+[^fuel-switch]: Case No. 9705, _The 2024-2026 EmPOWER Maryland Program_, [2026 Mid-Year EmPOWER Maryland Report of Baltimore Gas and Electric Company](https://pub.switch.box/bge_Docket97052026_2026), at Appendix A, 3 of 3, Maillog No. 333370 (Aug. 17, 2026) (program-to-date row "HVAC, Electrification").
+
+[^connected-rewards]: BGE data response on Connected Rewards participation as of Oct. 31, 2026. [CITATION TO BE COMPLETED: response not yet in our source library.]
+
+[^order-91461]: Case No. 9705, _The 2024-2026 EmPOWER Maryland Program_, [Order No. 91461](https://pub.switch.box/mdpsc_Docket9705Order_2024), at 9, Maillog No. 314502 (Dec. 27, 2024).
+
+[^audits]: [2026 Mid-Year EmPOWER Maryland Report of Baltimore Gas and Electric Company](https://pub.switch.box/bge_Docket97052026_2026) ("HPwES - Heating Fuel Type Metrics").
+
+[^enroll]: [Velez Direct](https://pub.switch.box/velez_Docket9888Direct_2026) at 45:7–21.
+
+{{< pagebreak >}}
+
+## Memo 2: The overcharge survives BGE's partial winter peaking
+
+**Conclusion.** Even if every dollar of BGE's distribution and transmission marginal cost were
+caused in winter, a customer who replaces a fossil fuel heating system with a heat pump would still
+overpay by approximately **`{python} year_month(overpayment("both", "x100"))`** in distribution
+and transmission charges. That is the most extreme assumption possible, and it does not come close
+to eliminating the overcharge. At BGE's own figures for how much of its system peaks in winter,
+the overcharge is approximately `{python} span(min(bge_range), max(bge_range), dollar)` per year.
+The truth lies somewhere between these cases, and in every one of them heat pump customers are
+overcharged.
+
+**BGE's data on winter peaking.** BGE reports that 46% of its feeders peak in winter and that
+40% of its customers are served by those feeders.[^dr-4] The marginal cost profile in my direct
+testimony places most cost in summer: about
+`{python} pct(w.wf_filed_winter_share_dist)` of distribution cost and
+`{python} pct(w.wf_filed_winter_share_tx)` of transmission cost fall in winter months (October
+through April), because BGE's system as a whole peaks on summer afternoons.[^summer] A heat pump
+adds load mostly in winter, so if winter drives more of BGE's costs than my profile assumes, a heat
+pump home causes more cost than I estimated.
+
+**What changes and what does not.** The overcharge is the difference between two numbers. The
+first is how much more a home pays in distribution and transmission charges after installing a
+heat pump: `{python} dollar(h.all_fossil_annual_delivery_charges_delta)` per year for the
+representative home in my testimony. That figure is set by BGE's rates and does not change with
+the season in which costs occur. The second is how much more distribution and transmission cost
+the home causes: `{python} dollar(w.wf_dist_2025_filed_inc_td)` per year in my filed analysis.
+Only this second number moves when cost is shifted into winter.
+
+Table 2 shifts a growing share of BGE's marginal cost into winter, first for distribution alone and
+then for distribution and transmission together.
+
+```{python}
+#| label: memo2-winter
+
+_scenarios = [
+    ("As filed (about " + pct(w.wf_filed_winter_share_dist) + " of distribution cost)", "filed"),
+    ("40% (customers on winter-peaking feeders)", "x040"),
+    ("46% (feeders that peak in winter)", "x046"),
+    ("100% (every dollar in winter)", "x100"),
+]
+_lines = [
+    "| Share of cost in winter | Distribution moved: per year | Per month | Distribution and transmission moved: per year | Per month |",
+    "|:--|--:|--:|--:|--:|",
+]
+for _label, _key in _scenarios:
+    _d, _b = overpayment("dist", _key), overpayment("both", _key)
+    _lines.append(f"| {_label} | {dollar(_d)} | {dollar(_d / 12, 2)} | {dollar(_b)} | {dollar(_b / 12, 2)} |")
+Markdown(
+    "\n".join(_lines)
+    + "\n\n: Table 2. Representative heat pump home's overcharge in distribution and transmission charges, by the share "
+    "of BGE's marginal cost placed in winter (October to April). Including EmPOWER Maryland charges, which "
+    f"carry no marginal cost, adds {dollar(empower_delta)} per year ({dollar(empower_delta / 12, 2)} per month) "
+    "to each figure."
+)
+```
+
+Including EmPOWER Maryland charges, the overcharge falls from
+`{python} year_month(h.all_fossil_annual_total_overcharge)` as filed to
+`{python} year_month(overpayment("both", "x100", total=True))` in the all-winter case, and is
+approximately `{python} span(min(bge_range_total), max(bge_range_total), dollar)` per year at BGE's
+own winter-peaking figures.
+
+**Why the overcharge cannot close.** Even when all cost is placed in winter, the home's added
+distribution and transmission cost rises only to
+`{python} dollar(w.wf_both_2025_x100_inc_td)` per year, far below the
+`{python} dollar(h.all_fossil_annual_delivery_charges_delta)` in added charges. For the overcharge to
+disappear, winter would have to carry more than `{python} num(w.wf_both_2025_break_even_x_td, 1)`
+times BGE's entire distribution and transmission marginal cost, which is impossible. The reason is
+that BGE's volumetric delivery rates recover far more than the marginal cost of the added kWh,
+whatever the season in which that kWh is used.
+
+**Brattle's projection.** The Brattle Group's 2023 study for the Commission projects that BGE's
+system could become winter-peaking around 2027–2028 under high electrification.[^brattle-winter]
+That projection does not change the conclusion: the all-winter case above is already more extreme
+than any shift to winter peaking.
+
+**Recommendation.** The share of BGE's system that peaks in winter is not a reason to delay
+Schedule R-HP. The overcharge holds whether costs fall mostly in summer, as in my filed analysis,
+or entirely in winter.
+
+[^dr-4]: [BGE Response to CCAN DR 4-1](https://pub.switch.box/bge_Docket9888Response_2026c) (Nov. 5, 2026) (46% of feeders are winter peaking); [BGE Response to CCAN DR 4-2](https://pub.switch.box/bge_Docket9888Response_2026c) (40% of customers are served by winter-peaking feeders). [CITATION KEY TO BE ADDED: bge_Docket9888Response_2026c is not yet in the shared bibliography.]
+
+[^summer]: [Velez Direct](https://pub.switch.box/velez_Docket9888Direct_2026) at 16:6–9 (80% of distribution peak hours and 82% of bulk transmission peak hours fall between May and September).
+
+[^brattle-winter]: The Brattle Group, [_An Assessment of Electrification Impacts on the Maryland Electric Grid_](https://pub.switch.box/brattle_AssessmentElectrificationImpacts_2023), at 87 (Dec. 19, 2023) (year read from the study's chart; the text does not state it).
+
+{{< pagebreak >}}
+
+## Memo 3: Bill impact of auto-enrolling existing heat pump customers
+
+**Conclusion.** If BGE auto-enrolled every heat pump customer its EmPOWER records identify,
+`{python} num(floor_100["homes"])` customers, the delivery charges paid by all other residential
+customers would rise by approximately
+**`{python} span(floor_100["charge_low"], floor_100["charge_high"], cents)` per kWh**, or
+`{python} span(floor_100["rate_share_low"], floor_100["rate_share_high"], lambda x: pct(x, 1))` of
+today's rate. For the average customer that is approximately
+**`{python} span(floor_100["bill_year_low"], floor_100["bill_year_high"], lambda x: dollar(x, 2))` per
+year (`{python} span(floor_100["bill_month_low"], floor_100["bill_month_high"], lambda x: dollar(x, 2))`
+per month on average)**. Enrolling 20% or 50% of those customers would cost roughly proportionally less.
+
+**What the bill impact measures.** Schedule R-HP lowers the distribution, transmission and
+EmPOWER charges of enrolled customers, so BGE would collect less revenue from them. I assume that
+revenue is recovered from every residential customer who stays on Schedule R, through a uniform
+increase in the per-kWh charge. That increase is not a new cost. It returns to other customers
+costs that heat pump customers pay today above the cost they cause.
+
+**How I estimated it.** For each number of enrolled homes, I multiply the homes by the revenue each
+would no longer pay, then divide by the kWh of the customers who remain on Schedule R. I use three
+estimates of an enrolled home's annual electricity use, because the true figure for BGE's existing
+heat pump customers is not known, and report the range across them:
+
+- **ResStock's existing heat pump homes in BGE's territory:**
+  `{python} num(r.profile_A_kwh)` kWh per year, saving
+  `{python} dollar(r.profile_A_shortfall["Total"])` per year on Schedule R-HP.
+- **Every ResStock home in BGE's territory retrofitted with a heat pump:**
+  `{python} num(r.profile_B_kwh)` kWh, saving `{python} dollar(r.profile_B_shortfall["Total"])`.
+- **BGE's own billed usage for its electric-heating customers:**
+  `{python} num(r.profile_C_kwh)` kWh, saving `{python} dollar(r.profile_C_shortfall["Total"])`.
+
+Table 3 gives the impact for 20%, 50% and 100% of the customers BGE's records identify. For
+context, it repeats the calculation for the full estimated stock of heat pump homes
+(`{python} num(round(stock_100["homes"], -3))`), which BGE could reach only through attestation.
+
+```{python}
+#| label: memo3-autoenroll
+
+_lines = [
+    "| Customers auto-enrolled | Homes | Added charge per kWh | Share of today's rate | Average bill increase per year | Per month |",
+    "|:--|--:|--:|--:|--:|--:|",
+]
+for _base, _base_label in (("floor", "Heat pump customers identified by EmPOWER"), ("stock", "Estimated stock of all heat pump homes (for context)")):
+    _lines.append(f"| **{_base_label}** | | | | | |")
+    for _share in (0.2, 0.5, 1.0):
+        _row = autoenroll[(_base, _share)]
+        _lines.append(
+            f"| {pct(_share)} | {num(_row['homes'])} "
+            f"| {span(_row['charge_low'], _row['charge_high'], lambda x: cents(x, 3))} "
+            f"| {span(_row['rate_share_low'], _row['rate_share_high'], lambda x: pct(x, 1))} "
+            f"| {span(_row['bill_year_low'], _row['bill_year_high'], lambda x: dollar(x, 2))} "
+            f"| {span(_row['bill_month_low'], _row['bill_month_high'], lambda x: dollar(x, 2))} |"
+        )
+Markdown(
+    "\n".join(_lines)
+    + "\n\n: Table 3. Bill impact on residential customers who remain on Schedule R, by the number of existing heat "
+    "pump customers auto-enrolled in Schedule R-HP. Ranges span the three estimates of an enrolled home's "
+    f"electricity use. Today's rate is Schedule R's distribution, transmission and EmPOWER charges combined, "
+    f"{cents(today_rate)} per kWh."
+)
+```
+
+**These estimates overstate the impact.** The EmPOWER count is of rebated systems, not homes, so
+it includes some homes more than once, and every duplicate inflates the cost shown here. Two of the
+three usage estimates use ResStock's 2018 weather year, in which BGE homes use more electricity
+than BGE's test-year billing records, and higher usage means a larger revenue shift. The rate
+impact is also measured against today's flat Schedule R charges.
+
+**Recommendation.** Auto-enrolling every heat pump customer BGE can identify would raise other
+customers' bills by approximately
+`{python} span(floor_100["bill_month_low"], floor_100["bill_month_high"], lambda x: dollar(x, 2))` per
+month on average, while ending an overcharge of hundreds of dollars a year for each enrolled
+household. The Commission can phase enrollment in, but the bill impact of enrolling all of them at
+once is small.

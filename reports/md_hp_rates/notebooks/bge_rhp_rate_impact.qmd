@@ -649,6 +649,78 @@ def summary_range_table() -> GT:
     )
 ```
 
+```{python}
+#| label: autoenroll
+
+AUTOENROLL_SHARES = (0.2, 0.5, 1.0)
+AUTOENROLL_BASES = {"floor": ("Program floor", floor_homes), "stock": ("Stock central (ResStock)", central_homes)}
+autoenroll = []
+for _base_key, (_base_label, _base_homes) in AUTOENROLL_BASES.items():
+    for _share in AUTOENROLL_SHARES:
+        _homes = round(_share * _base_homes)
+        _rows = {key: impact(p, _homes) for key, p in profiles.items()}
+        _charges = [r["charge"]["Total"] for r in _rows.values()]
+        _shares = [r["share"]["Total"] for r in _rows.values()]
+        _bills = [r["mean_bill"] for r in _rows.values()]
+        autoenroll.append(
+            {
+                "base": _base_key,
+                "base_label": _base_label,
+                "share_enrolled": _share,
+                "homes": _homes,
+                "charge_low": min(_charges),
+                "charge_high": max(_charges),
+                "rate_share_low": min(_shares),
+                "rate_share_high": max(_shares),
+                "bill_year_low": min(_bills),
+                "bill_year_high": max(_bills),
+                "bill_month_low": min(_bills) / 12,
+                "bill_month_high": max(_bills) / 12,
+                "by_profile": {
+                    key: {
+                        "charge": r["charge"]["Total"],
+                        "rate_share": r["share"]["Total"],
+                        "bill_year": r["mean_bill"],
+                        "bill_month": r["mean_bill"] / 12,
+                    }
+                    for key, r in _rows.items()
+                },
+            }
+        )
+report_vars["autoenroll"] = autoenroll
+
+
+def autoenroll_table() -> GT:
+    _df = pl.DataFrame(
+        [
+            {
+                "group": row["base_label"],
+                "scenario": f"{row['share_enrolled']:.0%} enrolled",
+                "homes": row["homes"],
+                "charge": _range([row["charge_low"], row["charge_high"]], lambda x: cents(x, 2)),
+                "rate_share": _range([row["rate_share_low"], row["rate_share_high"]], pct),
+                "bill_year": _range([row["bill_year_low"], row["bill_year_high"]], lambda x: dollar(x, 2)),
+                "bill_month": _range([row["bill_month_low"], row["bill_month_high"]], lambda x: dollar(x, 2)),
+            }
+            for row in autoenroll
+        ]
+    )
+    return (
+        GT(_df, rowname_col="scenario", groupname_col="group")
+        .tab_header(title="Auto-enrollment of existing heat pump homes, range across Profiles A, B and C")
+        .cols_label(
+            homes="Homes enrolled",
+            charge=html("Added charge<br>per kWh"),
+            rate_share=html("Share of<br>today's rate"),
+            bill_year=html("Average bill increase,<br>per year"),
+            bill_month=html("Average bill increase,<br>per month"),
+        )
+        .fmt_number(columns="homes", decimals=0)
+        .tab_source_note(md(_table_note()))
+        .tab_options(**get_switchbox_gt_tab_options())
+    )
+```
+
 ## Present this
 
 We estimate the impact with three load profiles for the enrolled home. **Profile A** is
@@ -666,6 +738,16 @@ range across the three profiles.
 #| label: tbl-summary-range
 
 display_gt(summary_range_table())
+```
+
+The commission memos ask what happens if BGE auto-enrolls 20%, 50% or 100% of the heat pump
+homes it can identify. We apply those shares to the program floor, and to the ResStock stock for
+comparison.
+
+```{python}
+#| label: tbl-autoenroll
+
+display_gt(autoenroll_table())
 ```
 
 **Profile A** uses the `{python} num(profiles["A"]["buildings"])` BGE buildings in ResStock that

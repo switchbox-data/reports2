@@ -1,0 +1,390 @@
+---
+title: "Responses to Connecticut Industrial Energy Consumers, CIEC-10(a)"
+subtitle: "Docket No. 26-05-10"
+author: "Conservation Law Foundation and Sierra Club"
+date: 2026-11-12
+execute:
+  warning: false
+  message: false
+format:
+  html:
+    theme: ../../.style/switchbox.scss
+    page-layout: article
+    toc: false
+---
+
+CIEC-10(a) asks for the modeled hourly electric resistance backup load of the average fossil fuel-heated home after heat pump installation, and the hours of highest heat pump and backup load. This notebook computes both from the same ResStock homes and the same kWh scaling as the direct testimony, and exports the hourly load as CIEC-10 Attachment 1.
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+import pickle
+from pathlib import Path
+
+import polars as pl
+import yaml
+from great_tables import GT
+
+from lib.rates_analysis.ncp_funcs import grid_consumption_expr
+from lib.rdp import fetch_rdp_file
+```
+
+## Parameters
+
+The batch, ResStock release, and upgrades come from the report's `batch_config.yaml`. The testimony's population is Eversource homes heated with natural gas, fuel oil, or propane before the retrofit (upgrade 0), modeled after the retrofit as upgrade 2.
+
+```{python}
+#| label: params
+
+_cfg = yaml.safe_load(Path("../batch_config.yaml").read_text())
+STATE = _cfg["STATE"]
+RDP_REF = _cfg["RDP_REF"]
+RELEASE = _cfg["RESSTOCK_RELEASE"]
+UPGRADE_BASE = int(_cfg["UPGRADE_BASE"])
+UPGRADE_HP = int(_cfg["UPGRADE_HP"])
+SCENARIO = _cfg["BASELINE_BILL_SCENARIO"]
+UTILITY = "ct_eversource"
+
+# Local mirror of s3://data.sb/nrel/resstock/, used when present (one file per building is slow from S3).
+_local = Path(f"/ebs/data/nrel/resstock/{RELEASE}")
+PATH_RELEASE = str(_local) if _local.exists() else f"s3://data.sb/nrel/resstock/{RELEASE}"
+print(f"state={STATE}  release={RELEASE}  upgrades {UPGRADE_BASE} -> {UPGRADE_HP}  source={PATH_RELEASE}")
+```
+
+CAIRO multiplies every building's electric load by the utility's `resstock_kwh_scale_factor` so that ResStock's residential sales match the Company's. We read the factor from the revenue-requirement file that the testimony's run used, at the same rate-design-platform commit.
+
+```{python}
+#| label: scale-factor
+
+_scenarios = yaml.safe_load(
+    fetch_rdp_file(f"rate_design/hp_rates/{STATE.lower()}/config/scenarios/scenarios_{UTILITY}.yaml", ref=RDP_REF)
+)["runs"]
+_run = _scenarios[f"{STATE.lower()}_{UTILITY}_{SCENARIO}_precalc_delivery"]
+_rr = yaml.safe_load(
+    fetch_rdp_file(f"rate_design/hp_rates/{STATE.lower()}/config/{_run['utility_revenue_requirement']}", ref=RDP_REF)
+)
+KWH_SCALE = float(_rr["resstock_kwh_scale_factor"])
+print(f"{_run['utility_revenue_requirement']}: resstock_kwh_scale_factor = {KWH_SCALE:.6f}")
+```
+
+## Population
+
+Heating fuel is a pre-retrofit attribute, so it comes from the upgrade 0 metadata. The electric utility comes from Switchbox's utility assignment. `weight` is the ResStock sample weight.
+
+```{python}
+#| label: population
+
+_meta = pl.scan_parquet(f"{PATH_RELEASE}/metadata/state={STATE}/upgrade={UPGRADE_BASE:02d}/metadata-sb.parquet")
+_utility = pl.scan_parquet(f"{PATH_RELEASE}/metadata_utility/state={STATE}/utility_assignment.parquet")
+pop = (
+    _meta.join(_utility.select("bldg_id", "sb.electric_utility"), on="bldg_id")
+    .filter(
+        (pl.col("sb.electric_utility") == UTILITY)
+        & (pl.col("heats_with_natgas") | pl.col("heats_with_oil") | pl.col("heats_with_propane"))
+    )
+    .select("bldg_id", "weight")
+    .unique(subset=["bldg_id"])
+    .collect()
+)
+n_bldg = pop.height
+households = float(pop["weight"].sum())
+print(f"{n_bldg:,} ResStock buildings, {households:,.0f} weighted households")
+```
+
+## Upgrade 2 hourly end uses
+
+ResStock reports heat pump electricity in four parts:[^dict]
+
+| End use | Column |
+| --- | --- |
+| Electric resistance backup | `out.electricity.heating_hp_bkup` |
+| Supply fan while backup runs | `out.electricity.heating_hp_bkup_fa` |
+| Heat pump compressor | `out.electricity.heating` |
+| Supply fan while the heat pump runs | `out.electricity.heating_fans_pumps` |
+
+[^dict]: ResStock 2024.2 data dictionary (`lib/resstock/2024/data_dictionary_2024_labeled.csv`): `heating_hp_bkup` is "Electricity consumed by heat pump backup, excludes usage by heat pump backup fans/pumps."
+
+We call the last three together the **heat pump** load: the compressor plus the fan, which runs whether or not backup is on. **Backup** is the resistance element alone. Whole-home grid consumption uses CAIRO's formula (total load net of PV, floored at zero), so it matches the kWh the testimony billed. Fossil-fuel backup columns are loaded only to confirm that upgrade 2's backup is all electric.
+
+ResStock's hourly timestamps are local standard time and mark the start of each hour (buildstock-fetch shifts NREL's 15-minute interval-ending stamps back 15 minutes, then truncates to the hour). The weather year is 2018; below we also place each hour on CAIRO's 2025 billing calendar.
+
+```{python}
+#| label: load-hourly
+
+_E = "out.electricity.{}.energy_consumption"
+_fossil_backup = [f"out.{fuel}.heating_hp_bkup.energy_consumption" for fuel in ("natural_gas", "fuel_oil", "propane")]
+_paths = [
+    f"{PATH_RELEASE}/load_curve_hourly/state={STATE}/upgrade={UPGRADE_HP:02d}/{bldg_id}-{UPGRADE_HP}.parquet"
+    for bldg_id in pop["bldg_id"].to_list()
+]
+hourly = (
+    pl.scan_parquet(_paths)
+    .select(
+        "bldg_id",
+        "timestamp",
+        pl.col(_E.format("heating_hp_bkup")).alias("backup_kwh"),
+        (
+            pl.col(_E.format("heating"))
+            + pl.col(_E.format("heating_fans_pumps"))
+            + pl.col(_E.format("heating_hp_bkup_fa"))
+        ).alias("heat_pump_kwh"),
+        grid_consumption_expr().alias("grid_kwh"),
+        pl.sum_horizontal(_fossil_backup).alias("fossil_backup"),
+    )
+    .collect()
+)
+
+_hours = hourly.group_by("bldg_id").len()
+assert _hours.height == n_bldg, f"load curves found for {_hours.height} of {n_bldg} buildings"
+assert (_hours["len"] == 8760).all(), "every building should have 8,760 hours"
+assert hourly["fossil_backup"].sum() == 0, "upgrade 2 should have no fossil-fuel backup"
+hourly = hourly.drop("fossil_backup").with_columns(
+    pl.col("backup_kwh", "heat_pump_kwh", "grid_kwh") * KWH_SCALE
+)
+hourly.head(3)
+```
+
+## The average home's hourly load
+
+Each hour is the weighted mean across buildings. As a check, the average home's annual grid kWh must equal the testimony's figure for the same home after the retrofit (`all_fossil_annual_kwh_after` in `notebooks/representative_home.qmd`), which CAIRO computed from its own scaled loads.
+
+```{python}
+#| label: average-home
+
+_LOAD_COLS = ["backup_kwh", "heat_pump_kwh", "grid_kwh"]
+avg = (
+    hourly.join(pop, on="bldg_id")
+    .group_by("timestamp")
+    .agg([((pl.col(c) * pl.col("weight")).sum() / pl.col("weight").sum()).alias(c) for c in _LOAD_COLS])
+    .sort("timestamp")
+    .with_columns((pl.col("backup_kwh") + pl.col("heat_pump_kwh")).alias("heating_kwh"))
+)
+assert avg.height == 8760
+
+_rep = pickle.loads(Path("../cache/representative_home_vars.pkl").read_bytes())
+annual_grid = float(avg["grid_kwh"].sum())
+_testimony = float(_rep["all_fossil_annual_kwh_after"])
+assert abs(annual_grid - _testimony) < 0.5, f"annual grid kWh {annual_grid:,.2f} vs testimony {_testimony:,.2f}"
+print(f"annual grid kWh {annual_grid:,.2f}  (testimony {_testimony:,.2f})")
+```
+
+### CAIRO's calendar
+
+CAIRO bills the 2018 loads on a 2025 calendar. Its `__timeshift__` relabels the year and rotates the hours so weekdays line up: 2018 began on a Monday and 2025 on a Wednesday, so CAIRO's first hour (00:00 EST on January 1, 2025) holds ResStock's hour at 00:00 on January 3, 2018, and 2018's first two days wrap to the end of CAIRO's year. CAIRO's `billing_kwh_8760.parquet`, and the `hourly_after` sheet of Exhibit JPV-3 built from it, use these timestamps (UTC in the parquet, Eastern Standard Time in JPV-3). We add the same timestamp to each hour, then check that the average home's grid kWh matches CAIRO's file hour by hour.
+
+```{python}
+#| label: cairo-calendar
+
+from datetime import date, datetime, timedelta
+
+from lib.rates_analysis.rate_case_funcs import load_billing_kwh_8760, segment_name, weighted_avg_hourly
+
+WEATHER_YEAR, CAIRO_YEAR, UTC_OFFSET = 2018, 2025, -5
+_roll_hours = 24 * ((date(CAIRO_YEAR, 1, 1).weekday() - date(WEATHER_YEAR, 1, 1).weekday()) % 7)
+_cairo_hour = ((pl.col("weather_hour") - datetime(WEATHER_YEAR, 1, 1)).dt.total_hours() - _roll_hours) % 8760
+avg = (
+    avg.rename({"timestamp": "weather_hour"})
+    .with_columns((pl.lit(datetime(CAIRO_YEAR, 1, 1)) + pl.duration(hours=_cairo_hour)).alias("timestamp"))
+    .sort("timestamp")
+)
+
+_kwh_8760 = load_billing_kwh_8760(STATE, UTILITY, _cfg["BATCH"], segment_name(SCENARIO, "calibrated"))
+_cairo = weighted_avg_hourly(_kwh_8760, pop["bldg_id"].to_list(), pop).with_columns(
+    pl.col("timestamp") + timedelta(hours=UTC_OFFSET)
+)
+_check = avg.join(_cairo.rename({"kwh": "cairo_kwh"}), on="timestamp", how="inner")
+assert _check.height == 8760, f"{_check.height} hours matched CAIRO's timestamps"
+_max_gap = float((_check["grid_kwh"] - _check["cairo_kwh"]).abs().max())
+assert _max_gap < 1e-6, f"hourly grid kWh differs from CAIRO's billing_kwh_8760 by up to {_max_gap}"
+print(f"rotation {_roll_hours} h; largest hourly gap vs CAIRO billing_kwh_8760: {_max_gap:.2e} kWh")
+avg.select("timestamp", "weather_hour", *_LOAD_COLS).head(3)
+```
+
+## Answers
+
+Annual backup and heat pump kWh, and backup relative to the heat pump. Both ratios are ratios of the average home's totals.
+
+```{python}
+#| label: annual
+
+annual_backup = float(avg["backup_kwh"].sum())
+annual_heat_pump = float(avg["heat_pump_kwh"].sum())
+annual_heating = annual_backup + annual_heat_pump
+annual_kwh_before = float(_rep["all_fossil_annual_kwh_before"])
+backup_to_heat_pump = annual_backup / annual_heat_pump
+backup_share_heating = annual_backup / annual_heating
+backup_share_incremental = annual_backup / (annual_grid - annual_kwh_before)
+backup_hours = int((avg["backup_kwh"] > 0).sum())
+print(
+    f"backup {annual_backup:,.1f} kWh, heat pump {annual_heat_pump:,.1f} kWh "
+    f"-> backup is {backup_to_heat_pump:.2%} of heat pump kWh, {backup_share_heating:.2%} of electric heating, "
+    f"{backup_share_incremental:.2%} of the incremental {annual_grid - annual_kwh_before:,.0f} kWh"
+)
+```
+
+When the backup runs. By billing month on CAIRO's calendar, which is how the testimony priced it, and by day of the 2018 weather year, which shows how concentrated it is. Because of CAIRO's two-day shift, backup on January 1–2, 2018 is billed in late December.
+
+```{python}
+#| label: monthly
+
+WINTER_MONTHS = [11, 12, 1, 2, 3]
+monthly = (
+    avg.group_by(pl.col("timestamp").dt.month().alias("month"))
+    .agg(pl.col("backup_kwh").sum(), pl.col("heat_pump_kwh").sum())
+    .sort("month")
+)
+backup_share_winter = float(monthly.filter(pl.col("month").is_in(WINTER_MONTHS))["backup_kwh"].sum()) / annual_backup
+
+backup_days = (
+    avg.group_by(pl.col("weather_hour").dt.date().alias("weather_day"))
+    .agg(pl.col("backup_kwh").sum())
+    .with_columns((pl.col("backup_kwh") / annual_backup).alias("share"))
+    .sort("backup_kwh", descending=True)
+)
+top_backup_days = backup_days.head(3).sort("weather_day")
+backup_share_top_days = float(top_backup_days["share"].sum())
+print(f"Nov-Mar share {backup_share_winter:.1%}; top three weather days {backup_share_top_days:.1%}")
+GT(monthly).fmt_number(columns=["backup_kwh", "heat_pump_kwh"], decimals=1)
+```
+
+```{python}
+#| label: backup-days
+
+GT(backup_days.head(10)).fmt_number(columns="backup_kwh", decimals=1).fmt_percent(columns="share", decimals=1)
+```
+
+The hours of highest load for the average home. We rank heat pump plus backup together (the question's "heat pump and backup load"), and backup alone.
+
+```{python}
+#| label: peaks
+
+
+def _peak(col: str) -> dict:
+    row = avg.sort(col, descending=True).row(0, named=True)
+    return {
+        "timestamp": row["timestamp"],
+        "weather_hour": row["weather_hour"],
+        **{k: float(row[k]) for k in (*_LOAD_COLS, "heating_kwh")},
+    }
+
+
+peak_heating = _peak("heating_kwh")
+peak_backup = _peak("backup_kwh")
+top_hours = avg.sort("heating_kwh", descending=True).head(10).select(
+    "weather_hour", "timestamp", *_LOAD_COLS, "heating_kwh"
+)
+GT(top_hours).fmt_datetime(
+    columns=["weather_hour", "timestamp"], date_style="month_day_year", time_style="h_m_p"
+).fmt_number(columns=[*_LOAD_COLS, "heating_kwh"], decimals=2)
+```
+
+How many homes never use their backup. A home "never uses" backup if its upgrade 2 backup kWh is zero in every hour of the year.
+
+```{python}
+#| label: never-backup
+
+_per_bldg = hourly.group_by("bldg_id").agg(pl.col("backup_kwh").sum()).join(pop, on="bldg_id")
+_never = _per_bldg.filter(pl.col("backup_kwh") == 0)
+n_never_backup = _never.height
+pct_never_backup = float(_never["weight"].sum()) / households
+print(f"{n_never_backup:,} of {n_bldg:,} buildings ({pct_never_backup:.1%} weighted) never use backup")
+```
+
+## Attachment 1: hourly load
+
+One sheet: the average home's 8,760 hours, with annual totals, the backup ratio, and the peak hours as formulas.
+
+```{python}
+#| label: attachment
+#| output: false
+
+from openpyxl import Workbook
+from openpyxl.styles import Font
+
+from build_ciec_1a_workbook import DRIVE_FOLDER_ID, upload_xlsx
+
+DRIVE_NAME = "CIEC-10a_hourly_backup_load.xlsx"
+_bold = Font(bold=True)
+_wb = Workbook()
+_ws = _wb.active
+_ws.title = "hourly_load"
+_headers = ["timestamp", "weather_hour_2018", "backup_kwh", "heat_pump_kwh", "whole_home_kwh", "heat_pump_plus_backup_kwh"]
+for _col, _h in enumerate(_headers, start=1):
+    _ws.cell(1, _col, _h).font = _bold
+for _i, _row in enumerate(avg.select("timestamp", "weather_hour", *_LOAD_COLS).iter_rows(), start=2):
+    _ws.cell(_i, 1, _row[0]).number_format = "yyyy-mm-dd hh:mm"
+    _ws.cell(_i, 2, _row[1]).number_format = "yyyy-mm-dd hh:mm"
+    for _col, _v in enumerate(_row[2:], start=3):
+        _ws.cell(_i, _col, float(_v)).number_format = "0.000"
+    _ws.cell(_i, 6, f"=C{_i}+D{_i}").number_format = "0.000"
+_last = avg.height + 1
+_summary = [
+    ("Annual backup kWh", f"=SUM(C2:C{_last})", "#,##0.0"),
+    ("Annual heat pump kWh", f"=SUM(D2:D{_last})", "#,##0.0"),
+    ("Annual whole-home kWh", f"=SUM(E2:E{_last})", "#,##0.0"),
+    ("Backup / heat pump kWh", "=I2/I3", "0.0%"),
+    ("Peak backup kWh", f"=MAX(C2:C{_last})", "0.00"),
+    ("Peak backup hour", f"=INDEX(A2:A{_last},MATCH(I6,C2:C{_last},0))", "yyyy-mm-dd hh:mm"),
+    ("Peak heat pump + backup kWh", f"=MAX(F2:F{_last})", "0.00"),
+    ("Peak heat pump + backup hour", f"=INDEX(A2:A{_last},MATCH(I8,F2:F{_last},0))", "yyyy-mm-dd hh:mm"),
+]
+for _r, (_label, _formula, _fmt) in enumerate(_summary, start=2):
+    _ws.cell(_r, 8, _label).font = _bold
+    _ws.cell(_r, 9, _formula).number_format = _fmt
+_notes = [
+    f"Average of {n_bldg:,} ResStock {RELEASE} buildings (sample-weighted) served by Eversource and heated "
+    "with natural gas, fuel oil, or propane before the retrofit, modeled after the upgrade 2 heat pump retrofit.",
+    "timestamp: the hour on CAIRO's 2025 billing calendar, Eastern Standard Time, hour beginning. Same timestamps "
+    "and row order as Exhibit JPV-3, hourly_after.",
+    "weather_hour_2018: the ResStock hour simulated in that row (2018 weather). CAIRO shifts the 2018 year by two days "
+    "so weekdays line up with 2025; January 1-2, 2018 appear at the end of the year.",
+    "backup_kwh: electric resistance backup element (out.electricity.heating_hp_bkup).",
+    "heat_pump_kwh: compressor plus supply fan (heating, heating_fans_pumps, heating_hp_bkup_fa).",
+    "whole_home_kwh: grid consumption, the load billed in the direct testimony (Exhibit JPV-3, hourly_after).",
+    f"All kWh multiplied by the CAIRO scale factor {KWH_SCALE:.6f}.",
+]
+for _r, _note in enumerate(_notes, start=11):
+    _ws.cell(_r, 8, _note)
+_ws.freeze_panes = "A2"
+for _col, _w in zip("ABCDEFGHI", [18, 18, 12, 14, 16, 26, 3, 40, 18], strict=True):
+    _ws.column_dimensions[_col].width = _w
+
+_xlsx_path = Path("../cache") / DRIVE_NAME
+_wb.save(_xlsx_path)
+attachment_link = upload_xlsx(_xlsx_path, DRIVE_FOLDER_ID, DRIVE_NAME)
+print(f"Uploaded {DRIVE_NAME}: {attachment_link}")
+```
+
+## Report variables
+
+```{python}
+#| label: report-vars
+
+Path("../cache/ciec_10_vars.pkl").write_bytes(
+    pickle.dumps(
+        {
+            "n_bldg": n_bldg,
+            "households": households,
+            "kwh_scale": KWH_SCALE,
+            "annual_grid_kwh": annual_grid,
+            "annual_backup_kwh": annual_backup,
+            "annual_heat_pump_kwh": annual_heat_pump,
+            "backup_to_heat_pump": backup_to_heat_pump,
+            "backup_share_heating": backup_share_heating,
+            "backup_share_incremental": backup_share_incremental,
+            "backup_share_winter": backup_share_winter,
+            "backup_share_top_days": backup_share_top_days,
+            "top_backup_days": top_backup_days["weather_day"].to_list(),
+            "backup_hours": backup_hours,
+            "peak_heating": peak_heating,
+            "peak_backup": peak_backup,
+            "n_never_backup": n_never_backup,
+            "pct_never_backup": pct_never_backup,
+            "attachment_name": DRIVE_NAME,
+            "attachment_link": attachment_link,
+        }
+    )
+)
+```

@@ -109,6 +109,7 @@ a = _load("report_variables")
 c11 = _load("ciec_11_vars")  # notebooks/eversource_hourly_class_loads.qmd
 c13 = _load("ciec_13_vars")  # notebooks/overpayment.qmd
 eia = _load("ciec_11_eia_vars")  # notebooks/validate_resstock_vs_eia_loads.qmd
+c10 = _load("ciec_10_vars")  # ciec_requests/ciec_request_10.qmd
 
 
 def dollar(x, accuracy=0):
@@ -206,6 +207,18 @@ residential_mwh = CLASS_BILLED_MWH + RATE5_MWH + RATE7_MWH
 nonres_kwh_share = 1 - residential_mwh / RDM_TOTAL_MWH
 rate_year_kwh_per_customer = residential_mwh * 1000 / c1.rate_year_customers
 
+# CIEC-10(a): hours begin at the timestamp, Eastern Standard Time. weather_hour is the 2018 ResStock
+# hour; timestamp is the same hour on CAIRO's 2025 billing calendar (Attachment 1 and Exhibit JPV-3).
+def c10_hour(ts) -> str:
+    return f"{ts:%-I:%M} {'a.m.' if ts.hour < 12 else 'p.m.'} on {ts:%B %-d, %Y}"
+
+
+c10_peak_ts = c10.peak_heating["timestamp"]
+c10_peak_hour = c10_hour(c10_peak_ts)
+c10_peak_weather = c10_hour(c10.peak_heating["weather_hour"])
+if c10.peak_backup["timestamp"] != c10_peak_ts:
+    raise RuntimeError("CIEC-10(a) says backup and heat pump plus backup peak in the same hour; they no longer do")
+
 # CIEC-11: Company 2025 class-average loads vs ResStock, and ResStock vs EIA-861 (2018).
 c11_r1 = {row["month"]: row for row in c11.monthly_rate_1}
 c11_r5 = {row["month"]: row for row in c11.monthly_rate_5}
@@ -257,12 +270,6 @@ EST = {
         "incremental coincident winter kW per home (~2.5, guess) x (distribution $21.22 + transmission ~$73)/kW-yr",
         "Alex Lee",
         "winter probability-of-peak 'reach' run on the representative home",
-    ),
-    "backup_kwh": (
-        300.0,
-        "~5% of incremental heating kWh served by electric resistance backup",
-        "Alex Lee",
-        "hourly decomposition of the representative home into compressor and backup load",
     ),
     "winter_peak_add_mw": (
         ceiling_new_total * 2.5 / 1000,
@@ -1262,12 +1269,13 @@ c. Please provide the hourly calculation underlying the $10 per year estimate in
 :::
 
 ::: {.response}
-a. The modeled heat pumps are ResStock's cold-climate air-source heat pumps with electric resistance backup.[^10a-n4] The backup load was not reported separately in the testimony's analysis; it will be provided as CIEC-10 Attachment 1 **[ANALYSIS: Alex Lee: weighted hourly backup kWh and total heat pump kWh for the fossil fuel-heated sample after the upgrade, from ResStock's end-use columns; the hours of highest total and backup load. Low priority (Google Doc comment 19)]**.
+a. The modeled hourly electric resistance backup load[^10a-n4] for the average fossil fuel-heated home after heat pump installation is provided in CIEC-10 Attachment 1, alongside the home's hourly heat pump load and whole-home load for all 8,760 hours of the modeled year.[^10a-att] Heat pump and backup load together, and backup load alone, would both peak in the hour beginning `{python} c10_peak_hour` (Eastern Standard Time), when the home would use `{python} num(c10.peak_heating["heating_kwh"], 1)` kWh for heating, `{python} num(c10.peak_heating["backup_kwh"], 1)` kWh of it backup.[^10a-calendar] Over the year, backup would use `{python} num(c10.annual_backup_kwh)` kWh, or `{python} pct(c10.backup_to_heat_pump, 1)` of the heat pump's own `{python} num(c10.annual_heat_pump_kwh)` kWh, and `{python} pct(c10.pct_never_backup)` of homes would never use their backup.
 
    [^10a-n4]: [Direct Testimony of Juan-Pablo Velez on behalf of Conservation Law Foundation and Sierra Club](https://pub.switch.box/velez_Docket260510Direct_2026) ("Velez Direct"), at 10 n.4 (Oct. 21, 2026) [@velez_Docket260510Direct_2026].
 
-   - Rough scale until then: `{python} est("backup_kwh", num)` kWh a year of backup, out of `{python} num(r.all_fossil_annual_kwh_after - r.all_fossil_annual_kwh_before)` kWh of incremental usage.
-   - Whatever its size, the backup load falls in November through March, when the hours carry almost no marginal T&D cost under the Company's probability-of-peak allocation (CIEC-9(a)). It is included in the `{python} dollar(inc_mc, 2)`.
+   [^10a-att]: [CIEC-10 Attachment 1, `CIEC-10a_hourly_backup_load.xlsx`](https://docs.google.com/spreadsheets/d/1iaPv4Kp5KqKdXFSvdX6JCVehwie1Mqd6/edit). The average home is the same one as in the direct testimony: the weighted average of `{python} num(c10.n_bldg)` ResStock buildings served by Eversource and heated with natural gas, fuel oil, or propane before the retrofit, with every building's load multiplied by the same scale factor CAIRO applied (`{python} f"{c10.kwh_scale:.4f}"`). Its whole-home load sums to the `{python} num(c10.annual_grid_kwh)` kWh a year used in the testimony. Backup is ResStock's electric resistance element; heat pump load is the compressor and its supply fan. The share of homes that never use backup is weighted by ResStock sample weight (`{python} num(c10.n_never_backup)` of the `{python} num(c10.n_bldg)` buildings).
+
+   [^10a-calendar]: Hours are on the 2025 calendar used throughout the testimony, the same timestamps as Exhibit JPV-3, hourly_after sheet. ResStock simulates 2018 weather, which CAIRO places on the 2025 calendar shifted two days so weekdays line up; this hour simulates the weather of `{python} c10_peak_weather`. CIEC-10 Attachment 1 gives both timestamps for every hour.
 
 b. The `{python} dollar(inc_mc, 2)` reflects heat pump and backup load in the modeled weather year, priced at the hourly marginal costs from the Company's probability-of-peak analysis. It does not model a winter colder than that.
 

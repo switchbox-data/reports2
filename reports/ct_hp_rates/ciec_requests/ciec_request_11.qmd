@@ -1,0 +1,402 @@
+---
+title: "Responses to Connecticut Industrial Energy Consumers, CIEC-11"
+subtitle: "Docket No. 26-05-10"
+author: "Conservation Law Foundation and Sierra Club"
+date: 2026-11-11
+bibliography: ../../references.yaml
+csl: ../../chicago-author-date-switchbox.csl
+reference-location: margin
+citation-location: document
+execute:
+  warning: false
+  message: false
+format:
+  html:
+    theme: ../../.style/switchbox.scss
+    page-layout: article
+    toc: false
+---
+
+```{python}
+#| echo: false
+
+from __future__ import annotations
+
+from datetime import timedelta
+from pathlib import Path
+
+import openpyxl
+import polars as pl
+
+# Testimony run behind the 7,211 kWh figure. Weights are scaled to the Rate Year
+# customer count. elec_grid_kwh is CAIRO grid consumption after the 0.995 sales factor.
+# notebooks/eversource_hourly_class_loads.qmd still points at ct_20260925_a and
+# default_precalc (test-year factor 0.9935) and will not reproduce these tables.
+BILLS = (
+    "s3://data.sb/switchbox/cairo/outputs/hp_rates/ct/all_utilities/"
+    "ct_20261015_a/default_ry1_r1_uncalibrated_precalc/comb_bills_year_target/"
+)
+# OCC-479 Attachment 3: average hourly kW per customer, Rates 1, 5, and 7, calendar
+# years 2023, 2024, and 2025. Drive id 1qvuF7t5H8C-KW5Ogq9wZB9Ze1XH7HH3v.
+PATH_ATT3 = Path("../cache/occ479_att3.xlsx")
+# CIEC-017 Attachment 1 holds the 2025 load-research population those profiles expand
+# to, plus the sample size and the class peak. Attachment 3 has no customer count.
+PATH_CIEC017 = Path("../cache/ciec017_att1.xlsx")
+
+# Rate Year residential class, Rates 1 + 5 + 7. From
+# rate_design/hp_rates/ct/config/rev_requirement/ct_eversource_rate_case_rate_year_1.yaml
+# and Exhibit JPV-2.
+RATE_YEAR_KWH = 10_319_107_650.0
+RATE_YEAR_CUSTOMERS = 1_212_520.95
+RESSTOCK_CUSTOMERS_NATIVE = 892_895.5
+KWH_SCALE = 0.9952969730812103
+CUSTOMER_SCALE = 1.35796512662978
+
+MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+WINTER = ["Nov", "Dec", "Jan", "Feb", "Mar"]
+SUMMER = ["Jun", "Jul", "Aug"]
+ORDER = [*MONTHS, "Annual"]
+
+FOSSIL = ["natgas", "delivered_fuels"]
+RATE5 = ["electrical_resistance", "heat_pump"]
+
+
+def num(x: float, digits: int = 0) -> str:
+    return f"{x:,.{digits}f}"
+
+
+def pct(x: float, digits: int = 1) -> str:
+    return f"{abs(x) * 100:,.{digits}f}%"
+
+
+bills = (
+    pl.scan_parquet(BILLS, hive_partitioning=True)
+    .filter(pl.col("sb.electric_utility") == "ct_eversource")
+    .select(
+        "bldg_id",
+        "month",
+        "weight",
+        pl.col("postprocess_group.has_hp").alias("has_hp"),
+        pl.col("postprocess_group.heating_type_v2").alias("heating"),
+        "heats_with_natgas",
+        "heats_with_oil",
+        "heats_with_propane",
+        "elec_grid_kwh",
+    )
+    .collect()
+)
+
+
+def modeled(codes: list[str] | None, *, no_hp: bool = False) -> dict[str, float]:
+    """Weighted-average grid kWh. codes=None is every Eversource home.
+
+    no_hp keeps has_hp == False: gas, oil, propane, electric resistance,
+    and homes heated with another fuel or with no heating fuel.
+    """
+    sub = bills if codes is None else bills.filter(pl.col("heating").is_in(codes))
+    if no_hp:
+        sub = sub.filter(~pl.col("has_hp"))
+    out: dict[str, float] = {}
+    for month in ORDER:
+        part = sub.filter(pl.col("month") == month)
+        out[month] = float((part["elec_grid_kwh"] * part["weight"]).sum() / part["weight"].sum())
+    annual = sub.filter(pl.col("month") == "Annual")
+    out["buildings"] = float(annual.height)
+    out["weight"] = float(annual["weight"].sum())
+    return out
+
+
+fossil = modeled(FOSSIL)
+non_hp = modeled(None, no_hp=True)
+electric = modeled(RATE5)
+all_homes = modeled(None)
+
+if round(fossil["Annual"]) != 7211:
+    raise RuntimeError(f"fossil annual {fossil['Annual']} does not round to the testimony's 7,211 kWh")
+# The testimony's before-home is these fuel flags, not the heating-type label.
+# The two sets are the same homes: a heat pump or resistance home never carries a fossil flag.
+flag_homes = bills.filter(
+    (pl.col("month") == "Annual")
+    & (pl.col("heats_with_natgas") | pl.col("heats_with_oil") | pl.col("heats_with_propane"))
+)
+v2_homes = bills.filter((pl.col("month") == "Annual") & pl.col("heating").is_in(FOSSIL))
+if set(flag_homes["bldg_id"]) != set(v2_homes["bldg_id"]):
+    raise RuntimeError("gas, oil, and propane homes are not the fossil heating types")
+if flag_homes["has_hp"].any():
+    raise RuntimeError("a gas, oil, or propane home already has a heat pump")
+if abs(all_homes["weight"] - RATE_YEAR_CUSTOMERS) > 0.1:
+    raise RuntimeError("master-bill weights are not the Rate Year customer count")
+
+class_kwh = float(
+    bills.filter(pl.col("month") == "Annual")
+    .select((pl.col("elec_grid_kwh") * pl.col("weight")).sum())
+    .item()
+)
+class_vs_filed = class_kwh / RATE_YEAR_KWH - 1
+# The 0.995 ratio was computed from this monthly grid total so that
+# monthly × customer scale × 0.995 equals Rate Year sales exactly.
+# CAIRO bills the hourly files. Hourly grid is higher because surplus solar
+# in one hour cannot offset use in another hour; the monthly total lets it.
+MONTHLY_GRID_KWH = 7_634_855_865.62
+hourly_grid_kwh = class_kwh / CUSTOMER_SCALE / KWH_SCALE
+hourly_vs_monthly = hourly_grid_kwh / MONTHLY_GRID_KWH - 1
+if abs(hourly_vs_monthly - class_vs_filed) > 1e-9:
+    raise RuntimeError("the sales gap is not the hourly-versus-monthly grid gap")
+
+
+RATES = (1, 5, 7)
+YEARS = (2023, 2024, 2025)
+RATE_SHEET = {1: "Rate 1", 5: "Rate 5", 7: "Rate 7"}
+
+
+def load_research_meta() -> dict[int, dict]:
+    """2025 load-research population, sample, and class peak from CIEC-017 Attachment 1."""
+    if not PATH_CIEC017.exists():
+        raise FileNotFoundError(f"Missing {PATH_CIEC017}.")
+    wb = openpyxl.load_workbook(PATH_CIEC017, data_only=True)
+    out: dict[int, dict] = {}
+    for rate, sheet in RATE_SHEET.items():
+        ws = wb[sheet]
+        accounts = float(ws.cell(8, 2).value)
+        out[rate] = {
+            "accounts": accounts,
+            "peak_kw_per_account": float(ws.cell(22, 2).value) / accounts,
+            "peak_day": ws.cell(20, 2).value,
+            "peak_hour": int(ws.cell(21, 2).value),
+            "sample_min": int(ws.cell(11, 2).value),
+            "sample_max": int(ws.cell(12, 2).value),
+        }
+    wb.close()
+    return out
+
+
+def load_att3() -> dict[int, dict[int, dict[str, float]]]:
+    """Monthly kWh per average customer: sum of hourly kW, by year and rate.
+
+    The stamp is interval-ending. Subtracting one hour puts the January 1 midnight
+    hour into December, so the twelve months sum to every hour in the sheet.
+    2024 has 8,784 hours.
+    """
+    if not PATH_ATT3.exists():
+        raise FileNotFoundError(f"Missing {PATH_ATT3}.")
+    wb = openpyxl.load_workbook(PATH_ATT3, read_only=True, data_only=True)
+    out: dict[int, dict[int, dict[str, float]]] = {}
+    for year in YEARS:
+        ws = wb[f"{year} "]
+        buckets = {rate: {month: 0.0 for month in MONTHS} for rate in RATES}
+        n_hours = 0
+        for i, row in enumerate(ws.iter_rows(values_only=True), 1):
+            if i < 10 or row[0] is None:
+                continue
+            month = MONTHS[(row[0] - timedelta(hours=1)).month - 1]
+            for j, rate in enumerate(RATES):
+                buckets[rate][month] += float(row[1 + j])
+            n_hours += 1
+        if n_hours not in (8760, 8784):
+            raise RuntimeError(f"{year} has {n_hours} hours")
+        for rate in RATES:
+            buckets[rate]["Annual"] = sum(buckets[rate][month] for month in MONTHS)
+        out[year] = buckets
+    wb.close()
+    return out
+
+
+meta = load_research_meta()
+per_customer = load_att3()
+# Class monthly kWh = that month's per-customer sum times the rate's customer count.
+# Attachment 3 does not give a 2023 or 2024 population, so every year uses the 2025
+# load-research accounts in CIEC-017 Attachment 1.
+class_kwh_month: dict[int, dict[int, dict[str, float]]] = {
+    year: {
+        rate: {month: per_customer[year][rate][month] * meta[rate]["accounts"] for month in ORDER}
+        for rate in RATES
+    }
+    for year in YEARS
+}
+
+
+def mean_per_customer(rate: int) -> dict[str, float]:
+    return {month: sum(per_customer[year][rate][month] for year in YEARS) / len(YEARS) for month in ORDER}
+
+
+rate_mean = {rate: mean_per_customer(rate) for rate in RATES}
+residential_accounts = sum(meta[rate]["accounts"] for rate in RATES)
+
+
+def residential_blend(year: int) -> dict[str, float]:
+    """Account-weighted average kWh per customer across Rates 1, 5, and 7."""
+    out = {}
+    for month in ORDER:
+        total = sum(per_customer[year][rate][month] * meta[rate]["accounts"] for rate in RATES)
+        out[month] = total / residential_accounts
+    return out
+
+
+blend_by_year = {year: residential_blend(year) for year in YEARS}
+blend_mean = {month: sum(blend_by_year[year][month] for year in YEARS) / len(YEARS) for month in ORDER}
+# Aliases used by the season and gap helpers. These are per-customer kWh, not class totals.
+rate1 = rate_mean[1]
+rate5 = rate_mean[5]
+rate7 = rate_mean[7]
+residential_kwh = blend_mean["Annual"]
+
+
+def season(series: dict[str, float], months: list[str]) -> float:
+    return sum(series[month] for month in months)
+
+
+def gap(company: dict[str, float], resstock: dict[str, float], month: str) -> float:
+    """Company minus ResStock, divided by ResStock. Positive means the Company uses more."""
+    return (company[month] - resstock[month]) / resstock[month]
+
+
+def year_comparison(year: int) -> str:
+    """Average kWh per customer. ResStock does not vary by calendar year.
+
+    The header groups Fossil fuel and No heat pump under ResStock, and Rates
+    1, 5, and 7 under OCC-479 Attachment 3. Both groups are kWh per customer.
+    Annual is a footer so it reads as the year's total. HTML is required for
+    the header spans.
+    """
+
+    def row(month: str, annual: bool) -> str:
+        values = [
+            num(fossil[month]),
+            num(non_hp[month]),
+            num(per_customer[year][1][month]),
+            num(per_customer[year][5][month]),
+            num(per_customer[year][7][month]),
+        ]
+        shown = [f"<strong>{value}</strong>" if annual else value for value in [month, *values]]
+        rule = "border-top: 2px solid #000; " if annual else ""
+        label = f'<td style="{rule}text-align: left;">{shown[0]}</td>'
+        cells = "".join(f'<td style="{rule}text-align: right;">{value}</td>' for value in shown[1:])
+        return f"<tr>{label}{cells}</tr>"
+
+    body = "\n".join(row(month, False) for month in MONTHS)
+    footer = row("Annual", True)
+    return f"""**{year}**
+
+<table class="table">
+<thead>
+<tr>
+<th rowspan="2" style="text-align: left;">Month</th>
+<th colspan="2" style="text-align: center;">ResStock<br>kWh per customer</th>
+<th colspan="3" style="text-align: center;">OCC-479 Attachment 3<br>kWh per customer</th>
+</tr>
+<tr>
+<th style="text-align: right;">Fossil fuel</th>
+<th style="text-align: right;">No heat pump</th>
+<th style="text-align: right;">Rate 1</th>
+<th style="text-align: right;">Rate 5</th>
+<th style="text-align: right;">Rate 7</th>
+</tr>
+</thead>
+<tbody>
+{body}
+</tbody>
+<tfoot>
+{footer}
+</tfoot>
+</table>"""
+
+
+year_tables = "\n\n".join(year_comparison(year) for year in YEARS)
+
+customer_scale_label = f"{CUSTOMER_SCALE:.2f}"
+kwh_scale_label = f"{KWH_SCALE:.3f}"
+rate1_accounts = meta[1]["accounts"]
+rate5_accounts = meta[5]["accounts"]
+rate7_accounts = meta[7]["accounts"]
+shoulder_gap = max(abs(gap(rate1, fossil, month)) for month in ["Mar", "Apr", "Aug", "Sep", "Oct"])
+r1_winter_gap = (season(rate1, WINTER) - season(fossil, WINTER)) / season(fossil, WINTER)
+r1_summer_gap = (season(rate1, SUMMER) - season(fossil, SUMMER)) / season(fossil, SUMMER)
+r1_winter_word = "higher" if r1_winter_gap > 0 else "lower"
+r1_summer_word = "higher" if r1_summer_gap > 0 else "lower"
+r5_winter_gap = (season(rate5, WINTER) - season(electric, WINTER)) / season(electric, WINTER)
+r5_summer_gap = (season(rate5, SUMMER) - season(electric, SUMMER)) / season(electric, SUMMER)
+class_vs_load_research = (all_homes["Annual"] - residential_kwh) / residential_kwh
+nonhp_vs_blend = (blend_mean["Annual"] - non_hp["Annual"]) / non_hp["Annual"]
+resistance = modeled(["electrical_resistance"])
+existing_hp = modeled(["heat_pump"])
+other = modeled(["other"])
+if non_hp["buildings"] + existing_hp["buildings"] != all_homes["buildings"]:
+    raise RuntimeError("non-HP plus existing heat pumps does not cover the class")
+if fossil["buildings"] + resistance["buildings"] + other["buildings"] != non_hp["buildings"]:
+    raise RuntimeError("non-HP homes are not gas, oil, propane, resistance, and other")
+r1_vs_fossil = "higher" if rate1["Annual"] > fossil["Annual"] else "lower"
+blend_vs_nonhp = "higher" if blend_mean["Annual"] > non_hp["Annual"] else "lower"
+resstock_vs_blend = "higher" if all_homes["Annual"] > residential_kwh else "lower"
+# Docket 17-10-46 decision, printed p. 22: Rate 1 average use in Rate Year 1.
+RATE1_2018_KWH_MONTH = 667.0
+fossil_month = fossil["Annual"] / 12
+fossil_vs_2018 = fossil_month / RATE1_2018_KWH_MONTH - 1
+fossil_vs_2018_word = "higher" if fossil_vs_2018 > 0 else "lower"
+```
+
+**Witness:** Juan-Pablo Velez\
+**Request from:** Connecticut Industrial Energy Consumers\
+**Date issued:** October 29, 2026
+
+The request refers to Velez Direct Testimony at page 8, lines 1–2 and footnote 1, and page 10, lines 4–7.
+
+## CIEC-11(a)
+
+### Question
+
+Please describe any steps Mr. Velez took to validate or calibrate the ResStock simulated load profiles against the Company's actual residential loads, and provide the results.
+
+### Response
+
+ResStock starts as a sample of Connecticut homes, each standing for a certain number of real households. That sample does not, on its own, match the Company's customer count or the Company's total sales. Two adjustments put it on the Rate Year forecast. Neither one changes the shape of any home's day.
+
+First, the customer count. ResStock assigns **`{python} num(RESSTOCK_CUSTOMERS_NATIVE, 1)`** households to the Company's territory. Each home's weight is multiplied by **`{python} customer_scale_label`**, so the sample stands for the **`{python} num(RATE_YEAR_CUSTOMERS, 2)`** residential customers in the Rate Year forecast, Rates 1, 5, and 7 combined. Each home's simulated kWh does not change. It simply stands for more customers.
+
+Then, electricity use. With the customer count adjustment in place, every hour of grid electricity is multiplied by **`{python} kwh_scale_label`**, on each home's simulated electricity consumption. The same ratio was applied to both the baseline profile and the post-retrofit profile with heat pumps. Grid electricity is what the home takes from the utility, after accounting for rooftop solar. The ratio was chosen so that simulated baseline consumption, in total, matches the Company's Rate Year sales of **`{python} num(RATE_YEAR_KWH)`** kWh. The same ratio applies to every hour, so the monthly pattern is unchanged and only the level of consumption changes.
+
+That match was set based on monthly totals. Prior to the adjustments, the monthly totals added up to **`{python} num(MONTHLY_GRID_KWH)`** kWh. After scaling the customer counts, then applying **`{python} kwh_scale_label`**, the total is the filed sales exactly.
+
+The run itself uses the hourly files. When the scaling factor is calculated from monthly consumption, extra solar on a bright hour can offset electricity used later in the month. Hour by hour, that extra solar is floored at zero for the hour it happens, and it cannot reduce any other hour, so the consumption the analysis actually uses is slightly higher. After the same two adjustments, the customer-count scale and then **`{python} kwh_scale_label`**, that consumption is only **`{python} pct(class_vs_filed)`** above the Rate Year filing. The difference was deemed negligible and was left unadjusted.
+
+No home's hourly pattern was fit to a Company meter. The Company does not record which residential customers heat with which fuel, and it does not have residential interval meters matching the ResStock simulation's weather year that would make that fit possible. How the modeled months compare with the Company's monthly consumption in other years is described in CIEC-11(b).
+
+## CIEC-11(b)
+
+### Question
+
+Please provide a comparison of the simulated average annual and monthly usage of the modeled homes before heat pump installation with the Company's actual average residential usage.
+
+### Response
+
+The testimony's "before" home is the weighted average of homes heated with natural gas, oil, or propane, on each home's load before a heat pump. A broader group is every modeled home that does not already have a heat pump: all homes that do not heat with a heat pump, which includes the fossil-fuel homes and homes heated with electric resistance.
+
+The Company's data for comparison is the average customer on Rate 1, Rate 5, and Rate 7 for years 2023, 2024, and 2025 provided in OCC-479 Attachment 3.[^occ479] Attachment 3 provides the average hourly profile for each rate in kilowatts. Each month below is the sum of that rate's hours in that year. An average kilowatt for each hour is equivalent in consumption to that value in kilowatt-hours, so the sum is the average customer's consumption in the month.
+
+[^occ479]: CL&P Response to OCC-479, at 1 (Sep. 15, 2026) ("Please refer to OCC-479, Attachment 3, for the average hourly load for the residential rate class for the 2023-2025."); Attach. 3 [@clp_Docket260510Response_2026i]. Docket No. 26-05-10 (Date Issued Aug. 25, 2026).
+
+ResStock uses the weather of 2018. These profiles are 2023, 2024, and 2025, and the comparison below is not weather-normalized, so some difference between the two is to be expected. ResStock has only the one weather year, so its columns repeat in each table.
+
+On the other hand, PURA's April 18, 2018 decision records the Company's projection of **`{python} num(RATE1_2018_KWH_MONTH)`** kWh a month for a Rate 1 customer, one figure for the year [@pura_Docket171046Decision_2018, p. 22]. ResStock's fossil-fuel homes average **`{python} num(fossil_month)`** kWh a month, **`{python} pct(fossil_vs_2018)`** `{python} fossil_vs_2018_word` than that projection. The value that the Company provided here was only their projection, not the actual recorded consumption.
+
+```{python}
+#| echo: false
+#| output: asis
+
+print(year_tables)
+```
+
+The fossil-fuel homes in ResStock's simulated data use **`{python} num(fossil["Annual"])`** kWh annually. The closest Company rate that matches this population is Rate 1, residential service without electric heat. Across the three years its average customer uses **`{python} num(rate1["Annual"])`** kWh, **`{python} pct(gap(rate1, fossil, "Annual"))`** `{python} r1_vs_fossil` than ResStock's fossil-fuel homes.
+
+Including all homes with no heat pump, the ResStock simulated data use **`{python} num(non_hp["Annual"])`** kWh annually. The Company's residential average, weighted by customer counts in each of Rate classes 1, 5, and 7, is **`{python} num(residential_kwh)`** kWh over the same three years. The Company figure is **`{python} pct(nonhp_vs_blend)`** `{python} blend_vs_nonhp`. Take every Eversource home in ResStock, those with heat pumps included, and the average is **`{python} num(all_homes["Annual"])`** kWh, **`{python} pct(class_vs_load_research)`** `{python} resstock_vs_blend` than that Company's average figure.
+
+Assumptions:
+
+- **What the table shows.** Each Company cell is average kWh per customer, the sum of that month's hours. Multiplying by the customers in the rate gives the class total. Those counts are the 2025 load-research populations in CIEC-017 Attachment 1:[^ciec017] Rate 1 **`{python} num(rate1_accounts, 2)`**, Rate 5 **`{python} num(rate5_accounts, 2)`**, and Rate 7 **`{python} num(rate7_accounts, 2)`**. Attachment 3 does not include a customer count for 2023 or 2024, so those years use the same populations. February 2024 has one extra day.
+- **Where the Company profile comes from.** It is sampled load-research data, not recorded usage for every customer in the rate class.[^clfsc011] The Company does not record heating fuel within a rate, so Rate 1 is the closest group to the fossil-fuel homes, not a perfect one.[^clfsc009]
+- **Weather.** ResStock is the weather of 2018. The Company profiles are 2023, 2024, and 2025, and the Company did not weather-normalize them, so some of the gap is the difference in weather.
+
+[^ciec017]: CL&P Response to CIEC-017, Attach. 1 [@clp_Docket260510Response_2026j]. Docket No. 26-05-10 (Date Filed Sep. 15, 2026). Annual column, row "Accounts in Population."
+
+[^clfsc011]: CL&P Response to CLF-SC-011, at 1 (Sep. 18, 2026) ("calculated hourly loads by rate class, which represent class loads using load research methodologies. These are not equal to the sum of hourly loads that would be determined by summing individual customer interval meter data") [@clp_Docket260510Responses_2026b]. Docket No. 26-05-10 (Date Issued Aug. 28, 2026).
+
+[^clfsc009]: CL&P Response to CLF-SC-009, at 1 (Sep. 18, 2026) ("Rate 1 (and Rate 7), which may represent in aggregate customers who utilize non-electric heat sources as their primary heating source. As the Company does not track heating sources") [@clp_Docket260510Responses_2026b]. Docket No. 26-05-10 (Date Issued Aug. 28, 2026).

@@ -15,7 +15,7 @@ document_type: report
 pages_total: 111
 extraction_scope: full
 citation_scheme: page
-context: Brattle's report to the Maryland PSC (with Applied Energy Group and Mondre Energy) on the grid impacts of electrification, required by the Climate Solutions Now Act of 2022. The corrected version the PSC posted; the cover still carries a "preliminary and confidential draft" stamp.
+context: Brattle's report to the Maryland PSC (with Applied Energy Group and Mondre Energy) on the grid impacts of electrification, required by the Climate Solutions Now Act of 2022. The corrected version the PSC posted. The cover's text layer still holds a leftover "preliminary and confidential draft" header, but the cover graphic is drawn over it, so readers don't see it.
 contents: Electrification scenarios, baseline building stock and existing fuel mix by utility, heat pump and EV adoption, system and distribution peak impacts, upgrade costs and mitigation options.
 why_here: Brattle's calibration of existing heat pump homes by utility (BGE's existing fuel mix and contractor-survey split) sets the range for the ceiling on existing BGE heat pump homes in the R-HP shortfall analysis for Docket 9888.
 ---
@@ -79,7 +79,7 @@ Eric Leudtke, Chief Legislative Officer
 
 [PDF p. 3]
 
-**PRELIMINARY AND CONFIDENTIAL DRAFT. NOT FOR CITATION OR DISTRIBUTION.**
+_[Extractor's note: the PDF's text layer has a header line here reading "PRELIMINARY AND CONFIDENTIAL DRAFT. NOT FOR CITATION OR DISTRIBUTION." The full-page cover graphic is drawn on top of it, so it is not visible on the page.]_
 
 # An Assessment of Electrification Impacts on the Maryland Electric Grid
 

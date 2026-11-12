@@ -23,24 +23,20 @@ format:
 
 ## Introduction
 
-If BGE's existing heat pump customers moved onto Schedule R-HP, the heat pump rate we
-designed, BGE would collect less revenue from them. That shortfall would be recovered
-from everyone else. To size it, we need to know how many heat pump homes BGE serves
-today. This notebook gathers that evidence and turns it into a **floor** and a **ceiling**
-for the number of homes. Later, these become the inputs to the revenue-shortfall
-calculation, which reuses the Connecticut method.
+This notebook produces the five enrollment counts
+[`bge_rhp_rate_impact.qmd`](bge_rhp_rate_impact.qmd) reads: the EmPOWER program floor
+(`hp_program_systems_cumulative`), BGE's Connected Rewards participants
+(`connected_rewards_customers`) and the stock low, central and high (`stock_low`,
+`stock_central`, `stock_high`).
 
 Only **existing** heat pump homes create a shortfall. A home that installs a heat pump and
 moves onto R-HP pays for the incremental cost it adds to the system, so it shifts no costs
-onto other customers. We still record the evidence on new installations near the end, as
-context for adoption scenarios, but it does not enter the shortfall.
+onto other customers. The forecasts near the end record new installations as context. They
+are not an input to the rate impact.
 
 We count **heat pump homes only**. Homes heated by electric resistance (baseboards,
 electric furnaces) are excluded, even though BGE's own data groups them with heat pump
 homes as "electric heating" customers.
-
-This is a working research notebook and will grow as the remaining sources are found.
-Sources not yet in our library are linked directly and marked _(pending ingest)_.
 
 ```{python}
 #| label: setup
@@ -50,12 +46,17 @@ from pathlib import Path
 from urllib.request import urlretrieve
 
 import polars as pl
+import yaml
 
 from lib.rates_analysis.hh_summary_funcs import resstock_metadata_path, scan_utility_bldg_ids
+from lib.rdp import fetch_rdp_file
 
 STATE = "MD"
 UTILITY = "bge"
-RESSTOCK_RELEASE = "res_2024_amy2018_2_sb_ach_ratio"
+_batch_config = yaml.safe_load(Path("../batch_config.yaml").read_text())
+RESSTOCK_RELEASE = _batch_config["RESSTOCK_RELEASE"]
+RDP_REF = _batch_config["RDP_REF"]
+PATH_RR_TEST_YEAR = "rate_design/hp_rates/md/config/rev_requirement/bge_rate_case_test_year.yaml"
 
 PATH_CONTEXT = Path("../../../context/sources/md_hp_rates")
 PATH_CACHE = Path("../cache")
@@ -131,9 +132,11 @@ print(
 )
 ```
 
-We use the total residential count, about
-`{python} f"{report_vars['bge_res_customers'] / 1e6:.2f}"` million, as the customer base that the
-shortfall is spread over. We don't use the heating flag to bound heat pump homes.
+The total residential count, about
+`{python} f"{report_vars['bge_res_customers'] / 1e6:.2f}"` million in March 2026, is the
+customer base the RECS share is applied to. The rate-impact notebook spreads the shortfall
+over CAIRO's test-year customers, not this count. We don't use the heating flag to bound
+heat pump homes.
 
 ## Programs that identify heat pump homes
 
@@ -145,6 +148,7 @@ available to BGE customers, and what each one can identify:
 | EmPOWER HVAC midstream rebates | BGE (EmPOWER) | Yes: the rebate application asks for the BGE account number ([HVAC Distributors](https://hvacdistributors.org/maryland-rebates/), extract lacks page markers) | Active | Main source of the yearly install count. Also pays for dual-fuel heat pumps that keep a fossil backup, which may not qualify for R-HP. |
 | EmPOWER electrification incentives | BGE (EmPOWER) | Yes | Launched April 1, 2025 in HVAC midstream and May 1, 2025 in Home Performance [@bge_Docket97052025_2026, pp. 14, 83] | Fuel switching. Most goes through HVAC midstream rebates; Home Performance projects can earn up to \$15,000 [@bge_Docket97052025_2026, p. 14]. |
 | EmPOWER limited-income programs | DHCD | Yes, through the utility account | Electrification approved in 2024 [@mdpsc_Docket9705Order_2024, p. 9] | |
+| Connected Rewards (smart-thermostat demand response) | BGE | Yes: enrollment data from the thermostat maker includes the HVAC configuration | Active; about 8% of residential customers as of October 31, 2026 (BGE data response, _pending ingest_) | BGE does not verify that a heat pump exists. Participants include every heating type. |
 | Residential Energy Equity heat pumps | MEA | Probably, through the application | Funded by the 2026 Utility RELIEF Act (\$72.65 million), starts FY27 | Forward-looking only. |
 | IRA HEEHR / HOMES rebates | MEA | Would require an application | Not launched; plan resubmitted to DOE on 9/30/2026 | Contributes nothing to today's stock. |
 | Federal 25C tax credit | IRS | No | Ended for installs after 12/31/2025 | Tells us nothing about who installed. |
@@ -288,9 +292,8 @@ Verdant's [Tableau dashboard](https://public.tableau.com/views/EmPOWER_Maryland_
 can filter to BGE, but only within four housing segments (single-family and multifamily,
 each split by low income), with no BGE total. Brattle's 2023 electrification study for the
 PSC does report a BGE total, in its "Existing Fuel Mix by Utility"
-[@brattle_AssessmentElectrificationImpacts_2023, p. 50]. Two caveats apply. The cover of the
-PSC-posted report is stamped "preliminary and confidential draft, not for citation or distribution." And the
-split by heat pump configuration is Brattle's, not Verdant's: Brattle applied a contractor
+[@brattle_AssessmentElectrificationImpacts_2023, p. 50]. One caveat applies: the
+split by heat pump configuration is Brattle's, not Verdant's. Brattle applied a contractor
 survey (12% cold-climate, 69% resistance backup, 10% gas backup, 9% other fuel backup) to
 Verdant's heat pump total [@brattle_AssessmentElectrificationImpacts_2023, p. 49]. Only the total traces to Verdant. Shares are of homes,
 by main space-heating system:
@@ -332,19 +335,124 @@ Applied to BGE's 1.20 million residential customers in 2022, that is about
 rounded to whole percentages, so each percentage point is about 12,000 homes. The split
 between the 21% and the hybrids rests on Brattle's contractor survey.
 
+#### Context on the Brattle study
+
+**Why it exists, and when.** Section 10 of the Climate Solutions Now Act of 2022 required the
+PSC to complete "a general system planning study" of whether each utility's distribution system
+could serve a highly electrified building sector
+[@brattle_AssessmentElectrificationImpacts_2023, PDF p. 1]. Brattle, with Applied Energy Group
+(AEG) and Mondre Energy, delivered the report on December 19, 2023
+[@brattle_AssessmentElectrificationImpacts_2023, PDF p. 3], and the PSC sent it to the
+legislature on December 29, 2023 [@brattle_AssessmentElectrificationImpacts_2023, PDF p. 1].
+Its subject is grid capacity. The existing fuel mix by utility is a calibration input to the
+grid model, built from "the best available data from previous MD studies, with some
+adjustments" [@brattle_AssessmentElectrificationImpacts_2023, p. 49], not a count of heat pump
+homes.
+
+**What the BGE heat pump share rests on.** Two surveys, both with known weaknesses:
+
+- The heat pump total is "informed primarily by Verdant's September 2022 survey"
+  [@brattle_AssessmentElectrificationImpacts_2023, p. 49]. That was a self-reported web survey
+  with about 850 BGE responses: 422 from electric-only customers and 428 from gas and dual-fuel
+  customers [@aeg_EmPOWERMarylandResidential_2023, p. 12]. It was designed for 90/10 confidence
+  and precision per utility [@aeg_EmPOWERMarylandResidential_2023, p. 7]. Where response was
+  thin, weights were capped at 5,000 customers per respondent
+  [@aeg_EmPOWERMarylandResidential_2023, p. 14 n. 10]. Brattle prints whole percentages with no
+  error range.
+- The split by configuration (12% cold-climate, 69% resistance backup, 10% gas backup, 9% other
+  fuel backup) comes from a contractor survey of systems installed or serviced in the past 12
+  months, applied to the whole stock [@brattle_AssessmentElectrificationImpacts_2023, p. 49].
+  So the line between the 21% and the 25% with hybrids depends on that survey, not Verdant's.
+- Respondents may confuse heat pumps with central air conditioning. The survey report itself
+  attributes the lower share of heat pump *cooling* to "misclassification of some heat pump
+  cooling systems as central air conditioning" [@aeg_EmPOWERMarylandResidential_2023, p. 21],
+  a bias that would understate heat pumps. AEG's potential study suspects the opposite for
+  heating (AEG 2023, pp. 18–19, _pending ingest_). The error could run either way.
+- It is not an independent check. Brattle was part of the AEG team that ran the survey
+  [@aeg_EmPOWERMarylandResidential_2023, p. 4], and AEG co-wrote Brattle's study.
+
+**What Brattle concluded about BGE's grid.** Brattle finds BGE well placed to absorb
+electrification:
+
+- Without building electrification, BGE's peak declines 0.27% a year through 2031
+  [@brattle_AssessmentElectrificationImpacts_2023, p. 25].
+- With high electrification, BGE's peak grows between 0.1% and 1.8% a year, or −0.6% to 1.2%
+  with additional efficiency and demand response
+  [@brattle_AssessmentElectrificationImpacts_2023, p. 26]. Those programs lower BGE's 2031
+  peak by 314 to 447 MW, depending on the scenario
+  [@brattle_AssessmentElectrificationImpacts_2023, p. 92].
+- Its worst case, 7,561 MW in 2031, is below BGE's all-time peak of 7,608 MW
+  [@brattle_AssessmentElectrificationImpacts_2023, p. 27], set in 2011
+  [@brattle_AssessmentElectrificationImpacts_2023, p. 26].
+- Because so many BGE homes heat with gas, its system, "currently sized for higher summer
+  peaks, ha[s] some headroom for winter peak load growth before electric heating starts
+  driving annual peaks" [@brattle_AssessmentElectrificationImpacts_2023, p. 25]. BGE and
+  Pepco "see limited load growth because they have significant headroom between the winter
+  and summer peaks" [@brattle_AssessmentElectrificationImpacts_2023, p. 102].
+- BGE's earliest switch to winter peaking falls around 2027–2028. Brattle does not state this
+  year in the text; we read it from its chart
+  [@brattle_AssessmentElectrificationImpacts_2023, p. 87], so treat it as approximate.
+- Brattle's own caveat: load declines since 2011 "suggest that their distribution systems
+  likely have headroom to support some load growth, on average. However, it is possible for
+  load growth to be concentrated in specific areas and still necessitate grid upgrades"
+  [@brattle_AssessmentElectrificationImpacts_2023, p. 27].
+- The study quantifies no costs at all, for BGE or any other utility. It   "does not quantify
+  the costs and benefits of electrification scenarios modeled," including "grid investment and
+  demand-side management program costs borne by utilities and utility customers"
+  [@brattle_AssessmentElectrificationImpacts_2023, p. 4]. Its conclusion that the grid can
+  handle electrification is about peak load, not about what accommodating it would cost.
+
+::: {.callout-warning}
+## The headroom finding is dated
+
+Brattle's findings describe BGE's system as it looked in 2022 and 2023, three years before
+this rate case. Its baseline year is 2022, and its Reference Case starts from the utilities'
+load forecasts for the 2022–2031 Ten Year Plan
+[@brattle_AssessmentElectrificationImpacts_2023, p. 26], filed in November 2022
+[@brattle_AssessmentElectrificationImpacts_2023, p. 58]. Load growth forecast since then,
+such as the data-center adjustment to the BGE zone in PJM's 2026 load forecast (see Forecasts
+below), is not in Brattle's numbers. We cite Brattle's headroom finding as the PSC's own 2023
+assessment, not as a description of BGE's system today.
+:::
+
+**A number that may be confused with Connected Rewards.** Brattle lists BGE's existing *summer*
+smart-thermostat participation as 28% of eligible customers, or 342,000 customers
+[@brattle_AssessmentElectrificationImpacts_2023, p. 77], far above the 8% BGE reports for
+Connected Rewards. Brattle's figure is cooling-only and likely includes BGE's older PeakRewards
+air-conditioner cycling program; that is our inference, not something either source says.
+Neither number counts heat pump homes.
+
 ### ResStock
 
-ResStock is our building-stock model for BGE. In the baseline (upgrade 0), it puts heat pumps
-in about one in five BGE homes:
+ResStock is our building-stock model for BGE. Its sample weights sum to ResStock's own count of
+BGE homes, not BGE's. We rescale them so they sum to BGE's test-year residential customer count
+from Karas Exhibit E-3, the same scaling CAIRO applies in its runs:
+
+```{python}
+#| label: resstock-weights
+
+_raw = (
+    pl.scan_parquet(resstock_metadata_path(RESSTOCK_RELEASE, STATE))
+    .join(scan_utility_bldg_ids(RESSTOCK_RELEASE, STATE, UTILITY), on="bldg_id", how="semi")
+    .select("bldg_id", "weight", "postprocess_group.heating_type_v2", "in.hvac_heating_type")
+    .collect()
+)
+report_vars["resstock_raw_homes"] = _raw["weight"].sum()
+report_vars["test_year_customer_count"] = float(
+    yaml.safe_load(fetch_rdp_file(PATH_RR_TEST_YEAR, ref=RDP_REF))["test_year_customer_count"]
+)
+report_vars["resstock_customer_scale"] = report_vars["test_year_customer_count"] / report_vars["resstock_raw_homes"]
+_meta = _raw.lazy().with_columns(pl.col("weight") * report_vars["resstock_customer_scale"])
+print(f"ResStock weights: {report_vars['resstock_raw_homes']:,.0f} homes")
+print(f"Test-year customers: {report_vars['test_year_customer_count']:,.0f}")
+print(f"Scale factor: {report_vars['resstock_customer_scale']:.5f}")
+```
+
+In the baseline (upgrade 0), ResStock puts heat pumps in about one in five BGE homes:
 
 ```{python}
 #| label: resstock-heating
 
-_meta = (
-    pl.scan_parquet(resstock_metadata_path(RESSTOCK_RELEASE, STATE))
-    .join(scan_utility_bldg_ids(RESSTOCK_RELEASE, STATE, UTILITY), on="bldg_id", how="semi")
-    .select("bldg_id", "weight", "postprocess_group.heating_type_v2", "in.hvac_heating_type")
-)
 resstock_heating = (
     _meta.group_by("postprocess_group.heating_type_v2")
     .agg(pl.len().alias("buildings"), pl.col("weight").sum().alias("homes"))
@@ -487,14 +595,42 @@ among them. The default is **about
 `{python} f"{round(report_vars['stock_central'], -3):,.0f}"` homes** (central), **about
 `{python} f"{round(report_vars['stock_low'], -3):,.0f}"`** (low) and **about
 `{python} f"{round(report_vars['stock_high'], -3):,.0f}"`** (high). Verdant's statewide figure
-sits above that and is an outer bound. The two citable central estimates are RECS and ResStock; the Brattle figures
-carry a draft stamp. The 2023–2025 EmPOWER installs would add at most a few tens of
-thousands of homes to any of these.
+sits above that and is an outer bound. The two central estimates are RECS and ResStock; Brattle
+is the only BGE-specific survey-based figure. The 2023–2025 EmPOWER installs would add at most a
+few tens of thousands of homes to any of these.
 
-Not every one of these homes would qualify for R-HP. Hybrids with a fossil backup (4% of BGE
-homes in Brattle's allocation, a split that comes from its contractor survey, not Verdant's) and homes where the heat pump is secondary to another heating
-system may be excluded, depending on how eligibility is written. That argues for the lower
-part of the range.
+R-HP is meant for homes whose **primary** heating source is a heat pump. Hybrids qualify (4% of
+BGE homes in Brattle's allocation, a split that comes from its contractor survey, not
+Verdant's). A fossil-heated home with a supplemental or cooling-only heat pump, such as one
+mini-split in a garage, would not. All three stock estimates classify homes by main heating
+system, so they already exclude those homes.
+
+## Connected Rewards participants
+
+BGE reports that customers enrolled in Connected Rewards, its smart-thermostat demand response
+program, make up about 8% of its residential customers as of October 31, 2026 (BGE data
+response, _pending ingest_). BGE receives each home's HVAC configuration from the thermostat
+maker at enrollment, but does not independently verify that a heat pump exists. This is
+**not a count of heat pump homes**: participants include every heating type. We carry it as an
+enrollment scenario, applied to the same March 2026 customer count as RECS.
+
+```{python}
+#| label: connected-rewards
+
+report_vars["connected_rewards_share"] = 0.08  # BGE data response, participation as of Oct 31, 2026
+report_vars["connected_rewards_customers"] = report_vars["connected_rewards_share"] * report_vars["bge_res_customers"]
+print(f"Connected Rewards participants: ~{report_vars['connected_rewards_customers']:,.0f}")
+```
+
+That is about `{python} f"{round(report_vars['connected_rewards_customers'], -3):,.0f}"`
+customers. If heat pumps were as common among participants as in the stock (about
+`{python} f"{report_vars['resstock_hp_homes'] / report_vars['test_year_customer_count']:.0%}"`),
+BGE's thermostat records would identify roughly
+`{python} f"{round(report_vars['connected_rewards_customers'] * report_vars['resstock_hp_homes'] / report_vars['test_year_customer_count'], -3):,.0f}"`
+heat pump homes, fewer than the program floor. The actual share among participants is
+unknown, and could be higher if thermostat programs draw homes with central ducted systems.
+"Approximately 8%" also carries rounding of about
+`{python} f"{round(0.005 * report_vars['bge_res_customers'], -3):,.0f}"` customers either way.
 
 ## Summary of bounds
 
@@ -509,15 +645,17 @@ bounds = pl.DataFrame(
     {
         "estimate": [
             "Program-identified homes, 2017–mid-2026 (at most; systems, not homes)",
+            "Connected Rewards participants, all heating types (BGE, Oct 2026)",
             "Stock, low (RECS 2020, 90% interval low end)",
             "Stock, central (ResStock)",
             "Stock, central (RECS 2020)",
-            "Stock, Verdant 2022 as allocated to BGE by Brattle, without hybrids (draft)",
-            "Stock, Verdant 2022 as allocated to BGE by Brattle, with hybrids (draft)",
+            "Stock, Verdant 2022 as allocated to BGE by Brattle, without hybrids",
+            "Stock, Verdant 2022 as allocated to BGE by Brattle, with hybrids",
             "Stock, outer bound (Verdant 2022 statewide share)",
         ],
         "heat_pump_homes": [
             report_vars["hp_program_systems_cumulative"],
+            round(report_vars["connected_rewards_customers"]),
             round(report_vars["recs_bge_hp_homes_lo90"]),
             round(report_vars["resstock_hp_homes"]),
             round(report_vars["recs_bge_hp_homes"]),
@@ -545,12 +683,13 @@ not a lower bound on the stock.
 ::: {.callout-important}
 ## What can be cited
 
-The citable range for BGE's heat pump homes is RECS 2020:
+ResStock's `{python} f"{round(report_vars['resstock_hp_homes'], -3):,.0f}"` is the central
+count the rate-impact table uses, because CAIRO bills that stock. The citable survey range
+is RECS 2020:
 **`{python} f"{round(report_vars['recs_bge_hp_homes_lo90'], -3):,.0f}"` to
 `{python} f"{round(report_vars['recs_bge_hp_homes_hi90'], -3):,.0f}"`**, central
-`{python} f"{round(report_vars['recs_bge_hp_homes'], -3):,.0f}"`, with ResStock's
-`{python} f"{round(report_vars['resstock_hp_homes'], -3):,.0f}"` as a cross-check. Three caveats
-go with it:
+`{python} f"{round(report_vars['recs_bge_hp_homes'], -3):,.0f}"`, which sits lower. Brattle
+stays the high end. Three caveats go with the RECS range:
 
 - **Statewide, not BGE.** RECS gives a Maryland share
   (`{python} report_vars['recs_md_hp_respondents']` heat pump respondents), which we apply to BGE's
@@ -562,9 +701,10 @@ go with it:
 - **The interval's formula is unconfirmed.** It uses the standard jackknife formula; EIA's RECS
   microdata guide (_pending ingest_) is needed to confirm it.
 
-The Brattle figures, including the default high end above, are the only BGE-specific estimates,
-but the report is stamped "not for citation or distribution". Verdant's statewide share is
-citable but likely overstates BGE's stock.
+The Brattle figures, including the default high end above, are the only BGE-specific
+survey-based estimates, but they rest on self-reported main heating systems, and AEG suspected
+some respondents confused heat pumps with central air conditioning. Verdant's statewide share
+likely overstates BGE's stock.
 :::
 
 For **new** heat pump homes per year (context only; they don't add to the shortfall), the 2025 pace of
@@ -574,6 +714,8 @@ home, and BGE's 2027–2029 plan puts those at a few thousand a year (below). Th
 comes from the forecasts below.
 
 ## Forecasts
+
+These forecasts are not an input to [`bge_rhp_rate_impact.qmd`](bge_rhp_rate_impact.qmd).
 
 We found five forward-looking studies with heat pump adoption paths for BGE or Maryland, plus
 PJM's load forecast. None is a BGE adoption forecast in the regulatory sense: BGE says it has
@@ -594,7 +736,7 @@ studies for BGE and Brattle's study for the PSC, all are _pending ingest_.
   raises reference-case ASHP adoption by only about 1% [@e3_AddendumBGEIntegrated_2023, p. 5]. These are
   policy-pathway scenarios, not a business-as-usual forecast.
 - **Brattle for the PSC, _An Assessment of Electrification Impacts on the Maryland Electric
-  Grid_ (2023).** Stamped as a draft not for citation. Starts from the Verdant 2022 survey
+  Grid_ (2023).** Starts from the Verdant 2022 survey
   above and projects to 2031. In the three electrification scenarios, heat pumps reach about
   51–52% of Maryland residential heating stock by 2031 (our sum of the heat pump rows in its Table 2) (for example, Fuel Backup: 18% ASHP +
   fuel, 22% ASHP + resistance, 8% ccASHP, 3% GSHP)
@@ -716,28 +858,18 @@ BGE's planned electrification participants, and
 the 2025 pace of rebated systems. E3's scenarios are policy pathways that meet the
 state's climate targets, not a forecast of what BGE customers will do, so this is a ceiling.
 
-## What this means for the shortfall inputs
+## Counts the rate impact uses
 
-The Connecticut code (`ciec_1.py` on Lee's branch) takes hardcoded floor and ceiling counts for
-existing and new heat pump homes, plus a number of years. It counts the discount to new
-adopters too, because the Connecticut interrogatory asks for revenue lost relative to Rate 1.
-The Maryland question is different: what other customers would pay. Only existing heat pump
-homes shift costs onto them, so the shortfall uses the existing counts alone and sets the new
-cohort to zero. These are the inputs the research supports, all in homes:
+[`bge_rhp_rate_impact.qmd`](bge_rhp_rate_impact.qmd) reads five values from this notebook's
+cache. New-adopter counts are not used.
 
-| Input in Lee's code | Maryland value | Basis |
+| Cache key | Value | Role |
 |---|---|---|
-| `EXISTING_FLOOR` | At most ~`{python} f"{round(report_vars['hp_program_systems_cumulative'], -3):,.0f}"` | EmPOWER heat pump systems rebated January 2017–June 2026 (BGE reports); an upper limit on program homes |
-| `EXISTING_CEILING` | ~`{python} f"{round(report_vars['stock_central'], -3):,.0f}"` (range `{python} f"{round(report_vars['stock_low'], -3):,.0f}"`–`{python} f"{round(report_vars['stock_high'], -3):,.0f}"`; outer bound ~`{python} f"{round(report_vars['verdant_md_hp_homes_at_bge'], -3):,.0f}"`) | ResStock and RECS 2020 (central, citable); Verdant 2022 via Brattle (high, draft); Verdant statewide (outer bound). Each is stored as a separate report variable |
-| Residential customers | ~`{python} f"{report_vars['bge_res_customers'] / 1e6:.2f}"` million | BGE DR CCAN 1-4, March 2026 |
-| `NEW_FLOOR`, `NEW_CEILING` (per year) | 0 in the shortfall | New adopters pay their incremental cost. For context only: ~`{python} f"{round(report_vars['new_floor_low_per_year'], -2):,.0f}"`–`{python} f"{round(report_vars['new_floor_high_2029'], -2):,.0f}"` a year (BGE's plan) to ~`{python} f"{round(report_vars['new_ceiling_low'], -3):,.0f}"`–`{python} f"{round(report_vars['new_ceiling_high'], -3):,.0f}"` a year (E3's scenarios) |
-
-The Connecticut code also needs three changes before it can be reused here. R-HP discounts
-distribution, transmission and EmPOWER charges at a flat rate year-round, while the
-Connecticut code swaps in winter distribution and transmission only. The customer count
-must come from DR 1-4 instead of a Connecticut-specific function. And we still have to choose
-the non-heat-pump kWh denominator: ResStock's non-heat-pump homes, or BGE's non-heating
-R/RL sales, which also include unflagged electric-heat homes.
+| `hp_program_systems_cumulative` | `{python} f"{round(report_vars['hp_program_systems_cumulative']):,}"` | Program floor: EmPOWER heat pump systems rebated January 2017–June 2026 |
+| `connected_rewards_customers` | `{python} f"{round(report_vars['connected_rewards_customers']):,}"` | Connected Rewards participants (8% of customers), all heating types |
+| `stock_low` | `{python} f"{round(report_vars['stock_low']):,}"` | RECS 2020, low end of the 90% interval |
+| `stock_central` | `{python} f"{round(report_vars['stock_central']):,}"` | ResStock, the central count |
+| `stock_high` | `{python} f"{round(report_vars['stock_high']):,}"` | Brattle 2023, with hybrids |
 
 ## Export report variables
 

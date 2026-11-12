@@ -65,19 +65,22 @@ Legal Advisor: Error: Reference source not found
   - D. PARTIES AND INTERVENORS … 2
   - E. PUBLIC COMMENT … 3
 - II. AUTHORITY ANALYSIS … 4
-  - A. APPLICATION AND AMENDED SETTLEMENT AGREEMENT … 4
-    - 1. Revenue Requirement … 7
-      - a. Rate Base … 7
-      - b. Tax Law Changes … 7
-      - c. Expenses … 8
-        - i. Amortization Expense … 8
-        - ii. EESCO Capital Funding … 9
-        - iii. Residual O&M Expense … 9
-      - d. Non-Hardship Uncollectibles … 10
-      - e. Employee Retirement Benefits … 10
-    - 2. Fee Free Credit Card and Debit Card … 12
-    - 3. Tree Trimming Expenditures … 14
-    - 4. Cost of Capital … 15
+  - ## A. APPLICATION AND AMENDED SETTLEMENT AGREEMENT … 4
+    1. Revenue Requirement … 7
+    - a. Rate Base … 7
+    - b. Tax Law Changes … 7
+    - c. Expenses … 8
+      - i. Amortization Expense … 8
+      - ii. EESCO Capital Funding … 9
+      - iii. Residual O&M Expense … 9
+    - d. Non-Hardship Uncollectibles … 10
+    - e. Employee Retirement Benefits … 10
+    -
+      2. Fee Free Credit Card and Debit Card … 12
+    -
+      3. Tree Trimming Expenditures … 14
+    -
+      4. Cost of Capital … 15
       - a. Introduction … 15
       - b. Capital Structure and Costs … 15
         - i. Capital Structure … 15
@@ -87,20 +90,25 @@ Legal Advisor: Error: Reference source not found
         - v. Credit Rating, Financial Viability and Capital Markets … 18
         - vi. Weighted Average Cost of Capital … 19
       - c. Earnings Sharing Mechanism … 19
-    - 5. Annual Adjustment for Full-time Equivalent Employees … 20
-    - 6. Conclusion on Amended Settlement Agreement … 20
-  - B. REVENUE, RATE DESIGN AND TARIFFS … 21
-    - 1. Operating Revenue … 21
-      - a. Rate Revenue at Present Rates … 21
-      - b. Other Revenues … 21
-    - 2. Sales Forecast … 21
+    -
+      5. Annual Adjustment for Full-time Equivalent Employees … 20
+    -
+      6. Conclusion on Amended Settlement Agreement … 20
+  - ## B. REVENUE, RATE DESIGN AND TARIFFS … 21
+    1. Operating Revenue … 21
+    - a. Rate Revenue at Present Rates … 21
+    - b. Other Revenues … 21
+    -
+      2. Sales Forecast … 21
       - a. Forecasting Methodology … 23
         - i. Trend Forecast … 23
         - ii. Out of Model Adjustments … 23
       - b. Position of the Parties … 24
       - c. Authority Analysis … 24
-    - 3. Cost of Service Study … 26
-    - 4. Revenue Allocation … 27
+    -
+      3. Cost of Service Study … 26
+    -
+      4. Revenue Allocation … 27
       - a. Company Proposal … 27
 
 [PDF p. 3 | printed p. 2]
@@ -136,12 +144,17 @@ Legal Advisor: Error: Reference source not found
       - b. OCC … 48
       - c. Authority Analysis … 48
     - 12. Conclusion on Revenue, Rate Design and Tariffs … 49
-  - C. CUSTOMER SERVICE ISSUES … 49
-    - 1. Customer Notifications and Collections … 49
-    - 2. Policy and Procedures for Estimated Billing … 49
-    - 3. Customer Security Deposits … 49
-    - 4. Customer Call Center … 50
-    - 5. Conclusion on Customer Service Issues … 51
+
+- ## C. CUSTOMER SERVICE ISSUES … 49
+  1. Customer Notifications and Collections … 49
+  -
+    2. Policy and Procedures for Estimated Billing … 49
+  -
+    3. Customer Security Deposits … 49
+  -
+    4. Customer Call Center … 50
+  -
+    5. Conclusion on Customer Service Issues … 51
 - III. FINDINGS OF FACT … 51
 - IV. CONCLUSION AND ORDERS … 58
   - A. CONCLUSION … 58
@@ -408,34 +421,34 @@ The January 11, 2018 Settlement Agreement’s ratemaking capital structures over
 
 **Table 1 - Rate Year 2018 Proposed Average Rate Year Capitalization**
 
-| Class of Capital | Ratemaking Percentage | Cost | Ratemaking Weighted Cost |
-| --- | ---: | ---: | ---: |
-| Long-term Debt | 45.29% | 4.80% | 2.17% |
-| Preferred Stock | 1.71% | 4.75% | 0.08% |
-| Common Equity | 53.00% | 9.25% | 4.90% |
-| Total Capitalization | 100.00% | | 7.15% |
+| Class of Capital     | Ratemaking Percentage |  Cost | Ratemaking Weighted Cost |
+| -------------------- | --------------------: | ----: | -----------------------: |
+| Long-term Debt       |                45.29% | 4.80% |                    2.17% |
+| Preferred Stock      |                 1.71% | 4.75% |                    0.08% |
+| Common Equity        |                53.00% | 9.25% |                    4.90% |
+| Total Capitalization |               100.00% |       |                    7.15% |
 
 Settlement Agreement, p. 9; Attachment 6.
 
 **Table 2 - Rate Year 2019 Proposed Average Rate Year Capitalization**
 
-| Class of Capital | Ratemaking Percentage | Cost | Ratemaking Weighted Cost |
-| --- | ---: | ---: | ---: |
-| Long-term Debt | 45.34% | 4.54% | 2.06% |
-| Preferred Stock | 1.66% | 4.75% | 0.08% |
-| Common Equity | 53.00% | 9.25% | 4.90% |
-| Total Capitalization | 100.00% | | 7.04% |
+| Class of Capital     | Ratemaking Percentage |  Cost | Ratemaking Weighted Cost |
+| -------------------- | --------------------: | ----: | -----------------------: |
+| Long-term Debt       |                45.34% | 4.54% |                    2.06% |
+| Preferred Stock      |                 1.66% | 4.75% |                    0.08% |
+| Common Equity        |                53.00% | 9.25% |                    4.90% |
+| Total Capitalization |               100.00% |       |                    7.04% |
 
 _Id_.
 
 **Table 3 - Rate Year 2020 Proposed Average Rate Year Capitalization**
 
-| Class of Capital | Ratemaking Percentage | Cost | Ratemaking Weighted Cost |
-| --- | ---: | ---: | ---: |
-| Long-term Debt | 45.38% | 4.64% | 2.11% |
-| Preferred Stock | 1.62% | 4.75% | 0.08% |
-| Common Equity | 53.00% | 9.25% | 4.90% |
-| Total Capitalization | 100.00% | | 7.09% |
+| Class of Capital     | Ratemaking Percentage |  Cost | Ratemaking Weighted Cost |
+| -------------------- | --------------------: | ----: | -----------------------: |
+| Long-term Debt       |                45.38% | 4.64% |                    2.11% |
+| Preferred Stock      |                 1.62% | 4.75% |                    0.08% |
+| Common Equity        |                53.00% | 9.25% |                    4.90% |
+| Total Capitalization |               100.00% |       |                    7.09% |
 
 _Id_.
 
@@ -512,11 +525,11 @@ CL&P filed the following summary of its expected operating income for each of th
 
 **OPERATING INCOME SUMMARY**
 
-| Description | Test Year at Current Rates | Rate Year 1 at Current Rates | Rate Year 2 at Current Rates | Rate Year 3 at Current Rates |
-| --- | ---: | ---: | ---: | ---: |
-| Distribution Revenue | $ 1,033,548 | $ 1,007,369 | $ 1,004,326 | $ 1,006,747 |
-| Distribution Other Revenue | $ 24,943 | $ 26,854 | $ 26,854 | $ 26,854 |
-| Total Operating Revenue | $ 1,058,491 | $ 1,034,223 | $ 1,031,180 | $ 1,033,601 |
+| Description                | Test Year at Current Rates | Rate Year 1 at Current Rates | Rate Year 2 at Current Rates | Rate Year 3 at Current Rates |
+| -------------------------- | -------------------------: | ---------------------------: | ---------------------------: | ---------------------------: |
+| Distribution Revenue       |                $ 1,033,548 |                  $ 1,007,369 |                  $ 1,004,326 |                  $ 1,006,747 |
+| Distribution Other Revenue |                   $ 24,943 |                     $ 26,854 |                     $ 26,854 |                     $ 26,854 |
+| Total Operating Revenue    |                $ 1,058,491 |                  $ 1,034,223 |                  $ 1,031,180 |                  $ 1,033,601 |
 
 Application, Schedule WC-3.1.
 
@@ -545,14 +558,14 @@ In 2017, the Company reported actual weather-normalized sales of 21,018 GWh, a 1
 
 **(gWh)**
 
-| Row | RES. SALES | % CH | COM. SALES | % CH | IND. SALES | % CH | TOTAL RETAIL SALES | % CH |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| WN Actual 2017 | 9,719 | | 8,922 | | 2,143 | | 21,018 | |
-| _FORECAST NORMALIZED FOR WEATHER (gWh)_ | | | | | | | | |
-| 2017 | 9,918 | | 9,194 | | 2,215 | | 21,582 | |
-| 2018 | 9,735 | -1.8% | 9,109 | -0.9% | 2,162 | -2.4% | 21,256 | -1.5% |
-| 2019 | 9,605 | -1.3% | 8,956 | -1.7% | 2,126 | -1.7% | 20,932 | -1.5% |
-| 2020 | 9,625 | 0.2% | 8,914 | -0.5% | 2,105 | -1.0% | 20,885 | -0.2% |
+| Row                                     | RES. SALES |  % CH | COM. SALES |  % CH | IND. SALES |  % CH | TOTAL RETAIL SALES |  % CH |
+| --------------------------------------- | ---------: | ----: | ---------: | ----: | ---------: | ----: | -----------------: | ----: |
+| WN Actual 2017                          |      9,719 |       |      8,922 |       |      2,143 |       |             21,018 |       |
+| _FORECAST NORMALIZED FOR WEATHER (gWh)_ |            |       |            |       |            |       |                    |       |
+| 2017                                    |      9,918 |       |      9,194 |       |      2,215 |       |             21,582 |       |
+| 2018                                    |      9,735 | -1.8% |      9,109 | -0.9% |      2,162 | -2.4% |             21,256 | -1.5% |
+| 2019                                    |      9,605 | -1.3% |      8,956 | -1.7% |      2,126 | -1.7% |             20,932 | -1.5% |
+| 2020                                    |      9,625 |  0.2% |      8,914 | -0.5% |      2,105 | -1.0% |             20,885 | -0.2% |
 
 Late Filed Exhibit No. 28, Attachment 2.
 
@@ -581,26 +594,26 @@ Accounting for all out of model adjustments, CL&P reduced its total forecasted s
 **Residential Adjustments**
 
 | Year | Eviews Trend Forecast | Energy Efficiency | Solar | Leap Year | Electric Vehicles | Total Out of Model Adjustments | Final Forecast |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 2018 | 9,939 | -22 | -183 | 0 | 2 | -204 | 9,735 |
-| 2019 | 9,933 | -42 | -293 | 0 | 7 | -328 | 9,605 |
-| 2020 | 10,016 | -54 | -364 | 15 | 13 | -391 | 9,625 |
+| ---- | --------------------: | ----------------: | ----: | --------: | ----------------: | -----------------------------: | -------------: |
+| 2018 |                 9,939 |               -22 |  -183 |         0 |                 2 |                           -204 |          9,735 |
+| 2019 |                 9,933 |               -42 |  -293 |         0 |                 7 |                           -328 |          9,605 |
+| 2020 |                10,016 |               -54 |  -364 |        15 |                13 |                           -391 |          9,625 |
 
 **Commercial Adjustments**
 
 | Year | Eviews Trend Forecast | Energy Efficiency | Solar | Leap Year | Total Out of Model Adjustments | Final Forecast |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 2018 | 9,256 | -84 | -63 | 0 | -147 | 9,109 |
-| 2019 | 9,202 | -144 | -101 | 0 | -246 | 8,956 |
-| 2020 | 9,219 | -201 | -126 | 22 | -305 | 8,914 |
+| ---- | --------------------: | ----------------: | ----: | --------: | -----------------------------: | -------------: |
+| 2018 |                 9,256 |               -84 |   -63 |         0 |                           -147 |          9,109 |
+| 2019 |                 9,202 |              -144 |  -101 |         0 |                           -246 |          8,956 |
+| 2020 |                 9,219 |              -201 |  -126 |        22 |                           -305 |          8,914 |
 
 **Industrial Adjustments**
 
 | Year | Eviews Trend Forecast | Energy Efficiency | Solar | Leap Year | Large Customer Self-Generation Unit | Total Out of Model Adjustments | Final Forecast |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 2018 | 2,262 | -19 | -16 | 0 | -65 | -100 | 2,162 |
-| 2019 | 2,249 | -33 | -25 | 0 | -65 | -123 | 2,126 |
-| 2020 | 2,241 | -46 | -31 | 6 | -65 | -136 | 2,105 |
+| ---- | --------------------: | ----------------: | ----: | --------: | ----------------------------------: | -----------------------------: | -------------: |
+| 2018 |                 2,262 |               -19 |   -16 |         0 |                                 -65 |                           -100 |          2,162 |
+| 2019 |                 2,249 |               -33 |   -25 |         0 |                                 -65 |                           -123 |          2,126 |
+| 2020 |                 2,241 |               -46 |   -31 |         6 |                                 -65 |                           -136 |          2,105 |
 
 _Extractor note (not source text): in three rows the printed component adjustments differ by 1 from the printed total (Residential 2018: -22 - 183 + 0 + 2 = -203 vs. -204 printed; Residential 2020: -54 - 364 + 15 + 13 = -390 vs. -391 printed; Commercial 2019: -144 - 101 + 0 = -245 vs. -246 printed). The differences look like rounding._
 
@@ -624,7 +637,7 @@ The Authority agrees with CL&P’s assessment that, given the totality of factor
 1. Actual and weather-normalized sales for the previous 10 calendar years for each customer class.
 
 2. An explanation of the methodology and results from the Company’s trend forecast and out-of-model adjustments including, but not limited to, the
-[PDF p. 29 | printed p. 26] information presented in the Company’s response to RA-011 (out of model adjustments) and Late Filed Exhibits No. 25 (explanation of out of model adjustments, including methodology for solar deployment), 31 and 32 (adjusted solar PV forecasts annual solar PV installations for the previous 10 calendar years).
+   [PDF p. 29 | printed p. 26] information presented in the Company’s response to RA-011 (out of model adjustments) and Late Filed Exhibits No. 25 (explanation of out of model adjustments, including methodology for solar deployment), 31 and 32 (adjusted solar PV forecasts annual solar PV installations for the previous 10 calendar years).
 
 The Authority will then review and either accept, modify, or reject the sales trend forecast the Company will submit as part of its Rate Year 2 and Rate Year 3 rate plan filings.
 
@@ -652,25 +665,25 @@ The following table shows the excess or deficiency of each rate class relative t
 
 **Table 7**
 
-| Rate Codes | Rev. Req. | Current Revenue | Excess / (Deficiency) |
-| --- | ---: | ---: | ---: |
-| Rate 1 & 7 | $766,886 | $ 529,194 | ($237,692) |
-| Rate 5 | 139,863 | 93,375 | (46,488) |
-| Rate 18 | 56 | 36 | (20) |
-| Rate 27 & 30 | 171,310 | 205,066 | 33,756 |
-| Rate 29 | 861 | 387 | (474) |
-| Rate 35 & 37 | 51,904 | 60,483 | 8,579 |
-| Rate 39 | 2,024 | 1,235 | (789) |
-| Rate 40 | 6,400 | 5,616 | (784) |
-| Rate 41 | 599 | 776 | 176 |
-| Rate 55 | 16,304 | 17,036 | 732 |
-| Rate 56 | 44,673 | 51,387 | 6,714 |
-| Rate 57 | 19,610 | 16,396 | (3,213) |
-| Rate 58 | 36,681 | 35,567 | (1,114) |
-| Rate 115 | 2,422 | 2,959 | 537 |
-| Rate 116 & 117 | 30,179 | 13,793 | (16,386) |
-| Special Contracts | 297 | 916 | 619 |
-| **Total** | **$1,290,068** | **$1,034,222** | **($255,846)** |
+| Rate Codes        |      Rev. Req. | Current Revenue | Excess / (Deficiency) |
+| ----------------- | -------------: | --------------: | --------------------: |
+| Rate 1 & 7        |       $766,886 |       $ 529,194 |            ($237,692) |
+| Rate 5            |        139,863 |          93,375 |              (46,488) |
+| Rate 18           |             56 |              36 |                  (20) |
+| Rate 27 & 30      |        171,310 |         205,066 |                33,756 |
+| Rate 29           |            861 |             387 |                 (474) |
+| Rate 35 & 37      |         51,904 |          60,483 |                 8,579 |
+| Rate 39           |          2,024 |           1,235 |                 (789) |
+| Rate 40           |          6,400 |           5,616 |                 (784) |
+| Rate 41           |            599 |             776 |                   176 |
+| Rate 55           |         16,304 |          17,036 |                   732 |
+| Rate 56           |         44,673 |          51,387 |                 6,714 |
+| Rate 57           |         19,610 |          16,396 |               (3,213) |
+| Rate 58           |         36,681 |          35,567 |               (1,114) |
+| Rate 115          |          2,422 |           2,959 |                   537 |
+| Rate 116 & 117    |         30,179 |          13,793 |              (16,386) |
+| Special Contracts |            297 |             916 |                   619 |
+| **Total**         | **$1,290,068** |  **$1,034,222** |        **($255,846)** |
 
 _Extractor note (not source text): two rows are off by 1 from current revenue minus required revenue (Rate 41: 776 - 599 = 177 vs. 176 printed; Rate 57: 16,396 - 19,610 = -3,214 vs. (3,213) printed), and the printed rows sum to 1,290,069 (Rev. Req.) and (255,847) (Excess / (Deficiency)) against totals of 1,290,068 and (255,846). The differences look like rounding. The table prints no units._
 
@@ -760,6 +773,7 @@ The Rate 7 Customer Charge shall be set at the same level as the Rate 1 Customer
 ##### b. Commercial and Industrial Rates
 
 [^4]: Based on the proposed revenue requirement in the Settlement Agreement and a MRCC of $10.80, and subject to slight change based in the final determined MRCC level.
+
 [^5]: The approved distribution charges will be effective May 1, 2018.
 
 [PDF p. 39 | printed p. 36]
@@ -826,6 +840,7 @@ The Authority reviewed the evidence presented by the Company and NECTA regarding
 The Authority also examined and compared the assumptions and underlying components from the Company’s initial proposal to the Attachment Agreement and considered their reasonableness in relation to the CATV and Telecom pole attachment rate calculations. The Authority finds that several components did not change from the Company’s initial proposal to the Attachment Agreement such as the $688.30 net cost per bare pole, the number of equivalent poles, the use of a 15% appurtenance factor and the 31.49% carrying charge. Under the Attachment Agreement, the net cost per bare pole increased by approximately 12.9% from the Company’s last rate case. 2014 CL&P Rate Case Decision, p. 196. The Company attributed this change to larger increases in gross pole investment when compared to increases in accumulated depreciation and accumulated deferred income taxes combined with a slight decrease in the number of poles since the Company's last rate case. Response to Interrogatory RA-26. The Attachment Agreement used the Company’s proposed equivalent pole count of 377,554 poles. The Company identified that the standard non-custodian fee for a joint pole owner is $650. Responses to Interrogatories OCC-303 and RA-28. The
 
 [^6]: On March 7, 2018, CenturyLink filed public comments urging the Authority to reject the proposed pole Attachment Agreement. On March 14, 2018, NECTA filed a motion to strike CenturyLink’s comments citing that CenturyLink did not request party or intervenor status in this proceeding. On March, 19, 2018, the Authority granted NECTA’s motion to strike CenturyLink’s request. The Authority afforded the opportunity for those interested to seek the right to participate as a Party or Intervenor in the proceeding; however, CenturyLink did not make such a request and therefore lacks standing.
+
 [^7]: See, Implementation of Section 224 of the Act, A National Broadband Plan for Our Future, Report and Order and Order on Reconsideration, 26 FCC Rcd 5240 (2011) (FCC Pole Attachment Order), pp. 108\_110.
 
 [PDF p. 42 | printed p. 39] Authority finds that the net cost per bare pole and number of equivalent poles to be reasonable and acceptable.
@@ -881,12 +896,19 @@ The Authority finds that the express language of Conn. Gen. Stat. §13a-110(e) d
 With respect to flood lighting, the Authority also finds that CL&P is fully compliant with the flood lighting standards contained in Conn. Gen. Stat. §13a-143d, as demonstrated by the record in this proceeding. CL&P replaced all flood lights with controlled beam fixtures by the end of 2010.[^15] The Company addressed compliance with Conn. Gen. Stat. §13a-143d in Docket No. 04-01-01[^16] at the time the statute was
 
 [^9]: CL&P Street and Security Lighting Electric Service Tariff, Rate 116, available at [https://www.eversource.com/content/docs/default-source/ratestariffs/rate116.pdf](https://www.eversource.com/content/docs/default-source/ratestariffs/rate116.pdf); CL&P Partial Street Lighting Service Electric Service Tariff, Rate 117, available at _https://www.eversource.com/content/docs/defaultsource/rates-tariffs/rate117.pdf_; CL&P Response to CL&P Response to Smith Interrogatory 16.
+
 [^10]: CL&P Response to CL&P Response to Smith Interrogatory 20-RV01; CL&P Response to Smith Interrogatory 5; Tr. 2/7/18, pp. 42 and 43.
+
 [^11]: CL&P Response to Smith Interrogatory 5; Tr. 2/7/18, p. 42.
+
 [^12]: CL&P Street and Security Lighting Electric Service Tariff, Rate 116, available at [https://www.eversource.com/content/docs/default-source/ratestariffs/rate116.pdf](https://www.eversource.com/content/docs/default-source/ratestariffs/rate116.pdf); CL&P Partial Street Lighting Service Electric Service Tariff, Rate 117, available at [https://www.eversource.com/content/docs/defaultsource/rates-tariffs/rate117.pdf](https://www.eversource.com/content/docs/defaultsource/rates-tariffs/rate117.pdf). CL&P Response to Smith Interrogatory 16; CL&P Response to Smith Interrogatory 2, Attachment 1.
+
 [^13]: CL&P Response to Smith Interrogatory 5.
+
 [^14]: _Alexson et al. v. Foss et al._, 276 Conn. 599, 605-606 (2006) (a statute is deemed ambiguous when, read in context, it is susceptible to more than one reasonable interpretation, at which point the legislative history should be examined).
+
 [^15]: CL&P Response to Smith Interrogatory 24.
+
 [^16]: Decision dated June 30, 2005, in Docket No. 04-01-01., DPUC Investigation Into the Connecticut Light and Power Company’s Streetlight Assets, Plant Values, Accounting Practices and Rates.
 
 [PDF p. 46 | printed p. 43] first enacted. In that docket, the Company explained that the most effective method of complying with the new law, from both a cost and performance perspective, was to replace all flood lights with controlled beam fixtures, which the Company proposed to do as part of its group re-lamping process.[^17] The proposal received the support of the statute’s sponsor, State Representative James O’Rourke, and Mr. Smith himself, on behalf of the Connecticut Section of the International Dark-Sky Association.[^18] CL&P’s proposed method of complying was acknowledged by the Authority in a letter dated January 6, 2006.[^19] CL&P provided annual reports on its progress in that docket until the replacement process was complete.[^20] As with the street lighting statute discussed above, the Authority finds that the flood lighting statute does not mandate use of specific technologies, configurations or construction design to achieve compliance. The Authority finds that there may be different ways of complying with the flood lighting provision. In this case, the Authority finds, based on the record evidence, that CL&P’s flood lighting practices are in compliance with Conn. Gen. Stat. §13a-143d and the Authority’s guidance in Docket No. 04-01-01. The Authority further finds that none of Leo Smith’s requested changes to CL&P’s flood lighting practices are specifically required by the express language of Conn. Gen. Stat. §13a-143d or any of the rate statutes governing this proceeding, Conn. Gen. Stat. §§16-19 and 16-19e.
@@ -904,8 +926,11 @@ CL&P requested to continue and expand the Electric Vehicle (EV) program and asso
 Tesla acknowledged the CL&P proposal to expand its existing EV Rate Rider and stated that the rider, as currently crafted, converts demand charges into kWh
 
 [^17]: CL&P Response to Smith Interrogatory 24.
+
 [^18]: CL&P Response to Smith Interrogatory 24, Attachment 2.
+
 [^19]: CL&P Response to Smith Interrogatory 24, Attachment 3.
+
 [^20]: CL&P Response to Smith Interrogatory 24, Attachment 4.
 
 [PDF p. 47 | printed p. 44] charges and eliminates the demand ratchet, where customers charge at state-owned charging stations that provide charging to the public for free. Tesla stated that the Company’s revised proposal for the EV Rate Rider expansion in Late Filed Exhibit No. 22 will more accurately track current law, expand EV ridership in Connecticut, help smooth system load, generate new energy sales and revenue and keep more dollars in the local and regional economy. For these reasons, Tesla urged the Authority to adopt the Company’s revised proposal. Tesla Brief, pp. 11 and 12.
@@ -1004,11 +1029,11 @@ CL&P issues estimated bills infrequently. The table below shows the percentage o
 
 **Table 8**
 
-| Year | 1-3 Months | 4-6 Months | 7-11 Months | 12+ Months |
-| --- | ---: | ---: | ---: | ---: |
-| **2015 Y-T-D** | 1.1096% | 0.0180% | 0.56% | 0.001% |
-| **2016** | 1.1869% | 0.0236% | 0.038% | 0.0003% |
-| **2017** | 1.175% | 0.0262% | 0.0044% | 0.0004% |
+| Year           | 1-3 Months | 4-6 Months | 7-11 Months | 12+ Months |
+| -------------- | ---------: | ---------: | ----------: | ---------: |
+| **2015 Y-T-D** |    1.1096% |    0.0180% |       0.56% |     0.001% |
+| **2016**       |    1.1869% |    0.0236% |      0.038% |    0.0003% |
+| **2017**       |     1.175% |    0.0262% |     0.0044% |    0.0004% |
 
 Response to Interrogatory CA-18.
 
@@ -1025,20 +1050,20 @@ CL&P maintains a Customer Service Center to address customer complaints and inqu
 
 **Table 9**
 
-| 2015 | ASA[^23] | ACR[^24] | 2016 | ASA | ACR | 2017 | ASA | ACR |
-| --- | ---: | ---: | --- | ---: | ---: | --- | ---: | ---: |
-| January | 37.2 | 5.8% | January | 7.4 | 2.3% | January | 78.82 | 10.5% |
-| February | 45.8 | 6.5% | February | 5.9 | 2.5% | February | 39.8 | 5.6% |
-| March | 90.2 | 10.9% | March | 5.8 | 2.2% | March | 29.0 | 4.2% |
-| April | 60.0 | 7.2% | April | 24.5 | 4.5% | April | 21.0 | 3.4% |
-| May | 59.5 | 8.6% | May | 46.1 | 7.4% | May | 47.4 | 6.7% |
-| June | 31.3 | 5.3% | June | 36.0 | 5.4% | June | 28.7 | 4.2% |
-| July | 21.1 | 4.4% | July | 35.1 | 6.1% | July[^25] | 26.2 | 3.4% |
-| August | 18.8 | 3.5% | August | 68.7 | 9.0% | August- | 21.5 | 2.9% |
-| September | 8.7 | 2.2% | September | 85.7 | 10.9% | September | 31.0 | 5.3% |
-| October | 16.5 | 3.2% | October | 53.8 | 7.9% | October | 82.6 | 6.5% |
-| November | 5.2 | 1.9% | November | 14.7 | 3.7% | November | 98.6 | 13.1% |
-| December | 3.5 | 2.6% | December | 7.9 | 1.5% | December | 40.2 | 7.0% |
+| 2015      | ASA[^23] | ACR[^24] | 2016      |  ASA |   ACR | 2017      |   ASA |   ACR |
+| --------- | -------: | -------: | --------- | ---: | ----: | --------- | ----: | ----: |
+| January   |     37.2 |     5.8% | January   |  7.4 |  2.3% | January   | 78.82 | 10.5% |
+| February  |     45.8 |     6.5% | February  |  5.9 |  2.5% | February  |  39.8 |  5.6% |
+| March     |     90.2 |    10.9% | March     |  5.8 |  2.2% | March     |  29.0 |  4.2% |
+| April     |     60.0 |     7.2% | April     | 24.5 |  4.5% | April     |  21.0 |  3.4% |
+| May       |     59.5 |     8.6% | May       | 46.1 |  7.4% | May       |  47.4 |  6.7% |
+| June      |     31.3 |     5.3% | June      | 36.0 |  5.4% | June      |  28.7 |  4.2% |
+| July      |     21.1 |     4.4% | July      | 35.1 |  6.1% | July[^25] |  26.2 |  3.4% |
+| August    |     18.8 |     3.5% | August    | 68.7 |  9.0% | August-   |  21.5 |  2.9% |
+| September |      8.7 |     2.2% | September | 85.7 | 10.9% | September |  31.0 |  5.3% |
+| October   |     16.5 |     3.2% | October   | 53.8 |  7.9% | October   |  82.6 |  6.5% |
+| November  |      5.2 |     1.9% | November  | 14.7 |  3.7% | November  |  98.6 | 13.1% |
+| December  |      3.5 |     2.6% | December  |  7.9 |  1.5% | December  |  40.2 |  7.0% |
 
 Response to Interrogatory CA-2.
 
@@ -1053,7 +1078,9 @@ Overall, the Authority finds CL&P’s customer service policies and procedures t
 ## III. FINDINGS OF FACT
 
 [^23]: Average Speed of Answer, in seconds.
+
 [^24]: Abandoned Call Rate.
+
 [^25]: Through December 2017.
 
 [PDF p. 54 | printed p. 51]
@@ -1083,7 +1110,7 @@ Overall, the Authority finds CL&P’s customer service policies and procedures t
 12. In response to the Proposed Interim Decision, the Settling Parties filed an Amended Settlement Agreement.
 
 13. The Amended Settlement Agreement establishes a new capital tracker that provides greater transparency and more frequent semi-annual adjustments for
-[PDF p. 55 | printed p. 52] capital projects which sustain Connecticut-based jobs and generate important tax revenues for the 149 towns the Company serves.
+    [PDF p. 55 | printed p. 52] capital projects which sustain Connecticut-based jobs and generate important tax revenues for the 149 towns the Company serves.
 
 14. The Amended Settlement Agreement authorizes the Company to obtain funding for new employees if, and only if, it first demonstrates it hired them.
 
@@ -1290,7 +1317,7 @@ For the following Orders, the Company shall submit one original of the required 
 3. No later than May 18, 2018, the Company shall report on the status of its communication campaign to residential customers regarding Rate Class 7 savings including the number of customers they propose to switch to rate 7 with their campaign, copies of any mailings, bill messages web-based updates or media campaigns.
 
 4. No later than November 30, 2018, 2019 and 2020, respectively, the Company shall provide the Authority with the budget of construction program capital spending by initiative or category for the following year. The filings shall be
-[PDF p. 62 | printed p. 59] consistent with the terms of the New Capital Tracker filings as described in Section 3.a. of the Amended Settlement Agreement and Section 1. Enhanced Tree Trimming and Enhanced Tree Removal of Amended Attachment 1 of the Amended Settlement Agreement.
+   [PDF p. 62 | printed p. 59] consistent with the terms of the New Capital Tracker filings as described in Section 3.a. of the Amended Settlement Agreement and Section 1. Enhanced Tree Trimming and Enhanced Tree Removal of Amended Attachment 1 of the Amended Settlement Agreement.
 
 5. No later than January 31, 2019, and annually thereafter until the next general rate proceeding, the Company shall provide its calendar year actuarial minimum pension contribution and provide the amount of actual pension contribution made for the corresponding calendar year.
 
@@ -1302,24 +1329,24 @@ For the following Orders, the Company shall submit one original of the required 
 
 9. No later than March 1, 2019, and annually thereafter, the Company shall file the following data for the immediately preceding year calendar year:
 
-    1. the number of credit/debit card payments;
+   1. the number of credit/debit card payments;
 
-    2. the costs associated with the credit/debit card payments;
+   2. the costs associated with the credit/debit card payments;
 
-    3. how quickly payments are being received from the date a bill issued;
+   3. how quickly payments are being received from the date a bill issued;
 
-    4. the number of credit card payments made by financially challenged/hardship customers;
+   4. the number of credit card payments made by financially challenged/hardship customers;
 
-    5. the annual amount of uncollectibles; and
+   5. the annual amount of uncollectibles; and
 
-    6. the qualitative improvements in customer satisfaction with the option.
+   6. the qualitative improvements in customer satisfaction with the option.
 
 In its first annual filing, the Company shall also file data relating to items 1-6 above, for calendar years 2016 and 2017 as well as the percentage of new uncollectible accounts that have a credit/debit card payment posted since the inception of the program.
 
 10. No later than March 15, 2019, the Company shall file for Authority review and approval, a rate plan for Rate Year 2 incorporating the directives in Section II.B.5. _Rate Design_.
 
 11. No later than May 31, 2019, 2020 and 2021, respectively, the Company shall provide the Authority with a report of actual construction program capital
-[PDF p. 63 | printed p. 60] spending by Initiative or category for the preceding year. The filings shall be consistent with the terms of the New Capital Tracker filings as described in Section 3.a. of the Amended Settlement Agreement and Section 1. Enhanced Tree Trimming and Enhanced Tree Removal of Amended Attachment 1 of the Amended Settlement Agreement. If actual spending varies from budgeted spending by more than 10% in any initiative or category from that budgeted, or if the total aggregate capital spending varies by more than 10%, the Company shall provide an explanation of the reason for such variance.
+    [PDF p. 63 | printed p. 60] spending by Initiative or category for the preceding year. The filings shall be consistent with the terms of the New Capital Tracker filings as described in Section 3.a. of the Amended Settlement Agreement and Section 1. Enhanced Tree Trimming and Enhanced Tree Removal of Amended Attachment 1 of the Amended Settlement Agreement. If actual spending varies from budgeted spending by more than 10% in any initiative or category from that budgeted, or if the total aggregate capital spending varies by more than 10%, the Company shall provide an explanation of the reason for such variance.
 
 12. No later than March 16, 2020, the Company shall file for Authority review and approval, a rate plan for Rate Year 3 incorporating the directives in Section 11.B.5. [sic; presumably "II.B.5."] _Rate Design_.
 

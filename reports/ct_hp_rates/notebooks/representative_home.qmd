@@ -622,6 +622,19 @@ basis CAIRO uses for BAT and bills.
 ```{python}
 #| label: compute-profiles
 
+def _kwh_by_month(profile: pl.DataFrame) -> list[float]:
+    """Monthly kWh in January-December order."""
+    ordered = (
+        profile.select(pl.col("month_label").cast(pl.String), "kwh")
+        .with_columns(pl.col("month_label").cast(pl.Enum(MONTH_ORDER)))
+        .sort("month_label")
+    )
+    labels = ordered["month_label"].cast(pl.String).to_list()
+    if labels != MONTH_ORDER:
+        raise RuntimeError(f"monthly profile is {labels}, expected {MONTH_ORDER}")
+    return [float(value) for value in ordered["kwh"].to_list()]
+
+
 profiles: dict[str, dict[str, pl.DataFrame]] = {}
 hourly_profiles: dict[str, dict[str, pl.DataFrame]] = {}
 
@@ -646,6 +659,8 @@ for pop_label, pop_df in [
     annual_delta = annual_after - annual_before
     pct_change = annual_delta / annual_before
 
+    report_vars[f"{pop_label}_monthly_kwh_before"] = _kwh_by_month(before)
+    report_vars[f"{pop_label}_monthly_kwh_after"] = _kwh_by_month(after)
     report_vars[f"{pop_label}_annual_kwh_before"] = annual_before
     report_vars[f"{pop_label}_annual_kwh_after"] = annual_after
     report_vars[f"{pop_label}_annual_kwh_delta"] = annual_delta
@@ -683,6 +698,7 @@ if USE_UTILITY_ACTUALS:
         )
 
         _after_scaled = profiles["all_fossil"]["after"]
+        report_vars["all_fossil_monthly_kwh_after"] = _kwh_by_month(_after_scaled)
         annual_after_scaled = _after_scaled["kwh"].sum()
         annual_delta_scaled = annual_after_scaled - annual_before
         pct_change_scaled = annual_delta_scaled / annual_before

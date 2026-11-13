@@ -1,6 +1,6 @@
 """Helpers for the CIEC-3(c) Excel workpaper.
 
-``ciec_request_3.qmd`` loads the CIEC-1 revenue reductions, the non-heat-pump
+``ciec_request_3.qmd`` loads the CIEC-1 net revenue reductions, the non-heat-pump
 buildings, and today's Rate 1 charges, then calls :func:`build_workbook`.
 Upload uses :func:`build_ciec_1a_workbook.upload_xlsx`. Yellow cells are inputs.
 Every other number is a formula.
@@ -10,13 +10,10 @@ Sheets
 README
     What the file is and how the sheets connect.
 revenue
-    Floor and ceiling customer counts, and the per-customer distribution and
-    transmission decreases, are inputs. The 20, 40, 60, and 80 percent rows
-    place the customer count that share of the way from the floor to the
-    ceiling. Distribution and transmission are that count times the
-    per-customer decrease, rounded to the dollar. Later installers are not
-    included. T&D adds the two components. A file with more than one year
-    keeps one pasted row per year instead of this range.
+    Net revenue reduction by year: revenue lost from existing heat pump
+    customers minus revenue gained from new customers. Floor and ceiling
+    refer to the enrollment bounds. Distribution and transmission are inputs,
+    already rounded to the dollar. T&D adds them. One row per rate year.
 nonhp_kwh
     One row per Eversource home without a heat pump. Annual kWh is CAIRO grid
     consumption. Weight is the ResStock sample weight. Weighted kWh is the product.
@@ -306,13 +303,13 @@ def _write_readme(wb: Workbook, *, ranged: bool) -> None:
 
 def _write_revenue(wb: Workbook, floor: Sequence[RevenueRow], ceiling: Sequence[RevenueRow]) -> None:
     ws = wb.create_sheet("revenue")
-    _heading(ws, 1, "Revenue reduction")
+    _heading(ws, 1, "Net revenue reduction")
     _note(
         ws,
         2,
-        "Annual revenue reduction from CIEC-1(a) for customers who would move from Rate 1 to Rate HP. "
-        "The row is the starting stock, including the 2026 installations. Distribution and transmission "
-        "are inputs, already rounded to the dollar. T&D adds them. Later heat pump installations are excluded.",
+        "Net revenue reduction from CIEC-1(a): revenue lost from existing heat pump customers who move "
+        "to Rate HP, minus revenue gained from new heat pump customers who enroll at installation. "
+        "Distribution and transmission are inputs, already rounded to the dollar. T&D adds them.",
         9,
     )
     _headers(
@@ -518,7 +515,7 @@ def _write_increase(wb: Workbook, n_years: int) -> None:
     _note(
         ws,
         2,
-        "Each increase is that bound's auto-enrolled revenue reduction divided by that bound's weighted kWh on payers. "
+        "Each increase is that bound's net revenue reduction divided by that bound's weighted kWh on payers. "
         "Distribution and transmission are separate, and T&D adds them. % of T&D divides the combined "
         "increase by the T&D rate. % of T&D and generation divides it by T&D plus average generation.",
         11,

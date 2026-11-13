@@ -24,36 +24,28 @@ from __future__ import annotations
 
 import pickle
 from pathlib import Path
-from typing import cast
 
 import yaml
 import polars as pl
 from ciec_1 import (
-    annual_bill,
-    bill_table,
-    cohort_reduction_table,
-    cohort_revenue_rows,
     cumulative_enrollment,
     dollar,
     energizect_households,
     enrollment_table,
+    net_revenue_rows,
+    net_revenue_table,
     num,
-    presented_bills,
     rate_year_residential_customers,
     read_energizect_installations,
     subclass_weights,
     sum_monthly_rates,
-    with_winter_rates,
 )
 from lib.rdp import fetch_rdp_file
 from lib.rates_analysis.rate_case_funcs import (
     extract_tariff_rates,
-    load_billing_kwh_8760,
-    load_master_bills,
     load_tariff_json,
     segment_name,
     segment_upgrade,
-    weighted_avg_monthly,
 )
 
 STATE = "CT"
@@ -62,16 +54,32 @@ RDP_REF = "e97a3ca"
 UTILITY = "ct_eversource"
 RELEASE = "res_2024_amy2018_2_sb"
 SCENARIO = "default_ry1_r1_uncalibrated"
-WINTER_MONTHS = ["Jan", "Feb", "Mar", "Nov", "Dec"]
-WINTER_KEYS = ["2025-01", "2025-02", "2025-03", "2025-11", "2025-12"]
-BILL_ORDER = ["Customer Charge", "Distribution", "Transmission", "Generation", "Total"]
 
-# Rate HP winter rates from the representative-home cache. Distribution includes
-# the unchanged riders. Transmission is the service rate. These are the unrounded
-# rates behind Table 4 of the direct testimony.
+# Representative-home cache: the testimony's source of truth for per-customer values.
 _rep_home = pickle.loads(Path("../cache/representative_home_vars.pkl").read_bytes())
 WINTER_DIST = float(_rep_home["fair_hp_winter_rate_dist"])
 WINTER_TX = float(_rep_home["fair_hp_winter_rate_tx"])
+
+# Per-existing-customer decrease (T&D overcharge unwound by Rate HP).
+# This is the delivery charge increase minus the marginal cost increase: what Rate HP removes.
+dec_dist = round(
+    float(_rep_home["all_fossil_annual_distribution_delta"])
+    - float(_rep_home["all_fossil_annual_mc_dist_delta"]),
+    2,
+)
+dec_tx = round(
+    float(_rep_home["all_fossil_annual_transmission_delta"])
+    - float(_rep_home["all_fossil_annual_mc_tx_delta"]),
+    2,
+)
+dec_total = round(dec_dist + dec_tx, 2)
+assert abs(dec_total - round(float(_rep_home["all_fossil_annual_total_overcharge"]), 2)) <= 0.01
+
+# Per-new-customer increase (incremental marginal T&D cost).
+# Rate HP is designed so post-HP Rate HP bill = pre-HP Rate 1 bill + inc_mc.
+inc_dist = round(float(_rep_home["all_fossil_annual_mc_dist_delta"]), 2)
+inc_tx = round(float(_rep_home["all_fossil_annual_mc_tx_delta"]), 2)
+inc_total = round(inc_dist + inc_tx, 2)
 
 # New-customer bounds written out in CIEC-1(c) below.
 NEW_FLOOR = [3_460, 3_460, 3_460, 3_460, 3_460]
@@ -157,14 +165,6 @@ rate1 = {
         "monthly_rates": _srr["supply_commodity_bundled"]["monthly_rates"],
     },
 }
-rate_hp = with_winter_rates(rate1, WINTER_DIST, WINTER_TX, WINTER_KEYS)
-
-_icos = extract_tariff_rates(
-    load_tariff_json(STATE, UTILITY, "ct_eversource_icos_fair_seasonal", RDP_REF)
-)
-_icos_winter = min(_icos["period_rates"].values())
-assert abs((WINTER_DIST + WINTER_TX) - _icos_winter) < 1e-5
-
 _core = float(_already["core_delivery_rate"]["monthly_rates"]["2025-01"])
 _dist_with_riders = float(rate1["Distribution"]["monthly_rates"]["2025-01"])
 _riders = _dist_with_riders - _core
@@ -181,133 +181,29 @@ rate_hp_tx_label = f"{WINTER_TX * 100:.3f}"
 assert rate_hp_dist_energy_label == "3.533"
 assert rate_hp_tx_label == "1.258"
 
-def _segment_for(upgrade: str) -> str:
-    """CAIRO segment for one ResStock upgrade, checked against the upgrade stored on the run."""
-    stage = {"00": "precalc", "02": "calibrated"}[upgrade]
-    segment = segment_name(SCENARIO, stage)
-    found = segment_upgrade(STATE, BATCH, segment)
-    if found != int(upgrade):
-        raise RuntimeError(f"Segment {segment} is upgrade {found}, expected {int(upgrade)}")
-    return segment
+_segment_00 = segment_name(SCENARIO, "precalc")
+_found = segment_upgrade(STATE, BATCH, _segment_00)
+if _found != 0:
+    raise RuntimeError(f"Segment {_segment_00} is upgrade {_found}, expected 0")
 
-
-def _matched_weights(weights: pl.DataFrame, kwh: pl.LazyFrame) -> pl.DataFrame:
-    """Cast building ids to the load file's type and require every building to have a curve."""
-    id_dtype = kwh.select("bldg_id").head(1).collect()["bldg_id"].dtype
-    weights = weights.with_columns(pl.col("bldg_id").cast(id_dtype))
-    matched = (
-        kwh.select("bldg_id")
-        .unique()
-        .join(weights.lazy().select("bldg_id"), on="bldg_id", how="inner")
-        .select(pl.len().alias("n"))
-        .collect()
-    )
-    n = int(matched["n"][0])
-    if n != weights.height:
-        raise RuntimeError(f"Load curves matched {n} of {weights.height} buildings")
-    return weights
-
-
-def _summarize(monthly: pl.DataFrame, weights: pl.DataFrame) -> dict:
-    """Weighted-average bill and the cent-rounded Rate HP decrease for one population."""
-    presented = presented_bills(
-        {"rate1": annual_bill(monthly, rate1), "rate_hp": annual_bill(monthly, rate_hp)},
-        BILL_ORDER,
-    )
-    if presented["decrease"]["Customer Charge"] != 0.0 or presented["decrease"]["Generation"] != 0.0:
-        raise RuntimeError("Rate HP changed the customer charge or the generation charge")
-    if presented["decrease"]["Total"] != round(
-        presented["decrease"]["Distribution"] + presented["decrease"]["Transmission"], 2
-    ):
-        raise RuntimeError("the decrease does not add")
-    return {
-        "n_buildings": weights.height,
-        "annual_kwh": float(monthly["kwh"].sum()),
-        "winter_kwh": float(monthly.filter(pl.col("month_label").is_in(WINTER_MONTHS))["kwh"].sum()),
-        "bills": presented,
-        "dec_dist": presented["decrease"]["Distribution"],
-        "dec_tx": presented["decrease"]["Transmission"],
-        "dec_total": presented["decrease"]["Total"],
-        "customers": float(weights["weight"].sum()),
-    }
-
-
-# Every customer on Rate HP, existing or new, is billed as the direct testimony's representative
-# heat pump customer: Eversource homes heated with natural gas, fuel oil, or propane in the baseline
-# (as in notebooks/representative_home.qmd), on their upgrade 02 load.
-_segment_00 = _segment_for("00")
-_segment_02 = _segment_for("02")
-_fossil = cast(
-    pl.DataFrame,
-    load_master_bills(STATE, BATCH, _segment_00)
-    .filter(
-        (pl.col("month") == "Annual")
-        & (pl.col("sb.electric_utility") == UTILITY)
-        & (pl.col("heats_with_natgas") | pl.col("heats_with_oil") | pl.col("heats_with_propane"))
-    )
-    .select("bldg_id", "weight")
-    .unique(subset=["bldg_id"])
-    .collect(),
-)
-_kwh_hp = load_billing_kwh_8760(STATE, UTILITY, BATCH, _segment_02)
-_weights_hp = _matched_weights(_fossil, _kwh_hp)
-_monthly_hp = weighted_avg_monthly(_kwh_hp, _weights_hp["bldg_id"].to_list(), _weights_hp)
-home = _summarize(_monthly_hp, _weights_hp)
-for _key, _value in (("annual_kwh_after", home["annual_kwh"]), ("kwh_winter_after", home["winter_kwh"])):
-    _testimony = float(_rep_home[f"all_fossil_{_key}"])
-    if abs(_value - _testimony) > 0.5:
-        raise RuntimeError(f"{_key} is {_value:,.1f}, the testimony's home has {_testimony:,.1f}")
-
-n_bldg = home["n_buildings"]
-annual_kwh = home["annual_kwh"]
-winter_kwh = home["winter_kwh"]
-dec_dist = home["dec_dist"]
-dec_tx = home["dec_tx"]
-dec_total = home["dec_total"]
-# One home for both groups. CIEC-3 and CIEC-6 read the existing and new decreases separately.
-n_bldg_new, annual_kwh_new, winter_kwh_new = n_bldg, annual_kwh, winter_kwh
-new_dec_dist, new_dec_tx, new_dec_total = dec_dist, dec_tx, dec_total
-
-bill_table_md = bill_table(home["bills"], BILL_ORDER)
 enrollment_table_md = enrollment_table(floor_enrolled, ceiling_enrolled)
-floor_reduction_table_md = cohort_reduction_table(
-    floor_enrolled, dec_dist, dec_tx, new_dec_dist, new_dec_tx
-)
-ceiling_reduction_table_md = cohort_reduction_table(
-    ceiling_enrolled, dec_dist, dec_tx, new_dec_dist, new_dec_tx
-)
-
-
-def _rate_year_revenue(enrolled: list[tuple[int, int]]) -> list[dict[str, float]]:
-    """Revenue reduction for each rate year. The first enrollment point is the 2026 stock."""
-    return cohort_revenue_rows(enrolled, dec_dist, dec_tx, new_dec_dist, new_dec_tx)[1:]
-
-
-floor_revenue = _rate_year_revenue(floor_enrolled)
-ceiling_revenue = _rate_year_revenue(ceiling_enrolled)
-if [int(row["year"]) for row in floor_revenue] != YEARS:
-    raise RuntimeError(f"floor revenue years {[int(row['year']) for row in floor_revenue]} != {YEARS}")
-if [int(row["year"]) for row in ceiling_revenue] != YEARS:
-    raise RuntimeError(f"ceiling revenue years {[int(row['year']) for row in ceiling_revenue]} != {YEARS}")
+floor_net_revenue = net_revenue_rows(floor_enrolled, dec_dist, dec_tx, inc_dist, inc_tx)
+ceiling_net_revenue = net_revenue_rows(ceiling_enrolled, dec_dist, dec_tx, inc_dist, inc_tx)
+if [int(row["year"]) for row in floor_net_revenue] != YEARS:
+    raise RuntimeError(f"floor years {[int(row['year']) for row in floor_net_revenue]} != {YEARS}")
 
 # CIEC-3 reads this cache instead of recomputing the bill and the enrollment bounds.
 _ciec_1_vars = {
     "dec_dist": dec_dist,
     "dec_tx": dec_tx,
     "dec_total": dec_total,
-    "new_dec_dist": new_dec_dist,
-    "new_dec_tx": new_dec_tx,
-    "new_dec_total": new_dec_total,
-    "n_bldg": n_bldg,
-    "annual_kwh": annual_kwh,
-    "winter_kwh": winter_kwh,
-    "n_bldg_new": n_bldg_new,
-    "annual_kwh_new": annual_kwh_new,
-    "winter_kwh_new": winter_kwh_new,
+    "inc_dist": inc_dist,
+    "inc_tx": inc_tx,
+    "inc_total": inc_total,
     "years": YEARS,
     "rate_year_customers": rate_year_customers,
-    "floor_revenue": floor_revenue,
-    "ceiling_revenue": ceiling_revenue,
+    "floor_net_revenue": floor_net_revenue,
+    "ceiling_net_revenue": ceiling_net_revenue,
     "rate1_dist": _dist_with_riders,
     "rate1_tx": _tx,
     "rate1_delivery": rate1_delivery,
@@ -369,18 +265,15 @@ print(enrollment_table_md)
 
 In November through March, Rate HP lowers distribution from `{python} rate1_dist_energy_label` ¢/kWh to `{python} rate_hp_dist_energy_label` ¢/kWh and transmission from `{python} rate1_tx_label` ¢/kWh to `{python} rate_hp_tx_label` ¢/kWh. Summer rates, riders, generation, and the customer charge stay at Rate 1.
 
-A customer on Rate HP would pay **`{python} dollar(dec_total, accuracy=2)`** less per year than under Rate 1: **`{python} dollar(dec_dist, accuracy=2)`** in distribution and **`{python} dollar(dec_tx, accuracy=2)`** in transmission. The customer charge and the generation charge are unchanged.
+The revenue impact differs for existing and new heat pump customers:
 
-Every customer, existing or new, is billed as the direct testimony's representative heat pump customer: the weighted-average Eversource home heated with natural gas, fuel oil, or propane in the ResStock baseline, on its load after the heat pump upgrade. It uses `{python} num(annual_kwh)` kWh a year, and `{python} num(winter_kwh)` of those kWh come from November through March. The detailed calculation is shown below.
+- **Existing heat pump customers** already have post-HP loads but are currently on Rate 1. Switching them to Rate HP reduces the revenue the Company collects from each of them by **`{python} dollar(dec_total, accuracy=2)`** per year: **`{python} dollar(dec_dist, accuracy=2)`** in distribution and **`{python} dollar(dec_tx, accuracy=2)`** in transmission.
 
-```{python}
-#| echo: false
-#| output: asis
+- **New heat pump customers** install a heat pump and enroll in Rate HP at the same time. Compared to what they paid the Company on Rate 1 before their retrofit, each of them _increases_ revenue by **`{python} dollar(inc_total, accuracy=2)`** per year: **`{python} dollar(inc_dist, accuracy=2)`** in distribution and **`{python} dollar(inc_tx, accuracy=2)`** in transmission. This is the incremental marginal T&D cost their heat pump imposes — the amount Rate HP is designed to recover.
 
-print(bill_table_md)
-```
+Both figures are for the direct testimony's representative heat pump customer: the weighted-average Eversource home heated with natural gas, fuel oil, or propane in the ResStock baseline.
 
-The existing row is the per-customer revenue reduction times the customers already enrolled, rounded to the dollar. Each later row keeps that amount and adds the same reduction times the cumulative number of new customers who install a heat pump in 2027 through that year, also rounded to the dollar.
+The tables below show revenue reduced by existing customers, revenue increased by new customers, and the net change in each of the first five rate years. All dollar figures are in millions. The floor and ceiling enrollment bounds are from CIEC-1(c).
 
 Floor:
 
@@ -388,7 +281,7 @@ Floor:
 #| echo: false
 #| output: asis
 
-print(floor_reduction_table_md)
+print(net_revenue_table(floor_net_revenue))
 ```
 
 Ceiling:
@@ -397,15 +290,13 @@ Ceiling:
 #| echo: false
 #| output: asis
 
-print(ceiling_reduction_table_md)
+print(net_revenue_table(ceiling_net_revenue))
 ```
-
-Each row is a full year of bills for the customers enrolled by that year. The existing row is included in each of 2027 through 2031.
 
 Assumptions:
 
 - **Timing.** Five rate years, beginning July of 2027 through 2031. Each figure is a full year of bills. A calendar year's installations are assigned to the rate year that begins that July, as in CIEC-1(c). EnergizeCT installations through 2026 to date are included in the existing-customer count.
-- **Load.** Every customer is billed as the weighted-average Eversource home heated with natural gas, fuel oil, or propane in the ResStock baseline, on its load after the heat pump upgrade. This is the home the direct testimony uses to set Rate HP. Homes converting from electric resistance, and homes whose heat pump displaces only part of their old system, use fewer winter kWh, so this overstates the reduction for them. The load and the rates are held constant across years.
+- **Per-customer values.** Both the per-existing-customer decrease and the per-new-customer increase come from the representative home in the direct testimony (Exhibit JPV-2). The decrease is the T&D overcharge that Rate HP removes; the increase is the incremental marginal T&D cost. Together they sum to the T&D charge increase under Rate 1. Loads and rates are held constant across years.
 - **Enrollment.** The existing-customer count is from CIEC-1(b), the same at the floor and the ceiling. The new-customer floor and ceiling are from CIEC-1(c). Every heat pump installer enrolls, none opt out, and enrollment persists.
 
 ## CIEC-1(b)
@@ -532,37 +423,20 @@ Assumptions:
 #| echo: false
 #| output: false
 
-from lib.rates_analysis.rate_case_funcs import sum_8760_to_monthly, weighted_avg_hourly
 from build_ciec_1a_workbook import (
     DRIVE_FOLDER_ID,
     DRIVE_NAME,
     Case,
     EnrollmentInputs,
     build_workbook,
-    charges_from_groups,
     upload_xlsx,
 )
 
-
-def _hourly_profile(kwh: pl.LazyFrame, weights: pl.DataFrame, monthly: pl.DataFrame) -> pl.DataFrame:
-    """Weighted-average hours. Their monthly sum has to match the bill."""
-    hourly = weighted_avg_hourly(kwh, weights["bldg_id"].to_list(), weights)
-    summed = sum_8760_to_monthly(hourly)
-    check = monthly.join(summed, on="month_label", suffix="_hourly")
-    gap = max(float(value) for value in (check["kwh"] - check["kwh_hourly"]).abs().to_list())
-    if hourly.height != 8760 or gap > 1e-6:
-        raise RuntimeError(f"hourly average is {hourly.height} hours and differs from the monthly bill by {gap}")
-    return hourly
-
-
-_hourly = _hourly_profile(_kwh_hp, _weights_hp, _monthly_hp)
 _case = Case(
-    hourly=_hourly,
-    charges=charges_from_groups(_already, _drr, _srr),
-    winter_dist=WINTER_DIST,
-    winter_tx=WINTER_TX,
-    n_buildings=_weights_hp.height,
-    total_weight=float(_weights_hp["weight"].sum()),
+    dec_dist=dec_dist,
+    dec_tx=dec_tx,
+    inc_dist=inc_dist,
+    inc_tx=inc_tx,
     enrollment=EnrollmentInputs(
         energizect=[
             (str(row["heat_pump_type"]), int(row["installations"]), float(row["systems_per_home"]))

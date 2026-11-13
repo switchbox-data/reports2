@@ -137,8 +137,10 @@ def group_revenue(customers: int, dec_dist: float, dec_tx: float) -> dict[str, f
         "customers": float(customers),
         "distribution": dist,
         "transmission": tx,
+        "total": dist + tx,
         "distribution_5": dist * 5,
         "transmission_5": tx * 5,
+        "total_5": (dist + tx) * 5,
     }
 
 
@@ -422,6 +424,78 @@ def cohort_revenue_rows(
             }
         )
     return rows
+
+
+def net_revenue_rows(
+    enrolled: Sequence[tuple[int, int]],
+    dec_dist: float,
+    dec_tx: float,
+    inc_dist: float,
+    inc_tx: float,
+) -> list[dict[str, float]]:
+    """Revenue reduced (existing), increased (new), and net for each rate year.
+
+    The first point in ``enrolled`` is the stock already enrolled — all existing
+    customers. Later points add new customers. Existing customers *reduce*
+    revenue (they switch from Rate 1 to Rate HP, post-HP loads, paying less).
+    New customers *increase* revenue (they switch from pre-HP Rate 1 to post-HP
+    Rate HP, paying more). Each group's dollars are rounded, then the net is
+    the difference.
+
+    Skips the first enrollment point (the pre-Rate-Year stock). Returns one row
+    per rate year.
+    """
+    if len(enrolled) < 2:
+        raise ValueError("enrolled needs at least the starting stock and one rate year")
+    existing_n = int(enrolled[0][1])
+    rows: list[dict[str, float]] = []
+    for year, customers in enrolled[1:]:
+        new_n = int(customers) - existing_n
+        if new_n < 0:
+            raise ValueError(f"{year} has {int(customers)} customers, below the starting stock of {existing_n}")
+        reduced_dist = float(round(existing_n * dec_dist))
+        reduced_tx = float(round(existing_n * dec_tx))
+        increased_dist = float(round(new_n * inc_dist))
+        increased_tx = float(round(new_n * inc_tx))
+        rows.append(
+            {
+                "year": float(year),
+                "existing_customers": float(existing_n),
+                "new_customers": float(new_n),
+                "reduced_dist": reduced_dist,
+                "reduced_tx": reduced_tx,
+                "increased_dist": increased_dist,
+                "increased_tx": increased_tx,
+                "net_dist": increased_dist - reduced_dist,
+                "net_tx": increased_tx - reduced_tx,
+            }
+        )
+    return rows
+
+
+def net_revenue_table(rows: list[dict[str, float]]) -> str:
+    """Markdown table of revenue reduced / increased / net from ``net_revenue_rows``."""
+    lines = [
+        "| Rate year | Existing customers | New customers | Revenue reduced, distribution | Revenue reduced, transmission | Revenue increased, distribution | Revenue increased, transmission | Net change, distribution | Net change, transmission |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+
+    def _m(x: float) -> str:
+        return f"{x / 1e6:,.1f}"
+
+    for r in rows:
+        lines.append(
+            f"| {int(r['year'])} "
+            f"| {int(r['existing_customers']):,} "
+            f"| {int(r['new_customers']):,} "
+            f"| {_m(r['reduced_dist'])} "
+            f"| {_m(r['reduced_tx'])} "
+            f"| {_m(r['increased_dist'])} "
+            f"| {_m(r['increased_tx'])} "
+            f"| {_m(r['net_dist'])} "
+            f"| {_m(r['net_tx'])} |"
+        )
+    return "\n".join(lines)
 
 
 def cohort_reduction_table(

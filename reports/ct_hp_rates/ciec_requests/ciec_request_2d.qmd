@@ -1,0 +1,202 @@
+---
+title: "CIEC-2(d): RDM and TAC Impact of Rate HP on Non-Residential Classes"
+subtitle: "Docket No. 26-05-10"
+author: "Conservation Law Foundation and Sierra Club"
+date: 2026-11-13
+bibliography: ../../references.yaml
+csl: ../../chicago-author-date-switchbox.csl
+reference-location: margin
+citation-location: document
+execute:
+  warning: false
+  message: false
+format:
+  html:
+    theme: ../../.style/switchbox.scss
+    page-layout: article
+    toc: false
+---
+
+```{python}
+#| echo: false
+
+"""
+Compute the per-year RDM and TAC impact of existing-customer enrollment
+in Rate HP on non-residential classes.
+
+Only *existing* HP customers (switching from Rate 1 to Rate HP with
+unchanged kWh) create an under-collection.  New HP customers create an
+over-collection.  This notebook quantifies the non-residential share
+of the existing-customer under-collection under the Company's
+company-wide RDM and TAC reconciliation mechanisms.
+"""
+
+from __future__ import annotations
+
+import pickle
+from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Load caches
+# ---------------------------------------------------------------------------
+c1_raw = pickle.loads(Path("../cache/ciec_1_vars.pkl").read_bytes())
+c13_raw = pickle.loads(Path("../cache/ciec_13_vars.pkl").read_bytes())
+
+# Per-customer revenue decrease when an existing HP customer moves
+# from Rate 1 to Rate HP (same kWh, lower winter rate).
+dec_dist: float = c1_raw["dec_dist"]
+dec_tx: float = c1_raw["dec_tx"]
+dec_total: float = dec_dist + dec_tx
+
+# Per-customer T&D revenue increase when a new HP customer enrolls in
+# Rate HP at install time (more kWh overwhelms lower rate).
+# From the overpayment notebook: the mean T&D bill delta per new HP customer.
+mean_bill_delta_new: float = c13_raw["mean_bill_delta"]
+
+# Enrollment counts.
+existing_customers: int = int(c1_raw["existing_customers"])
+YEARS: list[int] = c1_raw["years"]
+floor_enrolled: list = c1_raw["floor_enrolled"]
+ceiling_enrolled: list = c1_raw["ceiling_enrolled"]
+
+# Rate Year billed sales (MWh) — the RDM denominator.
+# From Exhibit CLP-RATES-2 at 3 (CLP-RATES-2.1).
+RATE1_MWH = 8_716_958.14
+RATE5_MWH = 1_593_008.20
+RATE7_MWH = 9_126.89
+RDM_TOTAL_MWH = 20_457_507
+residential_mwh = RATE1_MWH + RATE5_MWH + RATE7_MWH
+nonres_kwh_share = 1 - residential_mwh / RDM_TOTAL_MWH
+nonres_mwh = RDM_TOTAL_MWH - residential_mwh
+
+# TAC allocation: demand at the Company's 12 monthly system peaks.
+# From Docket 26-01-03, CL&P Rates Filing, Attachment 1, Exhibit 4 at 4.
+TAC_TOTAL_KW = 3_785_696.4
+TAC_RES_KW = 1_652_552.5 + 338_287.6  # Rates 1+7, Rate 5
+nonres_demand_share = 1 - TAC_RES_KW / TAC_TOTAL_KW
+
+# ---------------------------------------------------------------------------
+# Per-year impact: existing-customer shortfall on non-residential classes
+# ---------------------------------------------------------------------------
+# Under auto-enrollment, all existing HP customers enroll in Year 1.
+# The shortfall is the same every year (no new existing customers after that).
+
+# Distribution: RDM leak to non-residential classes.
+annual_dist_shortfall = existing_customers * dec_dist
+nonres_dist_shortfall = annual_dist_shortfall * nonres_kwh_share
+rdm_impact_per_kwh = annual_dist_shortfall / (RDM_TOTAL_MWH * 1000)
+
+# Transmission: TAC leak to non-residential classes.
+annual_tx_shortfall = existing_customers * dec_tx
+nonres_tx_shortfall = annual_tx_shortfall * nonres_demand_share
+
+# Total.
+annual_total_shortfall = annual_dist_shortfall + annual_tx_shortfall
+nonres_total_shortfall = nonres_dist_shortfall + nonres_tx_shortfall
+
+# ---------------------------------------------------------------------------
+# Build year-by-year table
+# ---------------------------------------------------------------------------
+rows = []
+for i, year in enumerate(YEARS):
+    n_existing = existing_customers
+
+    n_new_floor = int(floor_enrolled[i + 1][1]) - existing_customers
+    n_new_ceiling = int(ceiling_enrolled[i + 1][1]) - existing_customers
+
+    # Distribution shortfall from existing (same every year).
+    dist_short = n_existing * dec_dist
+    tx_short = n_existing * dec_tx
+
+    # Non-residential share of existing-customer shortfall.
+    nonres_dist = dist_short * nonres_kwh_share
+    nonres_tx = tx_short * nonres_demand_share
+
+    # RDM per-kWh impact from existing-customer shortfall.
+    rdm_cents = dist_short / (RDM_TOTAL_MWH * 1000) * 100
+
+    # New-customer over-collection (for context).
+    new_over_floor = n_new_floor * mean_bill_delta_new
+    new_over_ceiling = n_new_ceiling * mean_bill_delta_new
+
+    rows.append({
+        "year": year,
+        "existing_customers": n_existing,
+        "new_customers_floor": n_new_floor,
+        "new_customers_ceiling": n_new_ceiling,
+        "dist_shortfall": dist_short,
+        "tx_shortfall": tx_short,
+        "total_shortfall": dist_short + tx_short,
+        "nonres_dist_shortfall": nonres_dist,
+        "nonres_tx_shortfall": nonres_tx,
+        "nonres_total_shortfall": nonres_dist + nonres_tx,
+        "rdm_cents_per_kwh": rdm_cents,
+        "new_over_floor": new_over_floor,
+        "new_over_ceiling": new_over_ceiling,
+    })
+
+# ---------------------------------------------------------------------------
+# Export report variables
+# ---------------------------------------------------------------------------
+report_vars: dict = {
+    "existing_customers": existing_customers,
+    "dec_dist": dec_dist,
+    "dec_tx": dec_tx,
+    "dec_total": dec_total,
+    "mean_bill_delta_new": mean_bill_delta_new,
+    "annual_dist_shortfall": annual_dist_shortfall,
+    "annual_tx_shortfall": annual_tx_shortfall,
+    "annual_total_shortfall": annual_total_shortfall,
+    "nonres_dist_shortfall": nonres_dist_shortfall,
+    "nonres_tx_shortfall": nonres_tx_shortfall,
+    "nonres_total_shortfall": nonres_total_shortfall,
+    "nonres_kwh_share": nonres_kwh_share,
+    "nonres_demand_share": nonres_demand_share,
+    "rdm_impact_per_kwh": rdm_impact_per_kwh,
+    "rdm_impact_cents_per_kwh": rdm_impact_per_kwh * 100,
+    "rdm_total_mwh": RDM_TOTAL_MWH,
+    "years": YEARS,
+    "rows": rows,
+}
+
+Path("../cache/ciec_2d_vars.pkl").write_bytes(pickle.dumps(report_vars))
+
+# ---------------------------------------------------------------------------
+# Build and upload Excel workbook
+# ---------------------------------------------------------------------------
+from build_ciec_2d_workbook import (
+    DRIVE_FOLDER_ID,
+    DRIVE_NAME,
+    Inputs,
+    build_workbook,
+    upload_xlsx,
+)
+
+_inp = Inputs(
+    dec_dist=dec_dist,
+    dec_tx=dec_tx,
+    existing_customers=existing_customers,
+    rdm_total_mwh=RDM_TOTAL_MWH,
+    residential_mwh=residential_mwh,
+    tac_total_kw=TAC_TOTAL_KW,
+    tac_res_kw=TAC_RES_KW,
+)
+_wb = build_workbook(_inp)
+_xlsx_path = Path("../cache") / DRIVE_NAME
+_wb.save(_xlsx_path)
+_link = upload_xlsx(_xlsx_path, DRIVE_FOLDER_ID, DRIVE_NAME)
+_xlsx_path.unlink()
+print(f"Uploaded {DRIVE_NAME}: {_link}")
+```
+
+## RDM and TAC impact of Rate HP on non-residential classes
+
+### Existing-customer shortfall
+
+If all `{python} f"{existing_customers:,}"` existing heat pump customers are auto-enrolled in Rate HP in Year 1, the Company would collect `{python} f"${annual_dist_shortfall:,.0f}"` less in annual distribution revenue and `{python} f"${annual_tx_shortfall:,.0f}"` less in transmission revenue — a total of `{python} f"${annual_total_shortfall:,.0f}"` per year.
+
+Under the Company's company-wide RDM (flat ¢/kWh across all classes), approximately `{python} f"{nonres_kwh_share:.1%}"` of the distribution shortfall — `{python} f"${nonres_dist_shortfall:,.0f}"` — would fall on non-residential classes. Under the TAC (allocated by demand at the 12 monthly system peaks), approximately `{python} f"{nonres_demand_share:.1%}"` of the transmission shortfall — `{python} f"${nonres_tx_shortfall:,.0f}"` — would fall on non-residential classes.
+
+The combined non-residential impact is `{python} f"${nonres_total_shortfall:,.0f}"` per year.
+
+The per-kWh RDM adjustment attributable to this shortfall is `{python} f"{rdm_impact_per_kwh * 100:.5f}"` ¢/kWh.

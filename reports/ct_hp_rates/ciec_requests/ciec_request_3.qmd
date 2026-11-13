@@ -27,11 +27,7 @@ from pathlib import Path
 
 import polars as pl
 from ciec_1 import (
-    autoenrolled_increase_table,
-    autoenrolled_increases,
-    autoenrolled_reduction_table,
-    cohort_revenue_rows,
-    enrollment_range,
+    dollar,
     group_revenue,
     num,
     scaled_nonhp_sales,
@@ -43,14 +39,14 @@ from lib.rates_analysis.rate_case_funcs import load_billing_kwh_annual
 _ciec_1_path = Path("../cache/ciec_1_vars.pkl")
 assert _ciec_1_path.exists(), f"Missing {_ciec_1_path} — render ciec_request_1.qmd first"
 ciec_1 = pickle.loads(_ciec_1_path.read_bytes())
-for _key in ("floor_enrolled", "ceiling_enrolled", "rate1_gen_monthly", "new_dec_dist", "new_dec_tx"):
+for _key in ("floor_net_revenue", "ceiling_net_revenue", "rate1_gen_monthly", "inc_dist", "inc_tx"):
     if _key not in ciec_1:
         raise RuntimeError(f"Missing {_key} in {_ciec_1_path} — render ciec_request_1.qmd first")
 
 dec_dist = float(ciec_1["dec_dist"])
 dec_tx = float(ciec_1["dec_tx"])
-new_dec_dist = float(ciec_1["new_dec_dist"])
-new_dec_tx = float(ciec_1["new_dec_tx"])
+inc_dist = float(ciec_1["inc_dist"])
+inc_tx = float(ciec_1["inc_tx"])
 years = [int(year) for year in ciec_1["years"]]
 rate_year_customers = int(ciec_1["rate_year_customers"])
 rate1_dist = float(ciec_1["rate1_dist"])
@@ -88,25 +84,12 @@ if abs(rate1_full - (rate1_dist + rate1_tx + rate1_gen)) > 1e-12:
     raise RuntimeError("volumetric rate is not distribution plus transmission plus generation")
 
 
-def _matches_revenue(enrolled: list[tuple[int, int]], revenue: list[dict[str, float]]) -> None:
-    if [year for year, _customers in enrolled[1:]] != years:
-        raise RuntimeError(f"enrolled years {[year for year, _ in enrolled[1:]]} != {years}")
-    expected = cohort_revenue_rows(enrolled, dec_dist, dec_tx, new_dec_dist, new_dec_tx)[1:]
-    for (year, customers), row, rev in zip(enrolled[1:], revenue, expected, strict=True):
-        if int(row["year"]) != year or int(row["customers"]) != customers:
-            raise RuntimeError(f"{year} enrollment does not match the CIEC-1 revenue row")
-        if row["distribution"] != rev["distribution"] or row["transmission"] != rev["transmission"]:
-            raise RuntimeError(f"{year} revenue does not match the per-customer reduction")
-
-
-_matches_revenue(floor_enrolled, ciec_1["floor_revenue"])
-_matches_revenue(ceiling_enrolled, ciec_1["ceiling_revenue"])
-
 # Non-heat-pump homes are the upgrade-00 buildings. Annual kWh is CAIRO grid
 # consumption, which already includes the rate-year energy calibration. Weight
-# is the ResStock sample weight. The revenue reduction is divided by those kWh
-# after the weights are scaled so they sum to the Rate Year customers who stay
-# off Rate HP. The workpaper lists the homes and applies that scale with formulas.
+# is the ResStock sample weight. The net revenue reduction is divided by those
+# kWh after the weights are scaled so they sum to the Rate Year customers who
+# stay off Rate HP. The workpaper lists the homes and applies that scale with
+# formulas.
 _nonhp_weights = subclass_weights(
     ciec_1["release"], ciec_1["state"], ciec_1["utility"], ciec_1["upgrade"], has_hp=False
 )
@@ -128,58 +111,69 @@ stock_customers = hp_customers + raw_nonhp_customers
 
 floor_existing = int(floor_enrolled[0][1])
 ceiling_existing = int(ceiling_enrolled[0][1])
-_steps = enrollment_range(floor_existing, ceiling_existing)
-_sales = [
-    scaled_nonhp_sales(raw_nonhp_customers, raw_nonhp_kwh, rate_year_customers, customers)
-    for _label, customers in _steps
-]
-_sales_kwh = [sale["kwh"] for sale in _sales]
-_sales_customers = [sale["customers"] for sale in _sales]
-reduction_table_md = autoenrolled_reduction_table(floor_existing, ceiling_existing, dec_dist, dec_tx)
-increase_table_md = autoenrolled_increase_table(
-    floor_existing,
-    ceiling_existing,
-    dec_dist,
-    dec_tx,
-    _sales_kwh,
-    td_rate=rate1_delivery,
-    full_rate=rate1_full,
-    nonhp_customers=_sales_customers,
-)
-increases = autoenrolled_increases(
-    floor_existing,
-    ceiling_existing,
-    dec_dist,
-    dec_tx,
-    _sales_kwh,
-    nonhp_customers=_sales_customers,
-)
-for _row, _sale in zip(increases, _sales, strict=True):
-    if _row["nonhp_kwh"] != _sale["kwh"] or _row["nonhp_customers"] != _sale["customers"]:
-        raise RuntimeError(f"{_row['label']} sales do not match the scaled non-HP weights")
-    _row["scale"] = _sale["scale"]
+
+# Existing-customer shortfall (the same at the floor and the ceiling).
+existing_reduction = group_revenue(floor_existing, dec_dist, dec_tx)
+
+# Net revenue by year. Each row has reduced (existing) and increased (new).
+floor_net = ciec_1["floor_net_revenue"]
+ceiling_net = ciec_1["ceiling_net_revenue"]
 
 
-def _bound_rates(row: dict) -> dict[str, float]:
-    total = float(row["per_kwh"])
+def _year_per_kwh(net_row: dict[str, float]) -> dict[str, float]:
+    """Per-kWh increase for one (year, bound) pair from the net revenue rows."""
+    total_enrolled = int(net_row["existing_customers"]) + int(net_row["new_customers"])
+    net_reduction_dist = -float(net_row["net_dist"])
+    net_reduction_tx = -float(net_row["net_tx"])
+    sales = scaled_nonhp_sales(raw_nonhp_customers, raw_nonhp_kwh, rate_year_customers, total_enrolled)
+    per_kwh_dist = net_reduction_dist / sales["kwh"]
+    per_kwh_tx = net_reduction_tx / sales["kwh"]
+    per_kwh_total = per_kwh_dist + per_kwh_tx
     return {
-        "dist": float(row["distribution_per_kwh"]),
-        "tx": float(row["transmission_per_kwh"]),
-        "total": total,
-        "pct_of_td": total / rate1_delivery,
+        "year": float(net_row["year"]),
+        "existing_customers": net_row["existing_customers"],
+        "new_customers": net_row["new_customers"],
+        "total_enrolled": float(total_enrolled),
+        "net_reduction_dist": net_reduction_dist,
+        "net_reduction_tx": net_reduction_tx,
+        "nonhp_customers": sales["customers"],
+        "nonhp_kwh": sales["kwh"],
+        "scale": sales["scale"],
+        "per_kwh_dist": per_kwh_dist,
+        "per_kwh_tx": per_kwh_tx,
+        "per_kwh_total": per_kwh_total,
+        "pct_of_td": per_kwh_total / rate1_delivery,
     }
 
 
-floor_nonhp_customers = int(round(increases[0]["nonhp_customers"]))
-ceiling_nonhp_customers = int(round(increases[-1]["nonhp_customers"]))
-floor_nonhp_kwh = float(increases[0]["nonhp_kwh"])
-ceiling_nonhp_kwh = float(increases[-1]["nonhp_kwh"])
+floor_years = [_year_per_kwh(row) for row in floor_net]
+ceiling_years = [_year_per_kwh(row) for row in ceiling_net]
 
-# CIEC-6 reads the per-row charges, the ResStock-weight homes, and the Rate Year count.
+# Use 2031 (year 4) as the single-year default for prose variables.
+# The per-kWh increase changes very slightly across years; 2031 is the largest.
+_y0 = 4
+floor_nonhp_customers = int(round(floor_years[_y0]["nonhp_customers"]))
+ceiling_nonhp_customers = int(round(ceiling_years[_y0]["nonhp_customers"]))
+floor_nonhp_kwh = float(floor_years[_y0]["nonhp_kwh"])
+ceiling_nonhp_kwh = float(ceiling_years[_y0]["nonhp_kwh"])
+
+
+def _per_kwh_dict(row: dict[str, float]) -> dict[str, float]:
+    return {
+        "dist": float(row["per_kwh_dist"]),
+        "tx": float(row["per_kwh_tx"]),
+        "total": float(row["per_kwh_total"]),
+        "pct_of_td": float(row["pct_of_td"]),
+    }
+
+
+# CIEC-6 reads the year-by-year data for the mean bill impact.
 # ciec_responses.qmd reads the per-kWh bounds and the scaled sales.
 _ciec_3_vars = {
     "dec_dist": dec_dist,
     "dec_tx": dec_tx,
+    "inc_dist": inc_dist,
+    "inc_tx": inc_tx,
     "floor_existing": floor_existing,
     "ceiling_existing": ceiling_existing,
     "rate_year_customers": rate_year_customers,
@@ -189,10 +183,10 @@ _ciec_3_vars = {
     "ceiling_nonhp_customers": ceiling_nonhp_customers,
     "floor_nonhp_kwh": floor_nonhp_kwh,
     "ceiling_nonhp_kwh": ceiling_nonhp_kwh,
-    "nonhp_buildings": _nonhp_buildings,
-    "increases": increases,
-    "floor_per_kwh": _bound_rates(increases[0]),
-    "ceiling_per_kwh": _bound_rates(increases[-1]),
+    "floor_years": floor_years,
+    "ceiling_years": ceiling_years,
+    "floor_per_kwh": _per_kwh_dict(floor_years[_y0]),
+    "ceiling_per_kwh": _per_kwh_dict(ceiling_years[_y0]),
     "nonhp_n": nonhp_n,
     "rate1_delivery": rate1_delivery,
 }
@@ -212,44 +206,66 @@ If any revenue reduction resulting from Rate HP were recovered solely from the r
 
 ### Response
 
-CIEC-1(a) estimates how much less distribution and transmission revenue the Company would collect from heat pump customers on Rate HP than on Rate 1. That estimate counts every customer who would pay less, including customers who install a heat pump in 2027 through 2031.
+CIEC-1(a) estimates how the revenue the Company collects from heat pump customers changes under Rate HP. That estimate shows three components: revenue reduced by existing heat pump customers (who move from Rate 1 to Rate HP), revenue increased by new heat pump customers (who enroll at installation and pay slightly more than they did on Rate 1 before the retrofit), and the net change.
 
-This request asks a different question. If Rate HP left the Company short of its revenue requirement, and that shortfall were recovered only from the residential class, how much would Rate 1 distribution and transmission charges rise.
+This request asks: if the net revenue reduction were recovered only from the residential class, how much would Rate 1 charges rise?
 
-The shortfall is limited to customers the Company already counts on Rate 1 who then move to Rate HP. The revenue requirement was set on the expectation that those customers would pay Rate 1. The direct testimony recommends auto-enrolling existing heat pump customers, so their bills would fall below the Rate 1 amount the Company planned to collect.
+The net reduction is driven almost entirely by the existing heat pump customers. They already have post-heat-pump loads but are currently on Rate 1. Auto-enrolling them in Rate HP reduces the revenue the Company collects from each of them by `{python} dollar(dec_dist + dec_tx, 2)` a year — the T&D overcharge Rate HP removes.
 
-A customer who installs a heat pump later and takes Rate HP would not create that shortfall. Rate HP is calibrated so that a new heat pump customer would pay the embedded-cost revenue requirement and, on top of that, the additional transmission and distribution marginal cost of the heat pump. Revenue from those new customers would cover the revenue requirement, so it would not be recovered from other residential customers here.
+New heat pump customers go in the other direction. Rate HP is calibrated so that a new heat pump customer pays the embedded-cost revenue requirement and, on top of that, `{python} dollar(inc_dist + inc_tx, 2)` in additional transmission and distribution marginal cost. Enrolling them in Rate HP at installation actually _increases_ revenue from each of them by that amount. This partially offsets the existing-customer reduction, though the offset is small.
 
-The figure below displays the total revenue reduction that would occur for a range of existing customers who move to Rate HP. The floor and the ceiling are the existing-customer bounds in CIEC-1(b), including the 2026 installations. The rows between them are 20, 40, 60, and 80 percent of the way from the floor to the ceiling, with the customer count rounded to the customer. Every row uses the same per-customer decrease from CIEC-1(a).
+Existing-customer shortfall: **`{python} num(floor_existing)`** customers × `{python} dollar(dec_dist + dec_tx, 2)` = **`{python} f"${existing_reduction['total'] / 1e6:,.1f}"` million** (`{python} f"${existing_reduction['distribution'] / 1e6:,.1f}"` million distribution, `{python} f"${existing_reduction['transmission'] / 1e6:,.1f}"` million transmission).
 
-```{python}
-#| echo: false
-#| output: asis
-
-print(reduction_table_md)
-```
-
-The customers who would pay the increase are the residential customers who do not move to Rate HP, including both fossil-fuel and electric-resistance customers. Eversource filed **`{python} num(rate_year_customers)`** residential customers for the Rate Year, the average bills rendered for Rates 1, 5, and 7. Each row subtracts the heat pump customers who move. At the floor, **`{python} num(floor_nonhp_customers)`** residential customers would remain. At the ceiling, **`{python} num(ceiling_nonhp_customers)`** would remain.
-
-Their consumption is CAIRO's grid kWh for the ResStock homes without a heat pump. In the ResStock sample those homes stand for **`{python} num(raw_nonhp_customers)`** customers. Each row scales those sample weights so they sum to the customers who remain, and the weighted kWh uses that same scale. Weighted consumption is **`{python} num(floor_nonhp_kwh)`** kWh at the floor and **`{python} num(ceiling_nonhp_kwh)`** kWh at the ceiling. The rows between them scale the same way. The increase in the distribution charge is that row's distribution revenue reduction divided by that weighted kWh, and the same for transmission. The Non-HP customers column is the count the weights were scaled to.
-
-% of T&D is the combined increase divided by today's Rate 1 delivery charge of **`{python} rate1_delivery_label`** ¢/kWh. That charge is the Rate 1 distribution charge of **`{python} rate1_dist_label`** ¢/kWh plus the Rate 1 transmission charge of **`{python} rate1_tx_label`** ¢/kWh.
-
-% of T&D and generation is the combined increase divided by today's Rate 1 volumetric charge of **`{python} rate1_full_label`** ¢/kWh. That rate is the same Rate 1 delivery charge plus the average Rate 1 generation charge of **`{python} rate1_gen_label`** ¢/kWh, so it is Rate 1 distribution, transmission, and generation. The customer charge is monthly and is not included. Generation is **`{python} rate1_gen_jan_jun_label`** ¢/kWh from January through June and **`{python} rate1_gen_jul_dec_label`** ¢/kWh from July through December, and the average is the mean of the twelve monthly rates.
+The table below shows the per-kWh increase for Rate 1 customers in each of the first five rate years, under the low and high estimates of new-customer enrollment from CIEC-1(c). Both start from the same existing-customer count. As new customers accumulate, the offset grows and the per-kWh increase falls, but the effect is small because the per-new-customer increase (`{python} dollar(inc_dist + inc_tx, 2)`) is two orders of magnitude below the per-existing-customer decrease (`{python} dollar(dec_dist + dec_tx, 2)`).
 
 ```{python}
 #| echo: false
 #| output: asis
 
-print(increase_table_md)
+_header = (
+    "| Rate year | Enrolled (total) | Net reduction, dist | Net reduction, tx "
+    "| Non-HP kWh | Per-kWh dist | Per-kWh tx | Per-kWh total | % of T&D |"
+)
+_sep = "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
+
+def _rate_row(r):
+    return (
+        f"| {int(r['year'])} "
+        f"| {int(r['total_enrolled']):,} "
+        f"| ${r['net_reduction_dist'] / 1e6:,.1f}M "
+        f"| ${r['net_reduction_tx'] / 1e6:,.1f}M "
+        f"| {r['nonhp_kwh'] / 1e6:,.0f}M "
+        f"| {r['per_kwh_dist'] * 100:.3f}¢ "
+        f"| {r['per_kwh_tx'] * 100:.3f}¢ "
+        f"| {r['per_kwh_total'] * 100:.3f}¢ "
+        f"| {r['pct_of_td'] * 100:.1f}% |"
+    )
+
+print("Low estimate of new customers:\n")
+print(_header)
+print(_sep)
+for _r in floor_years:
+    print(_rate_row(_r))
+
+print("\nHigh estimate of new customers:\n")
+print(_header)
+print(_sep)
+for _r in ceiling_years:
+    print(_rate_row(_r))
 ```
+
+The customers who would pay the increase are the residential customers who do not take Rate HP, including both fossil-fuel and electric-resistance customers. Eversource filed **`{python} num(rate_year_customers)`** residential customers for the Rate Year, the average bills rendered for Rates 1, 5, and 7. Each year subtracts the total enrolled customers. In 2027, **`{python} num(floor_nonhp_customers)`** residential customers would remain at the floor and **`{python} num(ceiling_nonhp_customers)`** at the ceiling.
+
+Their consumption is CAIRO's grid kWh for the ResStock homes without a heat pump. In the ResStock sample those homes stand for **`{python} num(raw_nonhp_customers)`** customers. Each row scales those sample weights so they sum to the customers who remain, and the weighted kWh uses that same scale. The per-kWh increase is the net revenue reduction divided by those weighted kWh.
+
+% of T&D is the combined per-kWh increase divided by today's Rate 1 delivery charge of **`{python} rate1_delivery_label`** ¢/kWh. That charge is the Rate 1 distribution charge of **`{python} rate1_dist_label`** ¢/kWh plus the Rate 1 transmission charge of **`{python} rate1_tx_label`** ¢/kWh.
 
 Assumptions:
 
-- **What is recovered.** Only the revenue the Company would no longer collect from customers with heat pumps today who move from Rate 1 to Rate HP. Customers who install a heat pump in 2027 through 2031 and take the calibrated Rate HP are not included.
-- **Who pays.** Residential customers who are not on Rate HP, including both fossil-fuel and electric-resistance customers, in proportion to annual kWh. That count is the Rate Year residential customers minus the existing heat pump customers who move. The per-kWh result is the increase in the Rate 1 distribution charge and the Rate 1 transmission charge. Customers on Rate HP are outside that count.
-- **Enrollment.** Floor and ceiling counts of existing customers from CIEC-1(b). Every identified heat pump customer is auto-enrolled, none opt out, and enrollment persists.
-- **Load.** The revenue reduction is the baseline heat-pump decrease from CIEC-1(a). Annual kWh is CAIRO grid consumption for ResStock homes without a heat pump. The sample weights on those homes are scaled so they sum to the customers who remain.
+- **What is recovered.** The net revenue reduction: existing-customer revenue lost minus new-customer revenue gained. This is the shortfall that would need to be collected from Rate 1 customers.
+- **Who pays.** Residential customers who are not on Rate HP, including both fossil-fuel and electric-resistance customers, in proportion to annual kWh. That count is the Rate Year residential customers minus all enrolled customers (existing and new). The per-kWh result is the increase in the Rate 1 distribution charge and the Rate 1 transmission charge.
+- **Enrollment.** Existing customers from CIEC-1(b). New-customer floor and ceiling from CIEC-1(c). Every heat pump installer enrolls, none opt out, and enrollment persists.
+- **Load.** The per-customer values are from the representative-home analysis (Exhibit JPV-2). Annual kWh is CAIRO grid consumption for ResStock homes without a heat pump. The sample weights on those homes are scaled so they sum to the customers who remain.
 
 ```{python}
 #| echo: false
@@ -259,21 +275,19 @@ from build_ciec_1a_workbook import DRIVE_FOLDER_ID, upload_xlsx
 from build_ciec_3_workbook import DRIVE_NAME, RevenueRow, build_workbook
 
 
-def _existing_row(customers: int) -> RevenueRow:
-    rev = group_revenue(customers, dec_dist, dec_tx)
-    return RevenueRow("Existing", customers, rev["distribution"], rev["transmission"])
+def _net_row(nr: dict) -> RevenueRow:
+    total_enrolled = int(nr["existing_customers"]) + int(nr["new_customers"])
+    return RevenueRow(str(int(nr["year"])), total_enrolled, round(-nr["net_dist"]), round(-nr["net_tx"]))
 
 
 _wb = build_workbook(
-    [_existing_row(floor_existing)],
-    [_existing_row(ceiling_existing)],
+    [_net_row(r) for r in floor_net],
+    [_net_row(r) for r in ceiling_net],
     _nonhp_buildings,
     distribution=rate1_dist,
     transmission=rate1_tx,
     generation_monthly=gen_monthly,
     rate_year_customers=rate_year_customers,
-    per_customer_distribution=dec_dist,
-    per_customer_transmission=dec_tx,
 )
 _xlsx_path = Path("../cache") / DRIVE_NAME
 _wb.save(_xlsx_path)

@@ -2,7 +2,7 @@
 source_file: /tmp/CIEC-1a_rate_hp_revenue_reduction.xlsx
 citekey: velez_Docket260510CIEC1_2026
 zotero_item: "UAES8F23"
-public_url: https://drive.google.com/file/d/1_WZ5HHTAvGDxC0uw9ZH-mwN0dbKyhGaH/view
+public_url: https://drive.google.com/file/d/1PpbYFGIe1o-Wqbucw4jIQOzvYSG75kw-/view
 short_url: https://pub.switch.box/velez_Docket260510CIEC1_2026
 md5: "743ee8eddc89072eb117640bc56c1126"
 validated: 2026-11-13

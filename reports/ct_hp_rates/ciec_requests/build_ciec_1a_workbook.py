@@ -93,9 +93,28 @@ def _heading(ws: Worksheet, row: int, text: str) -> None:
     ws.cell(row, 1, text).font = TITLE_FONT
 
 
-def _write_readme(wb: Workbook) -> None:
+def _enrollment_summary(enrollment: EnrollmentInputs) -> dict[str, Any]:
+    """The same arithmetic the enrollment sheet does, so the README can quote concrete numbers."""
+    homes = sum(installations / systems for _, installations, systems in enrollment.energizect)
+    existing = int(homes / 1000 + 0.5) * 1000
+    share = enrollment.eversource_per_thousand / PER_THOUSAND
+    ceiling_new = [statewide * share for statewide in enrollment.statewide_additions]
+    floor_new = [float(enrollment.clm_annual)] * len(enrollment.years)
+    return {
+        "existing": existing,
+        "share_percent": share * 100,
+        "floor_new": floor_new,
+        "ceiling_new": ceiling_new,
+        "floor_total": [existing + sum(floor_new[: i + 1]) for i in range(len(floor_new))],
+        "ceiling_total": [existing + sum(ceiling_new[: i + 1]) for i in range(len(ceiling_new))],
+    }
+
+
+def _write_readme(wb: Workbook, enrollment: EnrollmentInputs) -> None:
     ws = wb.active
     ws.title = "README"
+    e = _enrollment_summary(enrollment)
+    first, last = enrollment.years[0], enrollment.years[-1]
     lines = [
         ("CIEC-1(a) workpaper", True),
         (
@@ -110,15 +129,51 @@ def _write_readme(wb: Workbook) -> None:
         ("", False),
         ("Yellow cells are inputs. Every other number is a formula.", True),
         ("", False),
-        ("enrollment", True),
+        ("enrollment: who is enrolled in Rate HP each year", True),
         (
-            "Customers on Rate HP, from the stock already enrolled through 2031. "
-            "Existing customers are EnergizeCT residential space-heating installations divided by "
-            "systems per home, rounded to the thousand. The same count starts the floor and the ceiling. "
-            "The new floor holds the 2027 forecast flat. "
-            "The new ceiling is the statewide forecast times Eversource's share of Eversource and "
-            "United Illuminating. Cumulative counts add that year's installations and keep everyone "
-            "already enrolled.",
+            "The scenario is that PURA auto-enrolls heat pump customers in Rate HP. Two groups enroll, "
+            "and the sheet counts them separately. Rate years are numbered by the calendar year in which "
+            f"they begin, so Rate Year {first} runs July {first} through June {first + 1}.",
+            False,
+        ),
+        (
+            f"1. Existing heat pump customers ({e['existing']:,}). These customers already have a heat pump "
+            f"and received an Energize CT heat pump rebate before Rate HP takes effect on July 1, {first}. "
+            "They are auto-enrolled all at once, in the first rate year, and stay enrolled. The count starts "
+            "from the residential space-heating heat pump installations on the Energize CT dashboard. Each "
+            "mini-split counts as less than one home, because a home often has more than one outdoor unit "
+            "(123 outdoor units per 90 homes in a 2019 evaluation of 2015\u20132016 mini-split rebate "
+            "participants); every other heat pump type counts as one home. The total is rounded to the "
+            "nearest thousand. The low and high estimates use this same count.",
+            False,
+        ),
+        (
+            f"2. New heat pump customers. These customers install a heat pump in {first} through {last} and "
+            "are enrolled in Rate HP when they install it. The low and high estimates differ in how many "
+            "customers install each year.",
+            False,
+        ),
+        (
+            f"   Low estimate: {enrollment.clm_annual:,} new customers a year. This is the Company's forecast of "
+            f"heat pump installations through its Conservation and Load Management programs for {first}, held "
+            "flat for every later year because the forecast ends there.",
+            False,
+        ),
+        (
+            f"   High estimate: {e['ceiling_new'][0]:,.0f} new customers in {first}, rising to "
+            f"{e['ceiling_new'][-1]:,.0f} in {last}. This is ISO New England's Connecticut-wide forecast of "
+            f"homes adding a heat pump ({enrollment.statewide_additions[0]:,} in {first}, rising to "
+            f"{enrollment.statewide_additions[-1]:,} in {last}), multiplied by Eversource's share of the "
+            f"households served by Eversource and United Illuminating ({e['share_percent']:.1f}%).",
+            False,
+        ),
+        (
+            "Enrolled customers add up year by year. Each year's total is the previous year's total plus "
+            "that year's new customers, because nobody leaves Rate HP. "
+            f"Low estimate: {e['existing']:,} existing + {e['floor_new'][0]:,.0f} new = {e['floor_total'][0]:,.0f} "
+            f"enrolled in {first}, growing to {e['floor_total'][-1]:,.0f} in {last}. "
+            f"High estimate: {e['existing']:,} existing + {e['ceiling_new'][0]:,.0f} new = "
+            f"{e['ceiling_total'][0]:,.0f} enrolled in {first}, growing to {e['ceiling_total'][-1]:,.0f} in {last}.",
             False,
         ),
         ("", False),
@@ -128,7 +183,9 @@ def _write_readme(wb: Workbook) -> None:
             "(Exhibit JPV-2, Section 2). The per-existing-customer decrease is the T&D overcharge "
             "Rate HP removes. The per-new-customer increase is the incremental marginal T&D cost "
             "the heat pump imposes. Revenue reduced is existing customers times the decrease. "
-            "Revenue increased is new customers times the increase. The net is the difference.",
+            "Revenue increased is new customers times the increase. The net is the difference. "
+            "On this sheet, existing customers are the count above, and new customers are the "
+            "cumulative enrolled total minus the existing customers.",
             False,
         ),
     ]
@@ -137,10 +194,8 @@ def _write_readme(wb: Workbook) -> None:
         cell.alignment = WRAP
         if bold:
             cell.font = TITLE_FONT if row == 1 else HEADER_FONT
+        ws.row_dimensions[row].height = 22 if row == 1 else max(15, 15 * -(-len(text) // 110))
     ws.column_dimensions["A"].width = 120
-    ws.row_dimensions[1].height = 22
-    for row in (8, 11):
-        ws.row_dimensions[row].height = 48
 
 
 def _write_enrollment(wb: Workbook, enrollment: EnrollmentInputs) -> dict[str, str]:
@@ -150,12 +205,15 @@ def _write_enrollment(wb: Workbook, enrollment: EnrollmentInputs) -> dict[str, s
         ws,
         2,
         1,
-        "The existing row is the stock in place when Rate HP takes effect. "
-        "Each later row adds that year's installations and keeps everyone already enrolled.",
+        "Two groups enroll in Rate HP. Existing heat pump customers are auto-enrolled all at once when "
+        "Rate HP takes effect. New customers enroll in the year they install a heat pump. "
+        "The low estimate (floor) and high estimate (ceiling) differ only in how many new customers "
+        "install each year. The cumulative table at the bottom adds each year's new customers to "
+        "everyone already enrolled.",
         wrap=True,
     )
     ws.merge_cells("A2:D2")
-    ws.row_dimensions[2].height = 32
+    ws.row_dimensions[2].height = 64
 
     _put(ws, 4, 1, "Existing customers (EnergizeCT residential space-heating installations)", bold=True)
     for col, header in enumerate(["Heat pump type", "Installations", "Systems per home", "Homes"], start=1):
@@ -210,8 +268,10 @@ def _write_enrollment(wb: Workbook, enrollment: EnrollmentInputs) -> dict[str, s
         _put(ws, row, 3, note, wrap=True)
 
     new_header = share_row + 2
-    _put(ws, new_header, 1, "New installations", bold=True)
-    for col, header in enumerate(["Year", "Statewide additions", "Floor", "Ceiling"], start=1):
+    _put(ws, new_header, 1, "New customers enrolling each year (installing a heat pump that year)", bold=True)
+    for col, header in enumerate(
+        ["Year", "Statewide additions", "Low estimate (floor)", "High estimate (ceiling)"], start=1
+    ):
         _put(ws, new_header + 1, col, header, bold=True)
     first_new = new_header + 2
     for i, (year, statewide) in enumerate(zip(enrollment.years, enrollment.statewide_additions, strict=True)):
@@ -229,14 +289,20 @@ def _write_enrollment(wb: Workbook, enrollment: EnrollmentInputs) -> dict[str, s
     )
 
     cum_header = first_new + len(enrollment.years) + 2
-    _put(ws, cum_header - 1, 1, "Cumulative customers", bold=True)
-    for col, header in enumerate(["Year", "Floor", "Ceiling"], start=1):
+    _put(ws, cum_header - 1, 1, "Cumulative customers enrolled in Rate HP", bold=True)
+    for col, header in enumerate(["Year", "Low estimate (floor)", "High estimate (ceiling)"], start=1):
         _put(ws, cum_header, col, header, bold=True)
     existing_row = cum_header + 1
     _put(ws, existing_row, 1, enrollment.years[0] - 1, fmt="0")
     _put(ws, existing_row, 2, f"=$D${existing}", fmt=FMT_COUNT)
     _put(ws, existing_row, 3, f"=$D${existing}", fmt=FMT_COUNT)
-    _put(ws, existing_row, 4, "Existing stock, the same at the floor and the ceiling.", wrap=True)
+    _put(
+        ws,
+        existing_row,
+        4,
+        "Existing customers only, enrolled when Rate HP takes effect. The same in the low and high estimates.",
+        wrap=True,
+    )
     for i in range(len(enrollment.years)):
         row = existing_row + 1 + i
         new_row = first_new + i
@@ -385,7 +451,7 @@ def _write_revenue(
 
 def build_workbook(case: Case) -> Workbook:
     wb = Workbook()
-    _write_readme(wb)
+    _write_readme(wb, case.enrollment)
     enrollment = _write_enrollment(wb, case.enrollment)
     _write_revenue(wb, case, enrollment)
     return wb

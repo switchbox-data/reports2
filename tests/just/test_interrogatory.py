@@ -164,6 +164,18 @@ def test_reworded_question_is_reported_with_the_point_of_divergence() -> None:
     assert "CIEC-1" in problems[0] and "give the estimate" in problems[0] and "provide the estimate" in problems[0]
 
 
+def test_question_parts_as_divs_still_match_extract() -> None:
+    # Question parts are wrapped in part divs; the fence lines are markup, not request text.
+    body = BODY.replace(
+        "a. Please provide the estimate.\nb. Please explain _why_ not.",
+        ':::: {.part label="a."}\nPlease provide the estimate.\n::::\n\n'
+        ':::: {.part label="b."}\nPlease explain _why_ not.\n::::',
+    )
+    responses, problems = ir.parse_body(_qmd(body=body))
+    assert problems == []
+    assert ir.verify_questions(responses, EXTRACT) == []
+
+
 # ---------------------------------------------------------------------------
 # Citations in the responses
 # ---------------------------------------------------------------------------
@@ -207,6 +219,19 @@ def test_citation_key_and_page_abbreviation_are_reported_in_footnotes_too() -> N
     assert any("never p., pp. or PDF p." in p for p in problems)
 
 
+def test_citation_check_keeps_reading_after_a_nested_part() -> None:
+    # A response's parts are nested divs. Closing the first part must not end the
+    # response for the citation check, or everything after it goes unchecked.
+    text = (
+        "::: {.response}\n\n"
+        ':::: {.part label="a."}\nFirst part, cleanly written.\n::::\n\n'
+        ':::: {.part label="b."}\nSecond part cites Velez Direct at 14:5 inline.\n::::\n'
+        ":::\n"
+    )
+    problems = ir.check_citations(_qmd(body=f"\n## CIEC-1\n\n{text}"))
+    assert any("move it to a footnote" in p and "CIEC-1" in p for p in problems)
+
+
 def test_footnote_problems_are_reported() -> None:
     text = (
         "a. First.[^a] Again.[^a] Missing.[^c]\n\n"
@@ -248,15 +273,17 @@ def test_header_has_label_and_section_page_count() -> None:
     xml_text = ir.header_xml(f, "CIEC-7")
     xml.dom.minidom.parseString(xml_text)  # well-formed
     plain = re.sub(r"<[^>]+>", "|", xml_text)
+    assert "DRAFT" not in plain  # the DRAFT mark is a watermark shape, not header text
+    assert 'string="DRAFT"' in xml_text
+    assert "rotation:315" in xml_text and "mso-position-horizontal-relative:margin" in xml_text
     for expected in (
-        "DRAFT FOR COUNSEL REVIEW",
         "Conservation Law Foundation and Sierra Club",
         "PURA Docket No. 26-05-10",
-        "Set CIEC-02",
-        "Date Issued: October 29, 2026",
         "CIEC-7",
     ):
         assert expected in plain
+    assert "Date Issued" not in plain  # date issued is in the caption block, not the header
+    assert "Set CIEC-02" not in plain  # the set label is not printed in the header
     assert " PAGE " in xml_text and " SECTIONPAGES " in xml_text
     final = ir.parse_fields(
         {**_meta(_qmd()), "interrogatory_responses": {**_meta(_qmd())["interrogatory_responses"], "draft": False}}
@@ -294,7 +321,9 @@ def test_render_combined_and_split(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert "CIEC-2" in re.sub(r"<[^>]+>", "", headers["word/headerIR2.xml"])
     text = re.sub(r"<[^>]+>", " ", document)
     assert "Someone Else" in text and "Juan-Pablo Velez" in text
+    assert "Date Issued:" in text and "October 29, 2026" in text
     assert "Date Filed:" in text and "November 12, 2026" in text
+    assert "Question CIEC-1:" in text and "Question CIEC-2:" in text
 
     files = ir.render(qmd, split=True)
     assert [p.name for p in files] == ["CT 26-05-10_CIEC-1 Response.docx", "CT 26-05-10_CIEC-2 Response.docx"]

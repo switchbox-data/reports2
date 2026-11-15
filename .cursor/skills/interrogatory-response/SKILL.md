@@ -31,26 +31,39 @@ before assuming the Connecticut format, and add a `<state>.md` here when you lea
    extract and `expected_responses` to the count.
 3. **Copy in the questions, verbatim.** For each question add `## <label>` (the label as the
    requester printed it, e.g. `CIEC-1`), then a `::: {.question}` block with the question text and
-   an empty `::: {.response}` block. Lettered parts go one per line as `a. ...`, `b. ...`. Join a
+   an empty `::: {.response}` block. Wrap each lettered part in a part div: `:::: {.part label="a."}` on its own line, `::::` after it, with the letter as the label (question parts and response parts alike). The label hangs in the left margin and the text runs full width. Join a
    sentence the PDF broke across a page; change nothing else, not even a typo or a hyphen. Do **not**
    paraphrase or tidy. Then run `just check-interrogatory-responses <qmd>`: it confirms every line of
-   every question appears in the extract and tells you exactly where a line diverges. Fix the QMD
+   every question appears in the extract (the part-div lines are markup and are skipped) and tells you exactly where a line diverges. Fix the QMD
    until it passes; never "fix" the extract.
 4. **Write the responses** (conventions below), with final citations from the first draft on.
    `just check-interrogatory-responses` lists how many are still unwritten and fails on citation
    problems it can detect.
 5. **Render for review.** From the report folder, `just interrogatories` writes
-   `<name>_<date>.docx`: every response on its own pages with the filed header. Send that to counsel.
+   `<name>_<date>.docx`: every response on its own pages, with the running header (party, docket, label, Page n of N) and the DRAFT watermark. Send that to counsel.
    Fold their comments into the QMD and re-render; the QMD is the source of truth.
-6. **Render for filing.** Set `date_filed` to the real date and `draft: false`, then
+6. **Render for filing.** Set `date_filed` to the real date and `draft: false` (which removes the DRAFT watermark), then
    `just interrogatories-split` writes one `.docx` per response into `filing/`. Counsel (or we) save
    each as PDF from Word and upload them, with any attachments, using the state's filing form.
    Word fills in the "Page n of N" fields on opening; check one file's header before sending.
 
 ## Writing a response
 
-- **Answer exactly what is asked, part by part.** Use the question's own letters: `a.`, `b.` as
-  paragraphs starting with the letter. A yes/no confirmation starts with "Confirmed." or "Not
+A response is one `::: {.response}` block. Lead-in text may come first, unlabelled. Each lettered part then gets its own part div: the label hangs in the margin, and sub-lists and footnotes nest inside the part.
+
+```markdown
+:::: {.part label="a."}
+Confirmed. The Company's count is in its response to CLF-SC-003(a).
+
+1. **Rebated customers**: about 4,400 received a heat pump rebate.[^a-rebate]
+
+   [^a-rebate]: CL&P Response to CLF-SC-003(a), at 1 [@clp_Docket260510Responses_2026b].
+
+::::
+```
+
+- **Answer exactly what is asked, part by part.** Give each lettered part its own part div, labelled with the question's own letter (example below). Write each part as
+  paragraphs and lists inside it. A yes/no confirmation starts with "Confirmed." or "Not
   confirmed." and then explains. Do not argue beyond the question.
 - **Voice.** Same as the testimony: the Switchbox report voice (step 1 of the `expert-testimony`
   skill) in the testimony's formal register. First person singular ("I did not prepare," "my
@@ -81,12 +94,12 @@ before assuming the Connecticut format, and add a `<state>.md` here when you lea
   of ISO New England's forecast"); the footnote gives the arithmetic, its inputs and their sources,
   with the inputs computed inline.
 - **Footnote mechanics.** Put the definition right after the paragraph or bullet that uses it,
-  indented to that item's text (3 spaces under `a.`, 5 under a `-` bullet inside it), with a blank
+  at column 0 when it sits directly in a part, or indented to the text of the list item it belongs to (3 spaces under a `1.` item, 2 under a `-` bullet, 4 under a bullet nested in one), with a blank
   line before and after; without the blank line after, Pandoc folds a following paragraph into the
   note. Give every use its own footnote: Pandoc prints a note again for each reference to it.
 - **`just check-interrogatory-responses` enforces the mechanical parts**: it fails on an inline
   citation in the response text, a citation key used as a citation, a "p." pinpoint, a footnote
-  without a blank line after it, and a footnote that is undefined, unused, or used twice. Run it after
+  without a blank line after it, and a footnote that is undefined, unused, or used twice, and on structure: a block that never closes, a response with no question, or a repeated label. Run it after
   every drafting pass, not just before rendering.
 - **Never hardcode a number.** If a number comes from the analysis, compute it inline like testimony.
   A number that is also in the filed testimony must match it.
@@ -106,7 +119,7 @@ before assuming the Connecticut format, and add a `<state>.md` here when you lea
 ## Rendering internals
 
 `lib/just/interrogatory.py` (fields, checks, render, header patching),
-`lib/just/templates/filters/interrogatory.lua` (caption block and section breaks),
+`lib/just/templates/filters/interrogatory.lua` (the Date Filed / Witness / Request from block, referenced testimony, part and list layout, section breaks),
 `lib/just/templates/build_interrogatory_response.py` (the Word model file; rebuild with
 `uv run python -m lib.just.templates.build_interrogatory_response` and commit the `.docx`).
 
@@ -116,3 +129,5 @@ break and the Python step patches a header part onto each section afterwards. Th
 LibreOffice and Google Docs do not support `SECTIONPAGES` (they show "of 1"), so the combined review file
 should be opened in Word. `--split` runs the same render once per response with `-M ir-only:<label>` and
 uses `NUMPAGES` instead (one section per file, same count), which works in Word and LibreOffice.
+
+In draft mode each section's header also carries a DRAFT watermark: a VML text shape anchored to the page margins, rotated 45 degrees and drawn behind the text. It is a shape, not header text, so `draft: false` removes it, and the header then prints only the party, the docket, the label and the page count. Date issued sits in the caption block with Date Filed, Witness and Request from; each response is introduced as `Question CIEC-1:` (the `##` label).

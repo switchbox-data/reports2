@@ -98,7 +98,7 @@ FIELD_HELP: dict[str, str] = {
     "docket": 'docket as it prints in the header, e.g. "PURA Docket No. 26-05-10"',
     "responding_party": 'who is answering, e.g. "Conservation Law Foundation and Sierra Club"',
     "requesting_party": "who asked the questions (prints as 'Request from')",
-    "set": 'the set label as it prints in the header, e.g. "Set CIEC-02"',
+    "set": 'the set label, e.g. "Set CIEC-02" (kept on record; not printed in the header)',
     "date_issued": "date the requests were issued, e.g. 2026-10-29",
     "date_filed": "filing date, e.g. 2026-11-12 (use the due date until you know)",
     "witness": "default witness for every response (override per response with {witness=...})",
@@ -106,7 +106,7 @@ FIELD_HELP: dict[str, str] = {
     "source_extract": "path to the extract of the requests; every question line is checked against it (optional)",
     "testimony_extract": "path to the Velez Direct extract; inlines ``testimony()`` refs in question blocks (optional)",
     "expected_responses": "how many responses the set has; checked against the file (optional)",
-    "draft": "true (default) prints DRAFT FOR COUNSEL REVIEW at the top of every page; set false for the filing copy",
+    "draft": "true (default) puts a DRAFT watermark diagonally across every page; set false for the filing copy",
 }
 
 
@@ -343,6 +343,8 @@ def verify_questions(responses: list[Response], extract_text: str) -> list[str]:
     for r in responses:
         question = question_lines_for_extract_check(r.question)
         for raw in question.splitlines():
+            if _DIV_OPEN.match(raw.strip()) or _DIV_CLOSE.match(raw.strip()):
+                continue  # div fences (question parts) are markup, not request text
             line = _squash(_LIST_MARKER.sub("", raw))
             if not line or line in hay:
                 continue
@@ -391,6 +393,7 @@ def check_citations(text: str) -> list[str]:
     problems: list[str] = []
     label = "before the first response heading"
     div: str | None = None
+    nest = 0
     fence: str | None = None
     defs: dict[str, int] = {}
     refs: dict[str, int] = {}
@@ -410,8 +413,16 @@ def check_citations(text: str) -> list[str]:
             if opened:
                 div = opened.group("braced") or opened.group("bare")
             continue
+        # Nested divs (a response's parts, a question's referenced testimony) open and
+        # close inside the outer block; count them so the outer block stays open.
         if _DIV_CLOSE.match(line):
-            div = None
+            if nest:
+                nest -= 1
+            else:
+                div = None
+            continue
+        if _DIV_OPEN.match(line):
+            nest += 1
             continue
         if div != "response":
             continue
@@ -537,13 +548,64 @@ def print_report(report: Report, qmd_path: Path) -> None:
 
 _NS = (
     'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
-    'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+    'xmlns:v="urn:schemas-microsoft-com:vml" '
+    'xmlns:o="urn:schemas-microsoft-com:office:office" '
+    'xmlns:w10="urn:schemas-microsoft-com:office:word"'
+)
+
+DRAFT_TEXT = "DRAFT"
+
+# The standard Word text-path shape (``_x0000_t136``), which Word writes once per
+# header part when you insert a text watermark.
+_WATERMARK_SHAPETYPE = (
+    '<v:shapetype id="_x0000_t136" coordsize="21600,21600" o:spt="136" adj="10800" '
+    'path="m@7,l@8,m@5,21600l@6,21600e">'
+    "<v:formulas>"
+    '<v:f eqn="sum #0 0 10800"/><v:f eqn="prod #0 2 1"/><v:f eqn="sum 21600 0 @1"/>'
+    '<v:f eqn="sum 0 0 @2"/><v:f eqn="sum 21600 0 @3"/><v:f eqn="if @0 @3 0"/>'
+    '<v:f eqn="if @0 21600 @1"/><v:f eqn="if @0 0 @2"/><v:f eqn="if @0 @4 21600"/>'
+    '<v:f eqn="mid @5 @6"/><v:f eqn="mid @8 @5"/><v:f eqn="mid @7 @8"/>'
+    '<v:f eqn="mid @6 @7"/><v:f eqn="sum @6 0 @5"/>'
+    "</v:formulas>"
+    '<v:path textpathok="t" o:connecttype="custom" o:connectlocs="@9,0;@10,10800;@11,21600;@12,10800" '
+    'o:connectangles="270,180,90,0"/>'
+    '<v:textpath on="t" fitshape="t"/>'
+    '<v:handles><v:h position="#0,bottomRight" xrange="6629,14971"/></v:handles>'
+    '<o:lock v:ext="edit" text="t" shapetype="t"/>'
+    "</v:shapetype>"
 )
 
 
-def _line(text: str, *, bold: bool = False) -> str:
+def _watermark(index: int) -> str:
+    """A diagonal "DRAFT" across the page, behind the text.
+
+    It is anchored to the page margins and centred, so it sits across the whole
+    background of every page in the section, the way Word's Design > Watermark
+    does. It is a run in the header, so it adds no height to the header.
+    """
+    return (
+        "<w:r><w:rPr><w:noProof/></w:rPr><w:pict>"
+        f"{_WATERMARK_SHAPETYPE}"
+        f'<v:shape id="PowerPlusWaterMarkObject{index}" o:spid="_x0000_s{1024 + index}" type="#_x0000_t136" '
+        'style="position:absolute;margin-left:0;margin-top:0;width:500pt;height:36pt;rotation:315;'
+        "z-index:-251657216;mso-position-horizontal:center;mso-position-horizontal-relative:margin;"
+        'mso-position-vertical:center;mso-position-vertical-relative:margin" '
+        'o:allowincell="f" fillcolor="silver" stroked="f">'
+        '<v:fill opacity=".5"/>'
+        '<v:textpath style="font-family:&quot;Times New Roman&quot;;font-size:1pt;font-weight:bold" '
+        f'string="{escape(DRAFT_TEXT)}"/>'
+        '<w10:wrap anchorx="margin" anchory="margin"/>'
+        "</v:shape></w:pict></w:r>"
+    )
+
+
+def _line(text: str, *, bold: bool = False, lead: str = "") -> str:
     rpr = "<w:rPr><w:b/></w:rPr>" if bold else ""
-    return f'<w:p><w:pPr><w:pStyle w:val="Header"/></w:pPr><w:r>{rpr}<w:t xml:space="preserve">{escape(text)}</w:t></w:r></w:p>'
+    return (
+        f'<w:p><w:pPr><w:pStyle w:val="Header"/></w:pPr>{lead}'
+        f'<w:r>{rpr}<w:t xml:space="preserve">{escape(text)}</w:t></w:r></w:p>'
+    )
 
 
 def _field(instruction: str) -> str:
@@ -556,7 +618,7 @@ def _field(instruction: str) -> str:
     )
 
 
-def header_xml(fields: Fields, label: str, pages_field: str = "SECTIONPAGES") -> str:
+def header_xml(fields: Fields, label: str, pages_field: str = "SECTIONPAGES", index: int = 1) -> str:
     """The running header for one response: its own label and its own page count.
 
     In the combined file every response is its own Word section that restarts
@@ -564,21 +626,23 @@ def header_xml(fields: Fields, label: str, pages_field: str = "SECTIONPAGES") ->
     each response reads "Page 1 of N" for its own N. Word computes it; LibreOffice
     does not support it. A split file holds one response, so ``NUMPAGES`` gives
     the same count and works in LibreOffice and Google Docs too.
+
+    With ``draft: true`` the header carries the DRAFT watermark instead of a line
+    of text; ``index`` keeps each section's watermark shape id unique.
     """
-    paragraphs = []
-    if fields.draft:
-        paragraphs.append(_line("DRAFT FOR COUNSEL REVIEW", bold=True))
-    paragraphs += [
-        _line(fields.responding_party),
+    # Compact block: party, docket, the label, and the page count. Date issued
+    # prints in the caption block with Date Filed (Lua filter). The set label is
+    # not printed. The DRAFT watermark rides in the first line so it adds no
+    # height to the header.
+    lead = _watermark(index) if fields.draft else ""
+    paragraphs = [
+        _line(fields.responding_party, lead=lead),
         _line(fields.docket),
-        _line(fields.set_label),
-        _line(f"Date Issued: {long_date(fields.date_issued)}"),
         _line(label),
         (
             '<w:p><w:pPr><w:pStyle w:val="Header"/></w:pPr><w:r><w:t xml:space="preserve">Page </w:t></w:r>'
             f'{_field("PAGE")}<w:r><w:t xml:space="preserve"> of </w:t></w:r>{_field(pages_field)}</w:p>'
         ),
-        '<w:p><w:pPr><w:pStyle w:val="Header"/></w:pPr></w:p>',
     ]
     return f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:hdr {_NS}>{"".join(paragraphs)}</w:hdr>\n'
 
@@ -619,7 +683,7 @@ def patch_headers(docx_path: Path, fields: Fields, labels: list[str], pages_fiel
             )
         pieces += [document[cursor : match.start()], sect]
         cursor = match.end()
-        parts[f"word/{part}"] = header_xml(fields, label, pages_field).encode("utf-8")
+        parts[f"word/{part}"] = header_xml(fields, label, pages_field, index=i).encode("utf-8")
         rel_add += (
             f'<Relationship Id="{rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/'
             f'relationships/header" Target="{part}"/>'
@@ -671,6 +735,8 @@ def _render_one(qmd_path: Path, fields: Fields, labels: list[str], output_name: 
         str(LUA_FILTER.resolve()),
         "-M",
         f"ir-date-filed-long:{long_date(fields.date_filed)}",
+        "-M",
+        f"ir-date-issued-long:{long_date(fields.date_issued)}",
     ]
     if only is not None:
         cmd += ["-M", f"ir-only:{only}"]
@@ -745,7 +811,7 @@ interrogatory_responses:
   # source_extract: context/sources/...md   # every question line is checked against it
   # testimony_extract: context/sources/...md   # Velez Direct, for inline testimony() quotes
   # expected_responses: 19
-  # draft: false   # drop the DRAFT line for the filing copy
+  # draft: false   # drop the DRAFT watermark for the filing copy
 ---
 
 ## XXXX-1

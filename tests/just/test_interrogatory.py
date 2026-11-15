@@ -334,3 +334,37 @@ def test_render_combined_and_split(tmp_path: Path, monkeypatch: pytest.MonkeyPat
         assert "rIdIRHeader1" in document
     only_second = re.sub(r"<[^>]+>", " ", _document(files[1])[0])
     assert "Someone Else" in only_second and "Exhibit JPV-3" not in only_second
+
+
+def test_select_responses_matches_labels_case_insensitively() -> None:
+    responses, _ = ir.parse_body(_qmd())
+    assert [r.label for r in ir.select_responses(responses, ["ciec-2"])] == ["CIEC-2"]
+    with pytest.raises(ir.InterrogatoryError) as exc:
+        ir.select_responses(responses, ["CIEC-9"])
+    assert "CIEC-9" in "\n".join(exc.value.problems) and "CIEC-1, CIEC-2" in "\n".join(exc.value.problems)
+
+
+def test_open_markers_only_look_at_the_given_responses() -> None:
+    body = (
+        "\n## CIEC-1\n\n::: {.question}\nQ\n:::\n\n::: {.response}\nDone.\n\n"
+        '```{python}\ndef est(key):\n    return "[EST]"\n```\n:::\n'
+        "\n## CIEC-2\n\n::: {.question}\nQ\n:::\n\n::: {.response}\nNeeds work **[TK: check]** and `{python} est('x')`.\n:::\n"
+    )
+    first, second = ir.parse_body(_qmd(body=body))[0]
+    assert ir.open_markers([first]) == []
+    found = ir.open_markers([second])
+    assert any("[TK: check]" in item for item in found) and any("est()" in item for item in found)
+
+
+@needs_quarto
+def test_render_only_and_final(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    qmd = tmp_path / "responses.qmd"
+    qmd.write_text(_qmd(), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    files = ir.render(qmd, only=["CIEC-1"], final=True)
+    assert [p.name for p in files] == ["CT 26-05-10_CIEC-1 Response.docx"]
+    _, headers = _document(files[0])
+    assert "PowerPlusWaterMarkObject" not in headers["word/headerIR1.xml"]  # --final drops the watermark
+    drafted = ir.render(qmd, only=["CIEC-1"])
+    assert "PowerPlusWaterMarkObject" in _document(drafted[0])[1]["word/headerIR1.xml"]

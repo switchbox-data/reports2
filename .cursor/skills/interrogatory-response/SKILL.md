@@ -45,6 +45,9 @@ before assuming the Connecticut format, and add a `<state>.md` here when you lea
 6. **Render for filing.** Set `date_filed` to the real date and `draft: false` (which removes the DRAFT watermark), then
    `just interrogatories-split` writes one `.docx` per response into `filing/`. Counsel (or we) save
    each as PDF from Word and upload them, with any attachments, using the state's filing form.
+   To file one response before the set is done, run `just interrogatories-final <qmd> <label>` (for example
+   `CIEC-1`): `--only` renders just that response and `--final` drops the watermark without editing `draft:`,
+   refusing if that response still has `[TK]`/`[EST]` markers.
    Word fills in the "Page n of N" fields on opening; check one file's header before sending.
 
 ## Writing a response

@@ -36,6 +36,11 @@ Two renderings of the same file:
 * ``render --split`` makes one Word file per response, each with the same
   header, ready to save as PDF and file.
 
+Two flags narrow a split render. ``--only CIEC-1`` (repeatable) renders just the
+named responses; ``--final`` drops the DRAFT watermark and refuses while the
+rendered responses still hold ``[TK: ...]`` or ``[EST]`` markers, so one finished
+response can be filed while the others are in progress.
+
 ``check`` validates the frontmatter and the structure, and (when
 ``source_extract`` is set) confirms every line of every question appears in
 the extract, so a question is never silently reworded.
@@ -46,6 +51,7 @@ Usage::
     uv run python -m lib.just.interrogatory check responses.qmd
     uv run python -m lib.just.interrogatory render responses.qmd
     uv run python -m lib.just.interrogatory render responses.qmd --split
+    uv run python -m lib.just.interrogatory render responses.qmd --only CIEC-1 --final
 """
 
 from __future__ import annotations
@@ -754,15 +760,84 @@ def split_file_name(fields: Fields, label: str) -> str:
     return f"{fields.file_prefix}_{name}" if fields.file_prefix else name
 
 
-def render(qmd_path: Path, *, split: bool = False) -> list[Path]:
-    """Check, then render the combined review file or one file per response."""
+_EST_CALL = re.compile(r"\best\(")
+_CODE_FENCE = re.compile(r"^(`{3,}|~{3,}).*?^\1[ \t]*$", re.DOTALL | re.MULTILINE)
+
+
+def select_responses(responses: list[Response], only: list[str]) -> list[Response]:
+    """The responses named in ``only`` (case-insensitive labels), in file order.
+
+    Raises ``InterrogatoryError`` listing every unknown label and the labels the
+    file does have.
+    """
+    wanted = {name.strip().casefold() for name in only}
+    known = {r.label.casefold() for r in responses}
+    unknown = sorted(name for name in only if name.strip().casefold() not in known)
+    if unknown:
+        raise InterrogatoryError(
+            [
+                f"No response labelled {', '.join(f'`{name}`' for name in unknown)}.",
+                f"Labels in the file: {', '.join(r.label for r in responses)}.",
+            ]
+        )
+    return [r for r in responses if r.label.casefold() in wanted]
+
+
+def open_markers(responses: list[Response]) -> list[str]:
+    """Draft markers (``[TK: ...]``, ``[EST]``) and ``est()`` calls left in these responses."""
+    found: list[str] = []
+    for r in responses:
+        # Fenced code cells are setup (they may define `est` or mention a marker), not prose.
+        for text in (_CODE_FENCE.sub("", r.question), _CODE_FENCE.sub("", r.response)):
+            found += [f"{r.label}: {m.group(0)}" for m in _DRAFT_NOTE.finditer(text)]
+            if _EST_CALL.search(text):
+                found.append(f"{r.label}: an est() estimate")
+    return found
+
+
+def render(
+    qmd_path: Path,
+    *,
+    split: bool = False,
+    only: list[str] | None = None,
+    final: bool = False,
+) -> list[Path]:
+    """Check, then render the combined review file or one file per response.
+
+    ``only`` limits the output to the named responses and implies ``split``.
+    ``final`` renders the filing copy: no DRAFT watermark whatever the
+    frontmatter says, and it refuses while the rendered responses still hold
+    open ``[TK: ...]`` or ``[EST]`` markers. Markers in responses that are not
+    rendered do not matter, so one finished response can be filed while the
+    rest are in progress.
+    """
+    from dataclasses import replace
+
     from lib.just.draft import _hide_quarto_yml  # draft.py already imports testimony.py
 
     report = check_file(qmd_path)
     print_report(report, qmd_path)
     if report.errors or report.fields is None:
         sys.exit(2)
-    fields, labels = report.fields, [r.label for r in report.responses]
+    fields = report.fields
+    chosen = report.responses
+    if only:
+        try:
+            chosen = select_responses(report.responses, only)
+        except InterrogatoryError as exc:
+            for problem in exc.problems:
+                print(f"💥 {problem}", file=sys.stderr)
+            sys.exit(2)
+        split = True
+    if final:
+        leftovers = open_markers(chosen)
+        if leftovers:
+            print("💥 --final, but these responses still have open markers or estimates:", file=sys.stderr)
+            for item in leftovers:
+                print(f"   {item}", file=sys.stderr)
+            sys.exit(2)
+        fields = replace(fields, draft=False)
+    labels = [r.label for r in chosen]
 
     outputs: list[Path] = []
     with _hide_quarto_yml():
@@ -913,6 +988,17 @@ def main(argv: list[str] | None = None) -> None:
     p_render = sub.add_parser("render", help="Render the combined review file, or one file per response.")
     p_render.add_argument("path_qmd")
     p_render.add_argument("--split", action="store_true", help="One Word file per response, in ./filing/.")
+    p_render.add_argument(
+        "--only",
+        action="append",
+        metavar="LABEL",
+        help="Render just this response (e.g. CIEC-1); repeat for several. Implies --split.",
+    )
+    p_render.add_argument(
+        "--final",
+        action="store_true",
+        help="Filing copy: no DRAFT watermark, and refuse if the rendered responses have open [TK]/[EST] markers.",
+    )
     args = parser.parse_args(argv)
     path = Path(args.path_qmd)
 
@@ -930,7 +1016,7 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(1)
 
     if args.command == "render":
-        render(path, split=args.split)
+        render(path, split=args.split, only=args.only, final=args.final)
         return
 
     if args.command == "insert-refs":

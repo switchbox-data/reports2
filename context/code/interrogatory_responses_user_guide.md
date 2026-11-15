@@ -9,7 +9,7 @@ How to answer another party's interrogatories or data requests and get Word file
 3. **Add each question**, copied exactly, then **check** it: `just check-interrogatory-responses reports/<report>/<name>.qmd`
 4. **Write the responses**, with every citation in a footnote in the testimony's format, even in a first draft. Run the check again: it also fails on inline citations, "p." pinpoints and footnote formatting mistakes.
 5. **Render for review:** from the report folder, `just interrogatories` (Connecticut report: `ciec_responses.qmd`).
-6. **Render for filing:** `just interrogatories-split`, which writes one Word file per response into `filing/`.
+6. **Render for filing:** `just interrogatories-split`, which writes one Word file per response into `filing/`. To file one finished response while the others are still in progress, use `just interrogatories-final ciec_responses.qmd CIEC-1` (or `just interrogatories-split ciec_responses.qmd --only CIEC-1 --final`). `--only` renders just the named responses (repeat it for several), and `--final` drops the DRAFT watermark and refuses while those responses still have `[TK: ...]` or `[EST]` markers. Markers in responses you did not name do not matter.
 
 If you use an AI agent in Cursor, ask it to "set up responses to <the requests>": the `interrogatory-response` skill covers steps 1 to 3, including copying the questions out of the extract.
 

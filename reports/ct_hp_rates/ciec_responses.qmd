@@ -125,6 +125,7 @@ c11 = _load("ciec_11_vars")  # notebooks/eversource_hourly_class_loads.qmd
 c13 = _load("ciec_13_vars")  # notebooks/overpayment.qmd
 c2d = _load("ciec_2d_vars")  # ciec_requests/ciec_request_2d.qmd
 eia = _load("ciec_11_eia_vars")  # notebooks/validate_resstock_vs_eia_loads.qmd
+c10 = _load("ciec_10_vars")  # ciec_requests/ciec_request_10.qmd
 
 
 def dollar(x, accuracy=0):
@@ -225,6 +226,18 @@ assert RDM_TOTAL_MWH == c2d.rdm_total_mwh and abs(nonres_kwh_share - c2d.nonres_
 )
 rate_year_kwh_per_customer = residential_mwh * 1000 / c1.rate_year_customers
 
+# CIEC-10(a): hours begin at the timestamp, Eastern Standard Time. weather_hour is the 2018 ResStock
+# hour; timestamp is the same hour on CAIRO's 2025 billing calendar (Attachment 1 and Exhibit JPV-3).
+def c10_hour(ts) -> str:
+    return f"{ts:%-I:%M} {'a.m.' if ts.hour < 12 else 'p.m.'} on {ts:%B %-d, %Y}"
+
+
+c10_peak_ts = c10.peak_heating["timestamp"]
+c10_peak_hour = c10_hour(c10_peak_ts)
+c10_peak_weather = c10_hour(c10.peak_heating["weather_hour"])
+if c10.peak_backup["timestamp"] != c10_peak_ts:
+    raise RuntimeError("CIEC-10(a) says backup and heat pump plus backup peak in the same hour; they no longer do")
+
 # CIEC-11: Company 2025 class-average loads vs ResStock, and ResStock vs EIA-861 (2018).
 c11_r1 = {row["month"]: row for row in c11.monthly_rate_1}
 c11_r5 = {row["month"]: row for row in c11.monthly_rate_5}
@@ -266,12 +279,6 @@ EST = {
         "incremental coincident winter kW per home (~2.5, guess) x (distribution $21.22 + transmission ~$73)/kW-yr",
         "Alex Lee",
         "winter probability-of-peak 'reach' run on the representative home",
-    ),
-    "backup_kwh": (
-        300.0,
-        "~5% of incremental heating kWh served by electric resistance backup",
-        "Alex Lee",
-        "hourly decomposition of the representative home into compressor and backup load",
     ),
     "winter_peak_add_mw": (
         ceiling_new_total * 2.5 / 1000,
@@ -1364,29 +1371,13 @@ The words "winter peak hour" in footnote 63 are a drafting error. The sentence s
 ::::
 
 ::::{.part label="b."}
-No. The Company's distribution system as a whole is not close to becoming winter peaking; individual feeders and substations would become winter peaking first, and that would require feeder- and substation-level data that has not yet been produced.
+No. The system as a whole would not become winter peaking at once; individual feeders and substation transformers would, each at a different level of adoption. The Company itself states that the system remains summer peaking.[^9b-summer-peaking] Analyzing when individual feeders and transformers would become winter peaking requires their ratings and their historical and hourly loads, which CLF and Sierra Club requested in CLF-SC-012 through CLF-SC-019.[^9b-requests] The Company has designated that information as Critical Energy Infrastructure Information and plans to produce it to parties that have executed a non-disclosure agreement with the Company.[^9b-ceii] CLF and Sierra Club have not reached mutually acceptable terms of a non-disclosure agreement with CL&P to be able to review this information.
 
-- System: the Company says the system remains summer peaking, and it does not use a heat pump forecast for substation capacity projects.[^9b-summer-peaking]
+[^9b-summer-peaking]: [CL&P Response to CLF-SC-020](https://pub.switch.box/clp_Docket260510Responses_2026b), at 1 (Sep. 18, 2026) ("The Company currently does not use a heat pump forecast to inform its substation capacity projects as the system remains summer peaking.") [@clp_Docket260510Responses_2026b].
 
-  [^9b-summer-peaking]: [CL&P Response to CLF-SC-020](https://pub.switch.box/clp_Docket260510Responses_2026b), at 1 ("The Company currently does not use a heat pump forecast to inform its substation capacity projects as the system remains summer peaking.") [@clp_Docket260510Responses_2026b].
+[^9b-requests]: Docket No. 26-05-10, [CLF and Sierra Club's First Set of Interrogatories to CL&P (Corrected)](https://pub.switch.box/clf_Docket260510Conservation_2026b), CLF-SC-12 to CLF-SC-19, at 8–14 (Sep. 4, 2026) [@clf_Docket260510Conservation_2026b].
 
-- The Company has no completed winter peak forecast. Its unreleased forecast reaches only a preliminary substation level, and feeder- and transformer-level forecasts are not expected until 2028.[^9b-021] Its heat pump forecasts have not been released.[^9b-022]
-
-  [^9b-021]: [CL&P Response to CLF-SC-021](https://pub.switch.box/clp_Docket260510Responses_2026c), at 1 ("Under the current unreleased forecast only a preliminary substation level could be created. Feeder and transformer level forecasts will be available for the 2028 forecast.") [@clp_Docket260510Responses_2026c].
-
-  [^9b-022]: [CL&P Response to CLF-SC-022](https://pub.switch.box/clp_Docket260510Responses_2026c), at 2 ("Currently, the Company's heat pump forecasts have not been released.") [@clp_Docket260510Responses_2026c].
-
-- What we requested: for every feeder and substation transformer, summer and winter ratings, summer and winter peaks with their dates and hours, and forecast peaks (CLF-SC-012 to CLF-SC-019).
-- What the Company said: the data is Critical Energy Infrastructure Information, and it will produce it once CLF-SC signs a non-disclosure agreement and the Company finishes new cybersecurity document controls.[^9b-ndas] **[COUNSEL: current NDA status; date signed or expected]**
-
-  [^9b-ndas]: [CL&P Response to CLF-SC-012](https://pub.switch.box/clp_Docket260510Responses_2026b), at 1–2 [@clp_Docket260510Responses_2026b]; CL&P Response to CLF-SC-013, at 2 (production will follow "once an executed NDA is obtained from CLF-SC") [@clp_Docket260510Responses_2026b]; _see also_ CL&P Responses to CLF-SC-014(a)–(b), CLF-SC-015 to CLF-SC-017 and CLF-SC-019 (same).
-
-- What the data would show: each feeder's and substation's winter headroom, and the number of additional heat pump customers at which its winter peak would exceed its rating.
-- What we have now: annual peak loading for 918 feeders, without the season of the peak. The median feeder peaks at 49% of its rating, and 2 exceed their rating. Because Connecticut is summer peaking, winter headroom on these feeders is larger still.[^9b-feeders]
-
-  [^9b-feeders]: [Velez Direct](https://pub.switch.box/velez_Docket260510Direct_2026) at 21:5–8, 22:1–3, 22:6–14 [@velez_Docket260510Direct_2026].
-
-- We will supplement this response within **[COUNSEL: number]** days of receiving the data.
+[^9b-ceii]: [CL&P Response to CLF-SC-012](https://pub.switch.box/clp_Docket260510Responses_2026b), at 1–2 ("highly confidential Critical Energy Infrastructure Information"; "the Company plans to supplement this response with production for all parties having executed an non-disclosure agreement with the Company, once an executed NDA is obtained from CLF-SC") [@clp_Docket260510Responses_2026b]; _see also_ CL&P Responses to CLF-SC-013(a), at 2; CLF-SC-015, at 2; CLF-SC-016, at 1–2; CLF-SC-017(a), at 2; and CLF-SC-019, at 2 (same); CL&P Response to CLF-SC-014(a), at 2 (referring to the response to CLF-SC-012).
 
 ::::
 
@@ -1460,12 +1451,17 @@ Please provide the hourly calculation underlying the $10 per year estimate in Ex
 
 ::: {.response}
 ::::{.part label="a."}
-The modeled heat pumps are ResStock's cold-climate air-source heat pumps with electric resistance backup.[^10a-n4] The backup load was not reported separately in the testimony's analysis; it will be provided as CIEC-10 Attachment 1 **[ANALYSIS: Alex Lee: weighted hourly backup kWh and total heat pump kWh for the fossil fuel-heated sample after the upgrade, from ResStock's end-use columns; the hours of highest total and backup load. Low priority (Google Doc comment 19)]**.
+The modeled hourly electric resistance backup load[^10a-n4] for the average fossil fuel-heated home after heat pump installation[^10a-home] is provided in CIEC-10 Attachment 1, alongside the home's hourly heat pump load and whole-home load for all 8,760 hours of the modeled year.[^10a-att] Heat pump and backup load together, and backup load alone, would both peak in the hour beginning `{python} c10_peak_hour` (Eastern Standard Time), when the home would use `{python} num(c10.peak_heating["heating_kwh"], 1)` kWh for heating, `{python} num(c10.peak_heating["backup_kwh"], 1)` kWh of it backup.[^10a-calendar] Over the year, backup would use `{python} num(c10.annual_backup_kwh)` kWh, or `{python} pct(c10.backup_to_heat_pump, 1)` of the heat pump's own `{python} num(c10.annual_heat_pump_kwh)` kWh, and `{python} pct(c10.pct_never_backup)` of homes would never use their backup.[^10a-never]
 
 [^10a-n4]: [Direct Testimony of Juan-Pablo Velez on behalf of Conservation Law Foundation and Sierra Club](https://pub.switch.box/velez_Docket260510Direct_2026) ("Velez Direct"), at 10 n.4 (Oct. 21, 2026) [@velez_Docket260510Direct_2026].
 
-- Rough scale until then: `{python} est("backup_kwh", num)` kWh a year of backup, out of `{python} num(r.all_fossil_annual_kwh_after - r.all_fossil_annual_kwh_before)` kWh of incremental usage.
-- Whatever its size, the backup load falls in November through March, when the hours carry almost no marginal T&D cost under the Company's probability-of-peak allocation (CIEC-9(a)). It is included in the `{python} dollar(inc_mc, 2)`.
+[^10a-home]: The same average home as in the direct testimony: the weighted average of `{python} num(c10.n_bldg)` ResStock buildings served by Eversource and heated with natural gas, fuel oil, or propane before the retrofit, with every building's load multiplied by the same scale factor CAIRO applied (`{python} f"{c10.kwh_scale:.4f}"`). Its whole-home load sums to the `{python} num(c10.annual_grid_kwh)` kWh a year used in the testimony. Backup is ResStock's electric resistance element; heat pump load is the compressor and its supply fan.
+
+[^10a-att]: [CIEC-10 Attachment 1, `CIEC-10a_hourly_backup_load.xlsx`](https://drive.google.com/file/d/1f9ygF2zhw4OyiLfOq30QckwFqESpwfcl/view), sheet `hourly_load`: one row per hour in columns A–F, and the annual totals, backup ratio, and peak hours as formulas in columns H–I. The `README` sheet explains each column [@velez_Docket260510CIEC10_2026].
+
+[^10a-calendar]: Hours are on the 2025 calendar used throughout the testimony, the same timestamps as Ex. JPV-3, sheet `hourly_after`. ResStock simulates 2018 weather, which CAIRO places on the 2025 calendar shifted two days so weekdays line up; this hour simulates the weather of `{python} c10_peak_weather`. CIEC-10 Attachment 1 gives both timestamps for every hour.
+
+[^10a-never]: Weighted by ResStock sample weight (`{python} num(c10.n_never_backup)` of the `{python} num(c10.n_bldg)` buildings). All of them are homes without ducts, which ResStock models with ductless mini-split heat pumps: `{python} num(c10.n_never_backup)` of the `{python} num(c10.n_mshp)` mini-split homes never use backup, while all `{python} num(c10.n_ducted)` homes with a ducted heat pump use it at least once. Both types are sized to the home's maximum heating load.
 
 ::::
 

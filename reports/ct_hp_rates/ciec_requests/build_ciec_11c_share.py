@@ -11,7 +11,7 @@ builds the inputs locally so they can be uploaded and checksummed:
   oil and propane, which the combined bills table prices by month
 - the two marginal cost files CAIRO reads, checked against the sha256 that
   every run recorded in ``marginal_costs_used.json``
-- the EIA-861 file, CT residential heating fuel prices for 2024, and CPI
+- CT residential heating fuel prices for 2024, and CPI
 - the config files the runs read, from rate-design-platform at ``e97a3ca``
   (every run billed exactly these tariffs; see the CIEC-11(c) plan)
 
@@ -173,7 +173,9 @@ def check_settings(settings: dict[str, dict[str, Any]], path_resstock_release: P
         assert s["path_utility_assignment"] == str(
             path_resstock_release / "metadata_utility/state=CT/utility_assignment.parquet"
         ), run
+        # Configured but never read: CAIRO uses EIA-861 only when there is no customer_count_override.
         assert s["path_electric_utility_stats"] == f"s3://{BUCKET}/{PATH_EIA861}", run
+        assert s["customer_count_override"], run
 
 
 def stage_config(stager: Stager, settings: dict[str, dict[str, Any]], path_rdp: Path) -> None:
@@ -274,12 +276,7 @@ def stage_resstock(stager: Stager, path_resstock_release: Path) -> None:
 
 
 def stage_public_data(stager: Stager) -> None:
-    """EIA-861, CT heating fuel prices and CPI, which post-processing read."""
-    stager.download(PATH_EIA861, stager.dest("eia861/ct_2024.parquet"))
-    stager.record(
-        "eia861/ct_2024.parquet", f"s3://{BUCKET}/{PATH_EIA861}", "EIA-861 2024 Connecticut utility statistics"
-    )
-
+    """CT heating fuel prices and CPI, which post-processing read."""
     with tempfile.TemporaryDirectory() as tmp:
         for product in ("heating_oil", "propane"):
             prefix = f"{PATH_FUEL_PRICES}/product={product}/year={FUEL_PRICE_YEAR}/"
@@ -335,7 +332,7 @@ def main() -> None:
     stage_marginal_costs(stager, mc_used)
     print("ResStock")
     stage_resstock(stager, args.path_resstock_release)
-    print("EIA and CPI")
+    print("Fuel prices and CPI")
     stage_public_data(stager)
     stager.write_manifest()
 

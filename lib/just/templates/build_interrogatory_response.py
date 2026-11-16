@@ -42,7 +42,7 @@ OUTPUT = HERE / "interrogatory_response.docx"
 SECTPR_XML = """<w:sectPr>
     <w:headerReference w:type="default" r:id="rIdIRHeader"/>
     <w:pgSz w:w="12240" w:h="15840" w:code="1"/>
-    <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
+    <w:pgMar w:top="1680" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
     <w:pgNumType w:start="1"/>
     <w:cols w:space="720"/>
     <w:docGrid w:linePitch="360"/>
@@ -65,7 +65,7 @@ def _build_styles_xml() -> str:
     add(
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
         f"<w:styles {_NS}>"
-        f'<w:docDefaults><w:rPrDefault><w:rPr>{_TNR}<w:sz w:val="24"/><w:szCs w:val="24"/>'
+        f'<w:docDefaults><w:rPrDefault><w:rPr>{_TNR}<w:sz w:val="22"/><w:szCs w:val="22"/>'
         '<w:lang w:val="en-US" w:eastAsia="en-US" w:bidi="ar-SA"/></w:rPr></w:rPrDefault>'
         '<w:pPrDefault><w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>'
         '<w:jc w:val="left"/></w:pPr></w:pPrDefault></w:docDefaults>'
@@ -120,7 +120,7 @@ def _build_styles_xml() -> str:
             "IR Label",
             custom=True,
             next_style="BodyText",
-            ppr='<w:keepNext/><w:spacing w:before="240" w:after="60" w:line="240" w:lineRule="auto"/>',
+            ppr='<w:keepNext/><w:spacing w:before="180" w:after="60" w:line="240" w:lineRule="auto"/>',
         )
     )
     add(
@@ -130,7 +130,7 @@ def _build_styles_xml() -> str:
             custom=True,
             ppr='<w:spacing w:before="120" w:after="80" w:line="240" w:lineRule="auto"/>'
             '<w:ind w:left="360" w:right="0"/>',
-            rpr='<w:i/><w:iCs/><w:color w:val="595959"/><w:sz w:val="20"/><w:szCs w:val="20"/>',
+            rpr='<w:i/><w:iCs/><w:color w:val="595959"/><w:sz w:val="18"/><w:szCs w:val="18"/>',
         )
     )
     add(
@@ -138,9 +138,9 @@ def _build_styles_xml() -> str:
             "IRTestimonyPassage",
             "IR Testimony Passage",
             custom=True,
-            ppr='<w:spacing w:before="160" w:after="40" w:line="240" w:lineRule="auto"/>'
+            ppr='<w:spacing w:before="120" w:after="40" w:line="240" w:lineRule="auto"/>'
             '<w:ind w:left="360" w:right="0"/>',
-            rpr='<w:b/><w:bCs/><w:color w:val="404040"/><w:sz w:val="20"/><w:szCs w:val="20"/>',
+            rpr='<w:b/><w:bCs/><w:color w:val="404040"/><w:sz w:val="18"/><w:szCs w:val="18"/>',
         )
     )
     # IRTestimonyLine kept for fallback; normal rows use a two-column OpenXML table in the Lua filter.
@@ -153,9 +153,57 @@ def _build_styles_xml() -> str:
             ppr='<w:tabs><w:tab w:val="left" w:pos="1080"/></w:tabs>'
             '<w:spacing w:before="0" w:after="40" w:line="240" w:lineRule="auto"/>'
             '<w:ind w:left="1080" w:hanging="1080" w:right="0"/>',
-            rpr='<w:color w:val="404040"/><w:sz w:val="20"/><w:szCs w:val="20"/>',
+            rpr='<w:color w:val="404040"/><w:sz w:val="18"/><w:szCs w:val="18"/>',
         )
     )
+
+    # Parts (a., b., ...): the label hangs in the left margin and the text runs full
+    # width, so the label sits in the margin and every line of text starts at it.
+    add(
+        _style(
+            "IRPart",
+            "IR Part",
+            based_on="BodyText",
+            custom=True,
+            ppr='<w:tabs><w:tab w:val="left" w:pos="0"/></w:tabs>'
+            '<w:spacing w:before="240" w:after="120" w:line="240" w:lineRule="auto"/>'
+            '<w:ind w:left="0" w:firstLine="-576"/>',
+        )
+    )
+    add(
+        _style(
+            "IRPartBody",
+            "IR Part Body",
+            based_on="BodyText",
+            custom=True,
+            ppr='<w:spacing w:before="0" w:after="120" w:line="240" w:lineRule="auto"/><w:ind w:left="0"/>',
+        )
+    )
+    # Lists inside a part: a number hangs 0.2" in from the text edge (level 1 text at
+    # 0.4", level 2 at 0.8", level 3 at 1.2"), and wrapped or later paragraphs of an
+    # item align with its text.
+    for level, text_twips in ((1, 576), (2, 1152), (3, 1728)):
+        add(
+            _style(
+                f"IRList{level}",
+                f"IR List {level}",
+                based_on="BodyText",
+                custom=True,
+                ppr=f'<w:tabs><w:tab w:val="left" w:pos="{text_twips}"/></w:tabs>'
+                '<w:spacing w:before="0" w:after="80" w:line="240" w:lineRule="auto"/>'
+                f'<w:ind w:left="{text_twips}" w:hanging="288"/>',
+            )
+        )
+        add(
+            _style(
+                f"IRListBody{level}",
+                f"IR List Body {level}",
+                based_on="BodyText",
+                custom=True,
+                ppr='<w:spacing w:before="0" w:after="80" w:line="240" w:lineRule="auto"/>'
+                f'<w:ind w:left="{text_twips}"/>',
+            )
+        )
 
     add(
         _style(
@@ -179,6 +227,16 @@ def _build_styles_xml() -> str:
     )
     add(_style("ImageCaption", "Image Caption", based_on="Caption", custom=True))
     add(_style("TableCaption", "Table Caption", based_on="Caption", custom=True, ppr="<w:keepNext/>"))
+    # Table cells: 10 pt single-spaced (Pandoc would otherwise use Compact).
+    add(
+        _style(
+            "TableText",
+            "Table Text",
+            custom=True,
+            ppr='<w:spacing w:before="40" w:after="40" w:line="240" w:lineRule="auto"/>',
+            rpr=f'{_TNR}<w:sz w:val="20"/><w:szCs w:val="20"/>',
+        )
+    )
     add(
         '<w:style w:type="table" w:customStyle="1" w:styleId="Table"><w:name w:val="Table"/>'
         '<w:basedOn w:val="TableNormal"/><w:uiPriority w:val="99"/><w:qFormat/><w:tblPr><w:tblBorders>'
@@ -195,8 +253,8 @@ def _build_styles_xml() -> str:
             "footnote text",
             link="FootnoteTextChar",
             priority=99,
-            ppr='<w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>',
-            rpr='<w:sz w:val="22"/><w:szCs w:val="22"/>',
+            ppr='<w:spacing w:before="0" w:after="60" w:line="240" w:lineRule="auto"/>',
+            rpr='<w:sz w:val="18"/><w:szCs w:val="18"/>',
         )
     )
     add(
@@ -208,7 +266,7 @@ def _build_styles_xml() -> str:
             custom=True,
             link="FootnoteText",
             qformat=False,
-            rpr='<w:sz w:val="22"/><w:szCs w:val="22"/>',
+            rpr='<w:sz w:val="18"/><w:szCs w:val="18"/>',
         )
     )
     add(

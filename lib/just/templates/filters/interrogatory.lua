@@ -4,10 +4,11 @@
 --! Every level-2 heading in the QMD is one response (its text is the response
 --! label, e.g. "CIEC-1").  For each response this filter writes, in order:
 --!
+--!   Date Issued: <date>
 --!   Date Filed:  <date>
 --!   Witness:     <witness>
 --!   Request from: <requesting party>
---!   Question:    <the ``question`` block>
+--!   Question <label>: <the ``question`` block>
 --!   Response:    <the ``response`` block>
 --!
 --! and then a Word section break, so every response is its own section.  The
@@ -54,7 +55,7 @@ local SECTION_BREAK = [[
     <w:sectPr>
       <w:type w:val="nextPage"/>
       <w:pgSz w:w="12240" w:h="15840" w:code="1"/>
-      <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
+      <w:pgMar w:top="1680" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
       <w:pgNumType w:start="1"/>
       <w:cols w:space="720"/>
       <w:docGrid w:linePitch="360"/>
@@ -282,6 +283,30 @@ local function passage_title_para(para)
   return s:match("^Velez Direct, printed") ~= nil
 end
 
+--! Gap between the last testimony line and the question text that follows it.
+--! The testimony lines carry almost no space after (2 pt) and the question text
+--! carries none before, so without this spacer the two run together.  An empty
+--! paragraph with a fixed 9 pt line gives roughly an 11 pt gap.
+local TESTIMONY_END_GAP = [[
+<w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:pPr>
+    <w:spacing w:before="0" w:after="0" w:line="180" w:lineRule="exact"/>
+    <w:rPr><w:sz w:val="2"/></w:rPr>
+  </w:pPr>
+</w:p>
+]]
+
+--! Gap between the last question line and the ``Response:`` label.  The last
+--! part's space-after is not enough for a clear break on its own.
+local QUESTION_RESPONSE_GAP = [[
+<w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:pPr>
+    <w:spacing w:before="0" w:after="0" w:line="264" w:lineRule="exact"/>
+    <w:rPr><w:sz w:val="2"/></w:rPr>
+  </w:pPr>
+</w:p>
+]]
+
 --! Style the nested ``referenced-testimony`` block inside a question.
 local function format_referenced_testimony(div)
   local out = {}
@@ -315,6 +340,9 @@ local function format_referenced_testimony(div)
       table.insert(out, blk)
     end
   end
+  table.insert(out, pandoc.RawBlock("openxml", TESTIMONY_END_GAP))
+  -- Second spacer so lettered question parts (a., b., …) do not run into the quote.
+  table.insert(out, pandoc.RawBlock("openxml", QUESTION_RESPONSE_GAP))
   return out
 end
 
@@ -337,6 +365,143 @@ local function append_all(dst, blocks)
   for _, b in ipairs(blocks) do table.insert(dst, b) end
 end
 
+--! Parts and lists.  A part is a div with a ``label`` attribute
+--! (``:::: {.part label="a."}``).  Its label hangs in the left margin and its text
+--! runs full width.  Lists inside a response are Markdown lists, but they are laid
+--! out here as hanging paragraphs (label, tab, text), so their numbers and indents
+--! come from the template's ``IR List`` styles and restart in every part.
+
+local MAX_LIST_LEVEL = 3
+
+local function is_para(b) return b.t == "Para" or b.t == "Plain" end
+local function is_list(b) return b.t == "BulletList" or b.t == "OrderedList" end
+
+local function label_text(list, index)
+  if list.t == "BulletList" then return "\u{2022}" end
+  local la = list.listAttributes
+  local n = (la and la.start or 1) + index - 1
+  local style = la and tostring(la.style) or "Decimal"
+  local text = tostring(n)
+  if style:find("LowerAlpha") then
+    text = string.char(string.byte("a") + n - 1)
+  elseif style:find("UpperAlpha") then
+    text = string.char(string.byte("A") + n - 1)
+  end
+  local delim = la and tostring(la.delimiter) or ""
+  return text .. (delim:find("OneParen") and ")" or ".")
+end
+
+--! One hanging paragraph: the label (if any), a tab, then the text.
+local function labelled(style, inlines, label)
+  local content = {}
+  if label then
+    table.insert(content, pandoc.Str(label))
+    table.insert(content, tab())
+  end
+  for _, il in ipairs(inlines or {}) do table.insert(content, il) end
+  return styled(style, content)
+end
+
+local emit_list
+
+--! Lay out one list at a nesting level (1 = directly under a part).
+emit_list = function(list, level, out)
+  local lvl = math.min(level, MAX_LIST_LEVEL)
+  for index, item in ipairs(list.content) do
+    local label = label_text(list, index)
+    local labelled_yet = false
+    for _, blk in ipairs(item) do
+      if is_para(blk) then
+        if labelled_yet then
+          table.insert(out, labelled("IR List Body " .. lvl, blk.content))
+        else
+          table.insert(out, labelled("IR List " .. lvl, blk.content, label))
+          labelled_yet = true
+        end
+      else
+        if not labelled_yet then
+          table.insert(out, labelled("IR List " .. lvl, {}, label))
+          labelled_yet = true
+        end
+        if is_list(blk) then
+          emit_list(blk, level + 1, out)
+        else
+          table.insert(out, blk)
+        end
+      end
+    end
+    if not labelled_yet then
+      table.insert(out, labelled("IR List " .. lvl, {}, label))
+    end
+  end
+end
+
+--! Lay out one part: the first paragraph carries the margin label.
+local function emit_part(div, out)
+  local label = div.attr.attributes["label"]
+  local labelled_yet = false
+  local function open_label()
+    if label and not labelled_yet then
+      table.insert(out, labelled("IR Part", {}, label))
+      labelled_yet = true
+    end
+  end
+  for _, blk in ipairs(div.content) do
+    if is_para(blk) then
+      if label and not labelled_yet then
+        table.insert(out, labelled("IR Part", blk.content, label))
+        labelled_yet = true
+      else
+        table.insert(out, labelled("IR Part Body", blk.content))
+      end
+    elseif is_list(blk) then
+      open_label()
+      emit_list(blk, 1, out)
+    else
+      open_label()
+      table.insert(out, blk)
+    end
+  end
+  open_label()
+end
+
+--! Table cells: single-spaced 10 pt "Table Text" instead of Compact.
+local function to_table_text(blk)
+  return pandoc.Div({ pandoc.Para(blk.content) }, pandoc.Attr("", {}, { ["custom-style"] = "Table Text" }))
+end
+
+--! Word sets the next paragraph flush against a table's bottom border, so the
+--! following caption or text would touch it.  An empty 10 pt paragraph after
+--! each table supplies the gap.
+local TABLE_END_GAP = [[
+<w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:pPr>
+    <w:spacing w:before="0" w:after="0" w:line="200" w:lineRule="exact"/>
+    <w:rPr><w:sz w:val="16"/></w:rPr>
+  </w:pPr>
+</w:p>
+]]
+
+function Table(tbl)
+  local caption = tbl.caption
+  local walked = tbl:walk({ Plain = to_table_text, Para = to_table_text })
+  walked.caption = caption
+  return { walked, pandoc.RawBlock("openxml", TABLE_END_GAP) }
+end
+
+--! Top-level blocks of a question or response: parts, lists outside any part, and everything else.
+local function convert_blocks(blocks, out)
+  for _, blk in ipairs(blocks) do
+    if blk.t == "Div" and has_class(blk, "part") then
+      emit_part(blk, out)
+    elseif is_list(blk) then
+      emit_list(blk, 1, out)
+    else
+      table.insert(out, blk)
+    end
+  end
+end
+
 function Pandoc(doc)
   local cfg = doc.meta["interrogatory_responses"]
   if type(cfg) ~= "table" then
@@ -345,6 +510,7 @@ function Pandoc(doc)
   local requesting_party = field(cfg, "requesting_party") or ""
   local default_witness = field(cfg, "witness") or ""
   local date_filed = field(doc.meta, "ir-date-filed-long") or field(cfg, "date_filed") or ""
+  local date_issued = field(doc.meta, "ir-date-issued-long") or field(cfg, "date_issued") or ""
   local only = field(doc.meta, "ir-only")
 
   -- Gather the responses: each heading starts one; its question/response divs fill it.
@@ -380,16 +546,18 @@ function Pandoc(doc)
   local out = {}
   for i, s in ipairs(sections) do
     local witness = s.witness or default_witness
+    table.insert(out, styled("IR Meta", { pandoc.Strong({ pandoc.Str("Date Issued:") }), tab(), pandoc.Str(date_issued) }))
     table.insert(out, styled("IR Meta", { pandoc.Strong({ pandoc.Str("Date Filed:") }), tab(), pandoc.Str(date_filed) }))
     table.insert(out, styled("IR Meta", { pandoc.Strong({ pandoc.Str("Witness:") }), tab(), pandoc.Str(witness) }))
     table.insert(out, styled("IR Meta", { pandoc.Strong({ pandoc.Str("Request from:") }), tab(), pandoc.Str(requesting_party) }))
-    table.insert(out, styled("IR Label", { pandoc.Strong({ pandoc.Str("Question:") }) }))
-    append_all(out, normalize_question(s.question))
+    table.insert(out, styled("IR Label", { pandoc.Strong({ pandoc.Str("Question " .. s.label .. ":") }) }))
+    convert_blocks(normalize_question(s.question), out)
+    table.insert(out, pandoc.RawBlock("openxml", QUESTION_RESPONSE_GAP))
     table.insert(out, styled("IR Label", { pandoc.Strong({ pandoc.Str("Response:") }) }))
     if #s.response == 0 then
       table.insert(out, pandoc.Para({ pandoc.Emph({ pandoc.Str("[Response not yet written.]") }) }))
     else
-      append_all(out, s.response)
+      convert_blocks(s.response, out)
     end
     if i < #sections then
       table.insert(out, pandoc.RawBlock("openxml", SECTION_BREAK))

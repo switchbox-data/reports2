@@ -1,20 +1,19 @@
 """Helpers for the CIEC-6(c) Excel workpaper.
 
-``ciec_request_6.qmd`` loads the year-by-year net revenue data from CIEC-3(c)
-and calls :func:`build_workbook`. Upload uses
-:func:`build_ciec_1a_workbook.upload_xlsx`. Yellow cells are inputs. Every
-other number is a formula.
+``ciec_request_6.qmd`` loads the year-by-year net revenue reductions and the
+residential customers who remain from CIEC-3(c) and calls :func:`build_workbook`.
+Upload uses :func:`build_ciec_1a_workbook.upload_xlsx`. Yellow cells are inputs.
+Every other number is a formula.
 
 Sheets
 ------
 README
-    What the file is and how the sheets connect.
+    What the file is and which row the response cites.
 bill_impact
-    Mean annual and monthly bill increase for residential customers who are not
-    on Rate HP. One row per rate year, with floor and ceiling enrollment bounds
-    side by side. Net revenue and remaining customers are inputs; the mean bill
-    is a formula (net revenue / remaining customers), and the monthly mean
-    divides that by 12.
+    Average annual and monthly bill increase for residential customers who are
+    not on Rate HP. One row per rate year, low and high estimates of new heat
+    pump customers side by side. Net revenue reduction (T&D) and customers who
+    remain are inputs that match CIEC-3 Attachment 1; the averages are formulas.
 """
 
 from __future__ import annotations
@@ -41,6 +40,16 @@ FMT_COUNT = "#,##0"
 
 HEADER_ROW = 4
 FIRST_ROW = 5
+
+
+def net_revenue(row: dict[str, float]) -> int:
+    """T&D net revenue reduction, rounded per component as on the CIEC-3 revenue sheet."""
+    return round(float(row["net_reduction_dist"])) + round(float(row["net_reduction_tx"]))
+
+
+def last_row(n_years: int) -> int:
+    """Row of the last rate year on bill_impact, the row the response cites."""
+    return FIRST_ROW + n_years - 1
 
 
 def _put(
@@ -90,7 +99,7 @@ def _validate(rows: Sequence[dict[str, float]], label: str) -> None:
             if key not in r:
                 raise ValueError(f"{label} row missing key {key!r}")
         if float(r["nonhp_customers"]) <= 0:
-            raise ValueError(f"{label} year {r['year']}: remaining customers must be positive")
+            raise ValueError(f"{label} year {r['year']}: customers who remain must be positive")
 
 
 def _write_readme(wb: Workbook) -> None:
@@ -104,11 +113,12 @@ def _write_readme(wb: Workbook) -> None:
             False,
         ),
         (
-            "Mean annual bill increase for residential customers who do not take Rate HP. "
-            "The net revenue reduction (from CIEC-1(a) and CIEC-3(c)) is recovered from "
-            "those customers. The mean bill increase is the net revenue divided by the "
-            "customers who remain. Non-residential customers, including Rate 39 and Rate 57, "
-            "are not charged.",
+            "Average bill increase for residential customers who are not on Rate HP, if the net revenue reduction "
+            "from Rate HP were recovered solely from them, as in CIEC-3(c). The reduction comes from existing heat "
+            "pump customers who are auto-enrolled in Rate HP. New heat pump customers who enroll at installation pay "
+            "slightly more than they did before installing a heat pump, so they do not add to the reduction. The "
+            "response to CIEC-6(c) cites 2031 under the high estimate of new heat pump customers (bill_impact sheet, "
+            "last row). Non-residential customers are not on this sheet; see the response to CIEC-2(d).",
             False,
         ),
         ("", False),
@@ -116,10 +126,11 @@ def _write_readme(wb: Workbook) -> None:
         ("", False),
         ("bill_impact", True),
         (
-            "One row per rate year. Floor and ceiling refer to the enrollment bounds from "
-            "CIEC-1(b) and CIEC-1(c). Net revenue and remaining customers are inputs. "
-            "The mean annual bill increase is net revenue divided by remaining customers. "
-            "The mean monthly bill increase divides that by 12.",
+            "One row per rate year. Low and high are the estimates of new heat pump customers in CIEC-1(c). "
+            "Net revenue reduction is the T&D column of the revenue sheet in CIEC-3 Attachment 1, and customers "
+            "who remain is the column of that name on its payers sheet. The average annual bill increase divides "
+            "the first by the second, which equals the CIEC-3(c) per-kWh increase times those customers' average "
+            "annual kWh. The average monthly bill increase divides it by 12.",
             False,
         ),
     ]
@@ -131,70 +142,68 @@ def _write_readme(wb: Workbook) -> None:
     ws.column_dimensions["A"].width = 120
     ws.row_dimensions[1].height = 22
     ws.row_dimensions[3].height = 64
-    ws.row_dimensions[8].height = 48
+    ws.row_dimensions[8].height = 64
 
 
 def _write_bill_impact(
     wb: Workbook,
-    floor_rows: Sequence[dict[str, float]],
-    ceiling_rows: Sequence[dict[str, float]],
+    low_rows: Sequence[dict[str, float]],
+    high_rows: Sequence[dict[str, float]],
 ) -> None:
     ws = wb.create_sheet("bill_impact")
-    _heading(ws, 1, "Mean bill increase")
+    _heading(ws, 1, "Average bill increase")
     _note(
         ws,
         2,
-        "Mean annual and monthly bill increase for residential customers not on Rate HP. "
-        "Net revenue and remaining customers are inputs from CIEC-1(a) and CIEC-3(c). "
-        "Mean annual bill = net revenue / remaining customers. Mean monthly = annual / 12.",
+        "Net revenue reduction (CIEC-3 Attachment 1, revenue sheet, T&D) divided by the residential customers "
+        "not on Rate HP (payers sheet, customers who remain). Low and high are the estimates of new heat pump "
+        "customers in CIEC-1(c). The response to CIEC-6(c) cites 2031 under the high estimate.",
         9,
     )
     _headers(
         ws,
         HEADER_ROW,
         [
-            "Year",
-            "Floor net revenue",
-            "Floor remaining customers",
-            "Floor mean annual bill",
-            "Floor mean monthly bill",
-            "Ceiling net revenue",
-            "Ceiling remaining customers",
-            "Ceiling mean annual bill",
-            "Ceiling mean monthly bill",
+            "Rate year",
+            "Low: net revenue reduction (T&D)",
+            "Low: customers who remain",
+            "Low: average annual bill increase",
+            "Low: average monthly bill increase",
+            "High: net revenue reduction (T&D)",
+            "High: customers who remain",
+            "High: average annual bill increase",
+            "High: average monthly bill increase",
         ],
     )
-    for i, (fl, cl) in enumerate(zip(floor_rows, ceiling_rows, strict=True)):
+    for i, (low, high) in enumerate(zip(low_rows, high_rows, strict=True)):
         row = FIRST_ROW + i
-        _put(ws, row, 1, int(fl["year"]))
-        # Floor
-        net_floor = round(float(fl["net_reduction_dist"]) + float(fl["net_reduction_tx"]))
-        _put(ws, row, 2, net_floor, input_=True, fmt=FMT_REVENUE)
-        _put(ws, row, 3, round(float(fl["nonhp_customers"])), input_=True, fmt=FMT_COUNT)
+        _put(ws, row, 1, int(low["year"]))
+        _put(ws, row, 2, net_revenue(low), input_=True, fmt=FMT_REVENUE)
+        _put(ws, row, 3, round(float(low["nonhp_customers"])), input_=True, fmt=FMT_COUNT)
         _put(ws, row, 4, f"=B{row}/C{row}", fmt=FMT_BILL)
         _put(ws, row, 5, f"=D{row}/12", fmt=FMT_BILL)
-        # Ceiling
-        net_ceiling = round(float(cl["net_reduction_dist"]) + float(cl["net_reduction_tx"]))
-        _put(ws, row, 6, net_ceiling, input_=True, fmt=FMT_REVENUE)
-        _put(ws, row, 7, round(float(cl["nonhp_customers"])), input_=True, fmt=FMT_COUNT)
+        _put(ws, row, 6, net_revenue(high), input_=True, fmt=FMT_REVENUE)
+        _put(ws, row, 7, round(float(high["nonhp_customers"])), input_=True, fmt=FMT_COUNT)
         _put(ws, row, 8, f"=F{row}/G{row}", fmt=FMT_BILL)
         _put(ws, row, 9, f"=H{row}/12", fmt=FMT_BILL)
     ws.freeze_panes = "B5"
-    ws.column_dimensions["A"].width = 10
+    ws.column_dimensions["A"].width = 12
     for col in range(2, 10):
         ws.column_dimensions[get_column_letter(col)].width = 24
 
 
 def build_workbook(
-    floor_rows: Sequence[dict[str, float]],
-    ceiling_rows: Sequence[dict[str, float]],
+    low_rows: Sequence[dict[str, float]],
+    high_rows: Sequence[dict[str, float]],
 ) -> Workbook:
     """Assemble the CIEC-6(c) workpaper. Inputs are values; the results are formulas."""
-    _validate(floor_rows, "floor")
-    _validate(ceiling_rows, "ceiling")
-    if len(floor_rows) != len(ceiling_rows):
-        raise ValueError(f"floor has {len(floor_rows)} rows but ceiling has {len(ceiling_rows)}")
+    _validate(low_rows, "low")
+    _validate(high_rows, "high")
+    if len(low_rows) != len(high_rows):
+        raise ValueError(f"low has {len(low_rows)} rows but high has {len(high_rows)}")
+    if [int(r["year"]) for r in low_rows] != [int(r["year"]) for r in high_rows]:
+        raise ValueError("low and high rate years differ")
     wb = Workbook()
     _write_readme(wb)
-    _write_bill_impact(wb, floor_rows, ceiling_rows)
+    _write_bill_impact(wb, low_rows, high_rows)
     return wb

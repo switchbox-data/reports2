@@ -25,47 +25,40 @@ from __future__ import annotations
 import pickle
 from pathlib import Path
 
-from ciec_1 import cents, dollar, num
+from build_ciec_6_workbook import last_row, net_revenue
+from ciec_1 import cents, dollar
 
-# The per-kWh increase and non-HP customer counts come from CIEC-3(c).
-# The mean bill impact is net revenue / remaining customers — no building-level data needed.
+# The net revenue reductions and the customers who remain come from CIEC-3(c).
 _ciec_3_path = Path("../cache/ciec_3_vars.pkl")
 assert _ciec_3_path.exists(), f"Missing {_ciec_3_path} — render ciec_request_3.qmd first"
 ciec_3 = pickle.loads(_ciec_3_path.read_bytes())
-for _key in (
-    "floor_existing",
-    "ceiling_existing",
-    "floor_years",
-    "ceiling_years",
-):
+for _key in ("floor_years", "ceiling_years", "ceiling_per_kwh"):
     if _key not in ciec_3:
         raise RuntimeError(f"Missing {_key} in {_ciec_3_path} — render ciec_request_3.qmd first")
 
-floor_existing = int(ciec_3["floor_existing"])
-ceiling_existing = int(ciec_3["ceiling_existing"])
-
-# Use the same year as CIEC-3 (year 4, 2031) for prose variables.
-_y0 = 4
-_floor_y0 = ciec_3["floor_years"][_y0]
-_ceiling_y0 = ciec_3["ceiling_years"][_y0]
+low_years = ciec_3["floor_years"]
+high_years = ciec_3["ceiling_years"]
 
 
-def _mean_bill(year_row: dict[str, float]) -> float:
-    """Mean annual bill increase = net revenue reduction / remaining customers."""
-    net_revenue = float(year_row["net_reduction_dist"]) + float(year_row["net_reduction_tx"])
-    return net_revenue / float(year_row["nonhp_customers"])
+def _average_bill(row: dict[str, float]) -> float:
+    """Average annual bill increase, from the same rounded inputs as the workbook."""
+    return net_revenue(row) / round(float(row["nonhp_customers"]))
 
 
-floor_nonhp = int(round(float(_floor_y0["nonhp_customers"])))
-ceiling_nonhp = int(round(float(_ceiling_y0["nonhp_customers"])))
-floor_per_kwh = float(_floor_y0["per_kwh_total"])
-ceiling_per_kwh = float(_ceiling_y0["per_kwh_total"])
-floor_mean = _mean_bill(_floor_y0)
-ceiling_mean = _mean_bill(_ceiling_y0)
+low_means = [_average_bill(r) for r in low_years]
+high_means = [_average_bill(r) for r in high_years]
 
-# All 5 years for the workbook.
-floor_year_means = [{"year": int(r["year"]), **r, "mean_bill": _mean_bill(r)} for r in ciec_3["floor_years"]]
-ceiling_year_means = [{"year": int(r["year"]), **r, "mean_bill": _mean_bill(r)} for r in ciec_3["ceiling_years"]]
+# Net revenue ÷ customers is the same thing as the CIEC-3(c) per-kWh increase × average kWh.
+for _row, _mean in zip(low_years + high_years, low_means + high_means, strict=True):
+    _via_kwh = _row["per_kwh_total"] * _row["nonhp_kwh"] / _row["nonhp_customers"]
+    assert abs(_mean - _via_kwh) < 0.01, f"{_row['year']}: {_mean} vs {_via_kwh}"
+
+# The response cites 2031 under the high estimate, the same year and estimate as CIEC-3(c).
+cited_year = int(high_years[-1]["year"])
+assert cited_year == 2031, cited_year
+assert high_years[-1]["per_kwh_total"] == ciec_3["ceiling_per_kwh"]["total"]
+low_mean = low_means[-1]
+high_mean = high_means[-1]
 ```
 
 **Witness:** Juan-Pablo Velez\
@@ -80,33 +73,51 @@ Please provide Mr. Velez's estimate of the bill impact of Rate HP on (i) residen
 
 ### Response
 
-Non-residential customers would see no bill change. That includes customers on Rate 39 and Rate 57. Their bill impact is **`{python} dollar(0, 0)`**. If Rate HP left the Company short of its revenue requirement, that shortfall would be recovered from residential customers who do not take Rate HP, including both fossil-fuel and electric-resistance customers on Rate 1, Rate 5, and Rate 7.
+New heat pump customers who enroll in Rate HP at installation raise no other customer's bill: they pay slightly more than they did before installing a heat pump (CIEC-6(b)). The bill impact on residential customers not on Rate HP comes from existing heat pump customers who are auto-enrolled in Rate HP, when the net revenue reduction is recovered solely from the residential class, as in CIEC-3(c). Non-residential customers would see no bill impact under the steps recommended in CIEC-2(c) and (d); CIEC-2(d) covers what happens without them.
 
-The response to CIEC-3(c) estimates the increase in the Rate 1 distribution and transmission charges that would recover this net shortfall. The mean bill impact is that net shortfall divided by the residential customers who remain.
+The average bill increase is the net revenue reduction divided by the residential customers who remain, the same inputs as CIEC-3(c). It equals the CIEC-3(c) per-kWh increase times those customers' average annual kWh.
 
-The net shortfall is the revenue lost from existing heat pump customers who move from Rate 1 to Rate HP, partially offset by the revenue gained from new heat pump customers who enroll in Rate HP at installation. The figures below use the fifth rate year (2031); the mean bill increase changes very slightly across the five rate years (see CIEC-3(c)).
+```{python}
+#| echo: false
+#| output: asis
 
-At the floor, **`{python} num(floor_existing)`** existing heat pump customers would move to Rate HP, and **`{python} num(floor_nonhp)`** residential customers would remain. The per-kWh charge increase is **`{python} cents(floor_per_kwh)`** (from CIEC-3(c)). The average customer who remains would pay **`{python} dollar(floor_mean, 2)`** more per year, or **`{python} dollar(floor_mean / 12, 2)`** per month.
+print("| Rate year | Low: average annual increase | High: average annual increase |")
+print("| --- | ---: | ---: |")
+for _low, _lo, _hi in zip(low_years, low_means, high_means, strict=True):
+    print(f"| {int(_low['year'])} | {dollar(_lo, 2)} | {dollar(_hi, 2)} |")
+```
 
-At the ceiling, **`{python} num(ceiling_existing)`** existing customers would move to Rate HP, and **`{python} num(ceiling_nonhp)`** residential customers would remain. The per-kWh charge increase is **`{python} cents(ceiling_per_kwh)`**. The average bill increase is **`{python} dollar(ceiling_mean, 2)`** a year, or **`{python} dollar(ceiling_mean / 12, 2)`** per month.
-
-Assumptions:
-
-- **What is recovered.** The net revenue reduction from CIEC-1(a): existing-customer revenue lost minus new-customer revenue gained. This is the shortfall that would be recovered from Rate 1 customers.
-- **Who pays.** Residential customers who are not on Rate HP, including both fossil-fuel and electric-resistance customers. That count is the Rate Year residential customers minus all enrolled customers (existing and new). Non-residential customers, including customers on Rate 39 and Rate 57, are outside that recovery. Their bill impact is zero.
-- **Mean bill.** The net revenue reduction divided by the customers who remain. Equivalently, the CIEC-3(c) per-kWh increase times the weighted-mean annual kWh of the non-heat-pump homes. The customer charge and the generation charge stay at Rate 1.
-- **Enrollment.** Existing customers from CIEC-1(b). New-customer floor and ceiling from CIEC-1(c). Every heat pump installer enrolls, none opt out, and enrollment persists.
+The response cites `{python} cited_year` under the high estimate of new heat pump customers: about **`{python} dollar(high_mean, 2)`** a year, or **`{python} dollar(high_mean / 12, 2)`** a month, from a per-kWh increase of `{python} cents(ciec_3["ceiling_per_kwh"]["total"], 2)`. Low and high are the estimates of new heat pump customers in CIEC-1(c); the enrollment and load assumptions are those of CIEC-3(c).
 
 ```{python}
 #| echo: false
 #| output: false
 
-from build_ciec_1a_workbook import DRIVE_FOLDER_ID, upload_xlsx
-from build_ciec_6_workbook import DRIVE_NAME, build_workbook
+from openpyxl import load_workbook
 
-_wb = build_workbook(floor_year_means, ceiling_year_means)
+from build_ciec_1a_workbook import DRIVE_FOLDER_ID, upload_xlsx
+from build_ciec_6_workbook import DRIVE_NAME, FIRST_ROW, build_workbook
+
+_wb = build_workbook(low_years, high_years)
 _xlsx_path = Path("../cache") / DRIVE_NAME
 _wb.save(_xlsx_path)
+
+# Read the saved file back: inputs match CIEC-3, and the formulas give the means above.
+_ws = load_workbook(_xlsx_path)["bill_impact"]
+for _i, (_low, _high) in enumerate(zip(low_years, high_years, strict=True)):
+    _r = FIRST_ROW + _i
+    assert _ws[f"A{_r}"].value == int(_low["year"])
+    assert _ws[f"B{_r}"].value == round(_low["net_reduction_dist"]) + round(_low["net_reduction_tx"])
+    assert _ws[f"C{_r}"].value == round(_low["nonhp_customers"])
+    assert _ws[f"F{_r}"].value == round(_high["net_reduction_dist"]) + round(_high["net_reduction_tx"])
+    assert _ws[f"G{_r}"].value == round(_high["nonhp_customers"])
+    assert (_ws[f"D{_r}"].value, _ws[f"H{_r}"].value) == (f"=B{_r}/C{_r}", f"=F{_r}/G{_r}")
+    assert (_ws[f"E{_r}"].value, _ws[f"I{_r}"].value) == (f"=D{_r}/12", f"=H{_r}/12")
+    assert abs(_ws[f"B{_r}"].value / _ws[f"C{_r}"].value - low_means[_i]) < 1e-9
+    assert abs(_ws[f"F{_r}"].value / _ws[f"G{_r}"].value - high_means[_i]) < 1e-9
+cited_row = last_row(len(high_years))
+assert _ws[f"A{cited_row}"].value == cited_year
+
 _link = upload_xlsx(_xlsx_path, DRIVE_FOLDER_ID, DRIVE_NAME)
 _xlsx_path.unlink()
 print(f"Uploaded {DRIVE_NAME}: {_link}")
@@ -120,12 +131,17 @@ print(f"Uploaded {DRIVE_NAME}: {_link}")
 Path("../cache/ciec_6_vars.pkl").write_bytes(
     pickle.dumps(
         {
-            "floor_existing": floor_existing,
-            "ceiling_existing": ceiling_existing,
-            "floor_per_kwh": floor_per_kwh,
-            "ceiling_per_kwh": ceiling_per_kwh,
-            "floor_mean": floor_mean,
-            "ceiling_mean": ceiling_mean,
+            "floor_existing": int(ciec_3["floor_existing"]),
+            "ceiling_existing": int(ciec_3["ceiling_existing"]),
+            "floor_per_kwh": float(low_years[-1]["per_kwh_total"]),
+            "ceiling_per_kwh": float(high_years[-1]["per_kwh_total"]),
+            "floor_mean": low_mean,
+            "ceiling_mean": high_mean,
+            "ceiling_mean_monthly": high_mean / 12,
+            "min_mean": min(low_means + high_means),
+            "max_mean": max(low_means + high_means),
+            "cited_year": cited_year,
+            "cited_row": cited_row,
             "nonres_bill_impact": 0.0,
         }
     )

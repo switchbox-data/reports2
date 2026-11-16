@@ -280,80 +280,49 @@ GT(top_hours).fmt_datetime(
 ).fmt_number(columns=[*_LOAD_COLS, "heating_kwh"], decimals=2)
 ```
 
-How many homes never use their backup. A home "never uses" backup if its upgrade 2 backup kWh is zero in every hour of the year.
+How many homes never use their backup. A home "never uses" backup if its upgrade 2 backup kWh is zero in every hour of the year. Upgrade 2 gives homes with ducts a ducted heat pump (`ASHP`) and homes without them a ductless mini-split (`MSHP`), both sized to the home's maximum heating load, so we also count never-backup homes by heat pump type.
 
 ```{python}
 #| label: never-backup
 
-_per_bldg = hourly.group_by("bldg_id").agg(pl.col("backup_kwh").sum()).join(pop, on="bldg_id")
+_hp_type = (
+    pl.scan_parquet(f"{PATH_RELEASE}/metadata/state={STATE}/upgrade={UPGRADE_HP:02d}/metadata-sb.parquet")
+    .select("bldg_id", pl.col("upgrade.hvac_heating_efficiency").str.split(",").list.first().alias("hp_type"))
+    .collect()
+)
+_per_bldg = (
+    hourly.group_by("bldg_id")
+    .agg(pl.col("backup_kwh").sum())
+    .join(pop, on="bldg_id")
+    .join(_hp_type, on="bldg_id", how="left")
+)
+assert set(_per_bldg["hp_type"].unique()) == {"ASHP", "MSHP"}, _per_bldg["hp_type"].unique()
 _never = _per_bldg.filter(pl.col("backup_kwh") == 0)
 n_never_backup = _never.height
 pct_never_backup = float(_never["weight"].sum()) / households
+n_mshp = int((_per_bldg["hp_type"] == "MSHP").sum())
+n_ducted = int((_per_bldg["hp_type"] == "ASHP").sum())
+n_never_mshp = int((_never["hp_type"] == "MSHP").sum())
+assert n_never_mshp == n_never_backup, "CIEC-10(a) says every never-backup home has a mini-split"
 print(f"{n_never_backup:,} of {n_bldg:,} buildings ({pct_never_backup:.1%} weighted) never use backup")
+print(f"by type: {n_never_mshp:,} of {n_mshp:,} mini-split homes, 0 of {n_ducted:,} ducted heat pump homes")
 ```
 
 ## Attachment 1: hourly load
 
-One sheet: the average home's 8,760 hours, with annual totals, the backup ratio, and the peak hours as formulas.
+A `README` sheet, and the `hourly_load` sheet: the average home's 8,760 hours, with annual totals, the backup ratio, and the peak hours as formulas. The layout lives in `build_ciec_10_workbook.py`.
 
 ```{python}
 #| label: attachment
 #| output: false
 
-from openpyxl import Workbook
-from openpyxl.styles import Font
+from build_ciec_10_workbook import DRIVE_FOLDER_ID, DRIVE_NAME, Inputs, build_workbook, upload_xlsx
 
-from build_ciec_1a_workbook import DRIVE_FOLDER_ID, upload_xlsx
-
-DRIVE_NAME = "CIEC-10a_hourly_backup_load.xlsx"
-_bold = Font(bold=True)
-_wb = Workbook()
-_ws = _wb.active
-_ws.title = "hourly_load"
-_headers = ["timestamp", "weather_hour_2018", "backup_kwh", "heat_pump_kwh", "whole_home_kwh", "heat_pump_plus_backup_kwh"]
-for _col, _h in enumerate(_headers, start=1):
-    _ws.cell(1, _col, _h).font = _bold
-for _i, _row in enumerate(avg.select("timestamp", "weather_hour", *_LOAD_COLS).iter_rows(), start=2):
-    _ws.cell(_i, 1, _row[0]).number_format = "yyyy-mm-dd hh:mm"
-    _ws.cell(_i, 2, _row[1]).number_format = "yyyy-mm-dd hh:mm"
-    for _col, _v in enumerate(_row[2:], start=3):
-        _ws.cell(_i, _col, float(_v)).number_format = "0.000"
-    _ws.cell(_i, 6, f"=C{_i}+D{_i}").number_format = "0.000"
-_last = avg.height + 1
-_summary = [
-    ("Annual backup kWh", f"=SUM(C2:C{_last})", "#,##0.0"),
-    ("Annual heat pump kWh", f"=SUM(D2:D{_last})", "#,##0.0"),
-    ("Annual whole-home kWh", f"=SUM(E2:E{_last})", "#,##0.0"),
-    ("Backup / heat pump kWh", "=I2/I3", "0.0%"),
-    ("Peak backup kWh", f"=MAX(C2:C{_last})", "0.00"),
-    ("Peak backup hour", f"=INDEX(A2:A{_last},MATCH(I6,C2:C{_last},0))", "yyyy-mm-dd hh:mm"),
-    ("Peak heat pump + backup kWh", f"=MAX(F2:F{_last})", "0.00"),
-    ("Peak heat pump + backup hour", f"=INDEX(A2:A{_last},MATCH(I8,F2:F{_last},0))", "yyyy-mm-dd hh:mm"),
-]
-for _r, (_label, _formula, _fmt) in enumerate(_summary, start=2):
-    _ws.cell(_r, 8, _label).font = _bold
-    _ws.cell(_r, 9, _formula).number_format = _fmt
-_notes = [
-    f"Average of {n_bldg:,} ResStock {RELEASE} buildings (sample-weighted) served by Eversource and heated "
-    "with natural gas, fuel oil, or propane before the retrofit, modeled after the upgrade 2 heat pump retrofit.",
-    "timestamp: the hour on CAIRO's 2025 billing calendar, Eastern Standard Time, hour beginning. Same timestamps "
-    "and row order as Exhibit JPV-3, hourly_after.",
-    "weather_hour_2018: the ResStock hour simulated in that row (2018 weather). CAIRO shifts the 2018 year by two days "
-    "so weekdays line up with 2025; January 1-2, 2018 appear at the end of the year.",
-    "backup_kwh: electric resistance backup element (out.electricity.heating_hp_bkup).",
-    "heat_pump_kwh: compressor plus supply fan (heating, heating_fans_pumps, heating_hp_bkup_fa).",
-    "whole_home_kwh: grid consumption, the load billed in the direct testimony (Exhibit JPV-3, hourly_after).",
-    f"All kWh multiplied by the CAIRO scale factor {KWH_SCALE:.6f}.",
-]
-for _r, _note in enumerate(_notes, start=11):
-    _ws.cell(_r, 8, _note)
-_ws.freeze_panes = "A2"
-for _col, _w in zip("ABCDEFGHI", [18, 18, 12, 14, 16, 26, 3, 40, 18], strict=True):
-    _ws.column_dimensions[_col].width = _w
-
+_wb = build_workbook(Inputs(hourly=avg, n_bldg=n_bldg, release=RELEASE, kwh_scale=KWH_SCALE))
 _xlsx_path = Path("../cache") / DRIVE_NAME
 _wb.save(_xlsx_path)
 attachment_link = upload_xlsx(_xlsx_path, DRIVE_FOLDER_ID, DRIVE_NAME)
+_xlsx_path.unlink()
 print(f"Uploaded {DRIVE_NAME}: {attachment_link}")
 ```
 
@@ -382,6 +351,8 @@ Path("../cache/ciec_10_vars.pkl").write_bytes(
             "peak_backup": peak_backup,
             "n_never_backup": n_never_backup,
             "pct_never_backup": pct_never_backup,
+            "n_mshp": n_mshp,
+            "n_ducted": n_ducted,
             "attachment_name": DRIVE_NAME,
             "attachment_link": attachment_link,
         }

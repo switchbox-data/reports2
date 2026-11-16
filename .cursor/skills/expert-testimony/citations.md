@@ -66,7 +66,7 @@ Give the schedule or rider, the sheet, and in the parenthetical the supplement n
 
 ## Statutes, bills and executive orders
 
-- **Statutes:** `Md. Code Ann., Pub. Util. § 2-113(a)(2)(v)–(vi).` Several sections: `Md. Code Ann., Envir. §§ 2-1204.1 and 2-1204.2.` A named act gives its name and bill first: `Climate Solutions Now Act of 2022 (Senate Bill 528), Md. Code Ann., Envir. §§ 2-1204.1 and 2-1204.2.`
+- **Statutes:** `Md. Code Ann., Pub. Util. § 2-113(a)(2)(v)–(vi).` Several sections: `Md. Code Ann., Envir. §§ 2-1204.1 and 2-1204.2.` A named act gives its name and bill first: `Climate Solutions Now Act of 2022 (Senate Bill 528), Md. Code Ann., Envir. §§ 2-1204.1 and 2-1204.2.` Cite the current code without a year in parentheses; practitioners commonly drop it, although the Bluebook asks for one.
 - **Bills:** `House Bill 864, 2024 Regular Session, Maryland General Assembly (2024).`
 - **Executive orders:** `Maryland Executive Order 01.01.2024.19, Leadership by State Government: Implementing Maryland's Climate Pollution Reduction Plan, at Section C.2.b (June 4, 2024).`
 
@@ -83,7 +83,8 @@ Write the source out in full in the footnote: author or organization, italic tit
 
 ## Signals, repeats and cross-references
 
-- **Signals are italic:** `_See_`, `_See also_`, `_Cf._`. Capitalize the signal at the start of a footnote and lowercase it after a semicolon: `_See_ Ex. JPV-2, …; _see also_ Karas Direct at 21:11–22:7.`
+- **Signals are italic:** `_See_`, `_See also_`, `_Cf._`. Capitalize the signal at the start of a footnote and lowercase it after a semicolon: `_See_ Ex. JPV-2; _see also_ Karas Direct at 21:11–22:7.`
+- **Which signal (Bluebook Rule 1.2):** no signal when the source states the proposition or is quoted; `_See_` when it supports the proposition without stating it outright; `_See also_` for additional support after a source that already supports it, with a parenthetical saying what it adds: `_see also_ Velez Direct at 84 n.76 (quoting the same directive)`; `_Cf._` for support by analogy.
 - **`_Id._`** replaces the full citation when the footnote immediately before cites only that same source: `_Id._` (same page) or `_Id._ at 41.`
 - **`_supra_` and `_infra_`** point to other footnotes and sections: `_See supra_ n.8.`, `_See infra_ Section X.B.1.`, `_see also infra_ Section X.B.2.`
 - **Several sources in one footnote** are separated by semicolons.
@@ -92,11 +93,19 @@ Write the source out in full in the footnote: author or organization, italic tit
 
 An explanation or a quotation goes in parentheses after the citation it describes:
 
-> Karas Direct at 4:4–8 ("An effective rate design incorporates the principles of cost causation, …").
+> Karas Direct at 4:4–8 ("An effective rate design incorporates the principles of cost causation, intergenerational equity, price signaling, reasonableness, gradualism, and both inter-class and intra-class equity.").
 
 > Ex. JPV-6, BGE Response to CCAN DR 1-8 (BGE "does not track customers by known heat source").
 
+Use a quotation parenthetical when the body paraphrases the source or relies on it without quoting it, so the reader can see the source's own words. **Don't repeat a quotation the body already gives:** the footnote then carries only the citation and pinpoint. The exception is a body quotation that is a fragment and could mislead out of context; the parenthetical then adds only the missing context, either the surrounding words or a short description ("(addressing the class-by-class RDM analysis)").
+
 Sentences that comment on the source come after the citation, as ordinary prose.
+
+## Omissions in quotations
+
+Mark words left out of a quotation with three periods separated by spaces, `. . .` (Bluebook Rule 5.3), never the single `…` character: `("the revenue target for Rate R-1/R-2 . . . held constant")`. When the omission comes at the end of a quoted sentence, add the sentence's own period after it, making four: `("All transmission and distribution kWh charges associated with the annual revenue requirement would be collected . . . .")`. A quoted phrase that reads as a fragment needs no ellipsis at either end.
+
+This applies only to your own text. Leave quoted questions and testimony exactly as they were filed.
 
 ## Dates
 

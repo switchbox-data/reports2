@@ -89,7 +89,10 @@ Confirmed. The Company's count is in its response to CLF-SC-003(a).
   it, e.g. `**[NOT INGESTED]**` or `**[TK: no public copy to link yet]**`. Discussion and counsel
   blocks (`> **[DISCUSSION FOR JPV]**`, `**[COUNSEL]**`) are notes to the witness and may cite inline.
 - **Get every pinpoint from `just sources-cite`**, never by counting or from memory, and quote the
-  source's exact words in a parenthetical where the response relies on its wording. A set of data
+  source's exact words in a parenthetical where the response paraphrases or relies on its wording
+  without quoting it. If the body already quotes the passage, the footnote gives only the pinpoint;
+  add a parenthetical only for context the quoted fragment lacks (see "Parentheticals" in
+  `.cursor/skills/expert-testimony/citations.md`). A set of data
   responses often reprints earlier answers word for word, so the same passage can turn up several
   times: read every hit `sources-cite` prints, check which response each is in, and cite the
   original.

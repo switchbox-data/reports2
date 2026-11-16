@@ -1,0 +1,1054 @@
+---
+title: "When the distribution system becomes winter peaking"
+subtitle: "Docket No. 26-05-10"
+date: 2026-11-14
+bibliography: ../../references.yaml
+csl: ../../chicago-author-date-switchbox.csl
+reference-location: margin
+citation-location: document
+execute:
+  warning: false
+  message: false
+format:
+  html:
+    theme: ../../.style/switchbox.scss
+    page-layout: article
+    toc: false
+---
+
+This notebook estimates the level of residential heat pump adoption at which the Company's distribution system, taken as a whole, would become winter peaking. It does not estimate that level for any substation or feeder. The Company adds distribution capacity one substation and one feeder at a time, and the seasonal peaks of those components were withheld as Critical Energy Infrastructure Information. The system total was not.
+
+The system total is the hourly sum of load across all of the Company's distribution substations, from January 2022 through December 2025, filed as OCC-733 Attachment 1 [@clp_Docket260510OCC733_2026]. A winter peak higher than the summer peak on that series is what "the distribution system becomes winter peaking" means here.
+
+The calculation has three inputs.
+
+1. The hourly system total from OCC-733 Attachment 1, scaled so each earlier year matches the 2025 average hour, with one kernel density for every month, hour, and day type.
+2. The hourly grid consumption of each Eversource building in ResStock 2024.2, the same sample the testimony uses for the representative Eversource home [@nlr_ResStock20242Release_2024]. Buildings are grouped by the heating system they have now, and each building is paired with its own upgrade 02 heat pump retrofit. The change between those two, hour by hour, is a second kernel density for every month, hour, and day type.
+3. The share of Eversource households in each heating group, from the 2024 Residential Appliance Saturation Survey [@nmr_R2202ResidentialAppliance_2025; @nmr_R2202ResidentialAppliance_2025a]. That share times the rate-year count of residential bills is the most homes of that group the search will add. The survey's cooling tables are not an input.
+
+Homes already on a heat pump are not added. The load in a cell is one percentile of that cell's density. The summer peak is the highest of those values in June through September, and the winter peak is the highest in December through February. The result is the number of homes at which the winter peak rises above the summer peak. That count is computed twice. First each group is added on its own, starting from today's system. Then the groups are added in sequence, once with fossil fuels first and once with fossil fuels second.
+
+The kernel is the untruncated Gaussian density from `scipy.stats.gaussian_kde`, with Scott's bandwidth, the same bandwidth rule as `probability_of_peak.py` and the density `kde_sum.py` adds. The probability-of-peak routine cuts each kernel at three bandwidths. That truncated density is not the one used here.
+
+```{python}
+#| echo: false
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import polars as pl
+
+_RDP = Path("/ebs/home/lee_switch_box/rate-design-platform")
+if str(_RDP) not in sys.path:
+    sys.path.insert(0, str(_RDP))
+
+from utils.data_prep.marginal_costs.probability_of_peak import (  # noqa: E402
+    DAY_TYPES,
+    label_hour_types,
+    scott_bandwidth,
+)
+
+# The filed workbook, saved as the code input for the probability-of-peak
+# reconstruction. Columns are the sheet's: Total, Lost load PV, and Net Load.
+OCC733_PATH = _RDP / "dev/eversource_pop_analysis/data/occ733_attachment1_code_input.csv.gz"
+SUMMER_MONTHS = [6, 7, 8, 9]
+WINTER_MONTHS = [12, 1, 2]
+REFERENCE_YEAR = 2025
+```
+
+## The system load
+
+OCC-733 Attachment 1 is one row per hour from January 1, 2022 through December 31, 2025. `total_mw` is the metered sum across the Company's distribution substations. `net_load_mw` subtracts a projected solar addition, so it is not the historical load. Everything below uses `total_mw`.
+
+```{python}
+#| echo: false
+raw_occ733 = pl.read_csv(OCC733_PATH)
+load = (
+    raw_occ733.select(
+        pl.datetime("year", "month", "day", "hour").alias("timestamp"),
+        pl.col("total_mw").alias("load_mw"),
+    )
+    .sort("timestamp")
+)
+if load["timestamp"].n_unique() != load.height or load["load_mw"].null_count():
+    raise ValueError("OCC-733 hours are not a complete series of positive loads")
+
+year_level = (
+    load.group_by(pl.col("timestamp").dt.year().alias("year"))
+    .agg(
+        pl.len().alias("n_hours"),
+        pl.col("load_mw").mean().alias("mean_mw"),
+        pl.col("load_mw").max().alias("peak_mw"),
+    )
+    .sort("year")
+)
+```
+
+```{python}
+#| echo: false
+year_level.select(
+    "year",
+    "n_hours",
+    pl.col("mean_mw").round(1),
+    pl.col("peak_mw").round(0),
+)
+```
+
+2024 has 8,784 hours because February 29 is kept. The other three years have 8,760. The annual average sits between 2,207 MW and 2,261 MW.
+
+## Current summer and winter peaks
+
+Summer is June through September and winter is December through February. These are the metered peaks, before the 2025 scaling in the next section.
+
+```{python}
+#| echo: false
+season = load.with_columns(
+    pl.col("timestamp").dt.year().alias("year"),
+    pl.col("timestamp").dt.month().alias("month"),
+)
+summer_peak = (
+    season.filter(pl.col("month").is_in(SUMMER_MONTHS))
+    .group_by("year")
+    .agg(pl.col("load_mw").max().alias("summer_mw"))
+)
+winter_peak = (
+    season.filter(pl.col("month").is_in(WINTER_MONTHS))
+    .group_by("year")
+    .agg(pl.col("load_mw").max().alias("winter_mw"))
+)
+peaks = summer_peak.join(winter_peak, on="year").with_columns(
+    (pl.col("summer_mw") - pl.col("winter_mw")).alias("gap_mw")
+).sort("year")
+avg_summer = peaks["summer_mw"].mean()
+avg_winter = peaks["winter_mw"].mean()
+avg_gap = avg_summer - avg_winter
+avg_summer_mw = round(avg_summer)
+avg_winter_mw = round(avg_winter)
+avg_gap_mw = round(avg_gap)
+# The annual peak is the highest hour of the year. It is the summer peak in
+# every year of this file, so the mean of the annual peaks equals the mean
+# summer peak.
+peak_demand_mw = float(year_level["peak_mw"].mean())
+peak_demand_rounded = round(peak_demand_mw)
+if abs(peak_demand_mw - avg_summer) > 1e-6:
+    raise ValueError("mean of annual peaks is not the mean summer peak")
+```
+
+```{python}
+#| echo: false
+peaks.select(
+    "year",
+    pl.col("summer_mw").round(0),
+    pl.col("winter_mw").round(0),
+    pl.col("gap_mw").round(0),
+)
+```
+
+Over 2022 through 2025, the summer peak averages `{python} f"{avg_summer_mw:,}"` MW and the winter peak averages `{python} f"{avg_winter_mw:,}"` MW. The winter peak would have to rise by `{python} f"{avg_gap_mw:,}"` MW more than the summer peak before the system total became winter peaking. Each of the four years is summer peaking, and the gap in every year is between 1,150 MW and 1,330 MW.
+
+The single peak demand is the average of the four annual peaks, `{python} f"{peak_demand_rounded:,}"` MW. In each of these years the annual peak is the summer peak, so this is the same number as the average summer peak.
+
+## Scaling earlier years to 2025
+
+Each of 2022, 2023, and 2024 is multiplied by one number, the ratio of 2025's average hour to that year's average hour. 2025 is left as filed. After this, every year's average hour equals 2025's, and the loads stay in megawatts.
+
+```{python}
+#| echo: false
+mean_2025 = float(year_level.filter(pl.col("year") == REFERENCE_YEAR)["mean_mw"][0])
+scaled = load.with_columns(pl.col("timestamp").dt.year().alias("year")).join(
+    year_level.select("year", "mean_mw"), on="year"
+).with_columns(
+    pl.when(pl.col("year") == REFERENCE_YEAR)
+    .then(pl.lit(1.0))
+    .otherwise(pl.lit(mean_2025) / pl.col("mean_mw"))
+    .alias("scale"),
+).with_columns(
+    (pl.col("load_mw") * pl.col("scale")).alias("load_mw_2025")
+)
+scaled_check = scaled.group_by("year").agg(pl.col("load_mw_2025").mean().alias("scaled_mean_mw")).sort("year")
+if any(abs(v - mean_2025) > 1e-6 for v in scaled_check["scaled_mean_mw"]):
+    raise ValueError("scaled yearly averages do not match 2025")
+scales = (
+    scaled.group_by("year")
+    .agg(pl.col("scale").first(), pl.col("mean_mw").first())
+    .sort("year")
+)
+```
+
+```{python}
+#| echo: false
+scales.select("year", pl.col("mean_mw").round(1), pl.col("scale").round(4))
+```
+
+The scale factors are all within 2 percent of 1. The four years already have nearly the same average hour, so this step changes the level of the earlier years only slightly. It does put them on the 2025 megawatt scale, which is the level the densities below are fit to.
+
+## Load distribution by month, hour, and day type
+
+Each hour is labelled by month, hour beginning, and day type. A day is a weekend-or-holiday day when it is a Saturday, a Sunday, or one of the eleven federal holidays, with a Saturday holiday observed on the Friday before and a Sunday holiday on the Monday after. That is the calendar in `probability_of_peak.py`.
+
+In each of the 576 cells (12 months, 2 day types, 24 hours), the sample is `load_mw_2025` for every hour in that cell. The unscaled metered load is not the sample. The density is `scipy.stats.gaussian_kde` on those points, with Scott's bandwidth and no truncation. The bandwidth and the sample are the fitted distribution. No draws are taken here.
+
+```{python}
+#| echo: false
+import numpy as np
+from scipy.stats import gaussian_kde
+
+labelled = label_hour_types(
+    scaled.select("timestamp", pl.col("load_mw_2025").alias("load_mw"))
+)
+groups = {
+    (int(month), str(daytype), int(hour)): group["load_mw"].to_numpy()
+    for (month, daytype, hour), group in labelled.group_by("month", "daytype", "hour")
+}
+records: list[dict[str, object]] = []
+kde_samples: dict[tuple[int, str, int], np.ndarray] = {}
+system_kde: dict[tuple[int, str, int], gaussian_kde] = {}
+for month in range(1, 13):
+    for daytype in DAY_TYPES:
+        for hour in range(24):
+            sample = groups.get((month, daytype, hour))
+            if sample is None or sample.size < 2:
+                raise ValueError(f"month {month} {daytype} hour {hour} has fewer than two hours")
+            kde = gaussian_kde(sample)
+            bandwidth = float(np.sqrt(np.asarray(kde.covariance, dtype=float).reshape(-1)[0]))
+            if abs(bandwidth - scott_bandwidth(sample)) > 1e-6:
+                raise ValueError(f"month {month} {daytype} hour {hour} bandwidth is not Scott's rule")
+            kde_samples[(month, daytype, hour)] = sample
+            system_kde[(month, daytype, hour)] = kde
+            records.append(
+                {
+                    "month": month,
+                    "daytype": daytype,
+                    "hour": hour,
+                    "n_obs": int(sample.size),
+                    "mean_mw": float(sample.mean()),
+                    "bandwidth_mw": bandwidth,
+                }
+            )
+cell_kde = pl.DataFrame(records).sort("month", "daytype", "hour")
+if cell_kde.height != 12 * 2 * 24 or len(system_kde) != 12 * 2 * 24:
+    raise ValueError(f"expected 576 cells, got {cell_kde.height}")
+```
+
+```{python}
+#| echo: false
+cell_kde.select(
+    pl.len().alias("cells"),
+    pl.col("n_obs").min().alias("fewest_hours"),
+    pl.col("n_obs").max().alias("most_hours"),
+    pl.col("bandwidth_mw").min().round(1).alias("narrowest_bandwidth_mw"),
+    pl.col("bandwidth_mw").max().round(1).alias("widest_bandwidth_mw"),
+)
+```
+
+All 576 cells have a density fit to `load_mw_2025`. A cell's sample runs from `{python} int(cell_kde["n_obs"].min())` hours to `{python} int(cell_kde["n_obs"].max())`, and its bandwidth from `{python} f"{cell_kde['bandwidth_mw'].min():.0f}"` MW to `{python} f"{cell_kde['bandwidth_mw'].max():.0f}"` MW. `cell_kde` holds the cell, the sample size, the sample mean, and the bandwidth. `system_kde` holds the fitted density for each cell. `kde_samples` holds the scaled hourly loads that density was fit to.
+
+## Home load by heating system
+
+The homes are the Eversource buildings in ResStock 2024.2, on the heating system they have now. That is the baseline, not the heat pump retrofit. A building with a heat pump is in the heat pump group even though its fuel is electricity. Electric resistance is electricity without a heat pump. Natural gas, fuel oil, and propane are separate. Wood is the buildings whose heating fuel is Other Fuel or None. ResStock has no wood flag. No building falls in two groups.
+
+The consumption is `grid_cons_kwh`, the kilowatt-hours the home takes from the grid in that hour, after rooftop solar and not below zero. That is the part of the home's use the distribution system sees. It is not the fuel burned in a furnace.
+
+ResStock simulated these homes on 2018 weather, with 2018's weekdays and holidays. The CAIRO file this notebook reads has those same hours stamped as 2025 in UTC, five hours ahead of Eastern Standard Time. The labels below put the hours back on the 2018 calendar. Day type is the same weekend-and-holiday rule as the system load.
+
+The sample in a cell is the change from upgrade 00 to upgrade 02, for every hour of every building in the group. A building is not replaced by its average in the cell. If the cell contains H hours of the year and the group has N buildings, the sample has N times H points, and every building contributes the same H. Buildings are equally weighted. The density is the same untruncated Scott kernel as the system load, one per group per cell. The heat pump group is fit here and is not added to the system. No draws are taken.
+
+```{python}
+#| echo: false
+from datetime import datetime
+
+from lib.rates_analysis.rate_case_funcs import (
+    load_billing_kwh_8760,
+    load_master_bills,
+    segment_name,
+)
+
+STATE = "CT"
+BATCH = "ct_20261015_a"
+UTILITY = "ct_eversource"
+SEGMENT = segment_name("default_ry1_r1_uncalibrated", "precalc")
+WEATHER_YEAR = 2018
+# CAIRO stamps the 2018 weather year as this calendar year, in UTC.
+CLOCK_YEAR = 2025
+EST_OFFSET_HOURS = 5
+HEATING_ORDER = [
+    "Heat pump",
+    "Electric resistance",
+    "Natural gas",
+    "Fuel oil",
+    "Propane",
+    "Wood",
+]
+
+homes = (
+    load_master_bills(STATE, BATCH, SEGMENT)
+    .filter((pl.col("month") == "Annual") & (pl.col("sb.electric_utility") == UTILITY))
+    .select(
+        "bldg_id",
+        "postprocess_group.heating_type_v2",
+        "heats_with_oil",
+        "heats_with_propane",
+    )
+    .unique(subset=["bldg_id"])
+    .with_columns(
+        pl.when(pl.col("postprocess_group.heating_type_v2") == "heat_pump")
+        .then(pl.lit("Heat pump"))
+        .when(pl.col("postprocess_group.heating_type_v2") == "electrical_resistance")
+        .then(pl.lit("Electric resistance"))
+        .when(pl.col("postprocess_group.heating_type_v2") == "natgas")
+        .then(pl.lit("Natural gas"))
+        .when(pl.col("heats_with_oil"))
+        .then(pl.lit("Fuel oil"))
+        .when(pl.col("heats_with_propane"))
+        .then(pl.lit("Propane"))
+        .otherwise(pl.lit("Wood"))
+        .alias("heating")
+    )
+    .select(pl.col("bldg_id").cast(pl.Int64), "heating")
+    .collect()
+)
+if set(homes["heating"].unique()) != set(HEATING_ORDER):
+    raise ValueError(f"heating groups are {homes['heating'].unique().to_list()}")
+heating_counts = (
+    homes.group_by("heating")
+    .agg(pl.len().alias("n_bldgs"))
+    .with_columns(pl.col("heating").cast(pl.Enum(HEATING_ORDER)))
+    .sort("heating")
+)
+
+kwh = load_billing_kwh_8760(STATE, UTILITY, BATCH, SEGMENT)
+n_load_bldgs = int(kwh.select(pl.col("bldg_id").n_unique()).collect().item())
+if n_load_bldgs != homes.height:
+    raise ValueError(f"load file has {n_load_bldgs} buildings, metadata has {homes.height}")
+
+clock = kwh.select("timestamp").unique().collect().sort("timestamp")
+if clock.height != 8760:
+    raise ValueError(f"expected 8,760 timestamps, got {clock.height}")
+shift_days = (datetime(CLOCK_YEAR, 1, 1) - datetime(WEATHER_YEAR, 1, 1)).days
+clock = clock.with_columns(
+    (
+        pl.col("timestamp")
+        - pl.duration(hours=EST_OFFSET_HOURS)
+        - pl.duration(days=shift_days)
+    ).alias("local")
+)
+if clock["local"].min() != datetime(WEATHER_YEAR, 1, 1) or clock["local"].max() != datetime(
+    WEATHER_YEAR, 12, 31, 23
+):
+    raise ValueError("shifted clock is not the 2018 weather year")
+clock = label_hour_types(clock, timestamp_col="local").select("timestamp", "month", "daytype", "hour")
+
+SEGMENT_HP = segment_name("default_ry1_r1_uncalibrated", "calibrated")
+kwh_hp = load_billing_kwh_8760(STATE, UTILITY, BATCH, SEGMENT_HP)
+_ids_before = set(kwh.select("bldg_id").unique().collect()["bldg_id"].to_list())
+_ids_after = set(kwh_hp.select("bldg_id").unique().collect()["bldg_id"].to_list())
+if _ids_before != _ids_after:
+    raise ValueError("upgrade 00 and upgrade 02 do not have the same buildings")
+if not kwh_hp.select("timestamp").unique().collect().sort("timestamp").equals(
+    kwh.select("timestamp").unique().collect().sort("timestamp")
+):
+    raise ValueError("upgrade 00 and upgrade 02 are not on the same clock")
+
+hourly = (
+    kwh.select("bldg_id", "timestamp", pl.col("grid_cons_kwh").alias("before_kwh"))
+    .join(
+        kwh_hp.select("bldg_id", "timestamp", pl.col("grid_cons_kwh").alias("after_kwh")),
+        on=["bldg_id", "timestamp"],
+    )
+    .join(clock.lazy(), on="timestamp")
+    .join(homes.lazy(), on="bldg_id")
+    .with_columns((pl.col("after_kwh") - pl.col("before_kwh")).alias("change_kwh"))
+    .collect()
+)
+if hourly.height != homes.height * 8760:
+    raise ValueError(f"expected one row per building-hour, got {hourly.height}")
+_cell_hours = (
+    hourly.group_by("bldg_id", "month", "daytype", "hour")
+    .agg(pl.len().alias("n_hours"))
+    .group_by("month", "daytype", "hour")
+    .agg(
+        pl.col("n_hours").n_unique().alias("n_distinct"),
+        pl.col("n_hours").first().alias("hours_per_bldg"),
+    )
+)
+if _cell_hours.height != 12 * 2 * 24 or int(_cell_hours["n_distinct"].max()) != 1:
+    raise ValueError("buildings do not share the same 576 cells")
+
+_winter_change = (
+    hourly.filter(pl.col("month").is_in(WINTER_MONTHS))
+    .group_by("heating")
+    .agg(
+        pl.col("before_kwh").mean().alias("winter_before_kwh"),
+        pl.col("after_kwh").mean().alias("winter_after_kwh"),
+    )
+)
+_summer_change = (
+    hourly.filter(pl.col("month").is_in(SUMMER_MONTHS))
+    .group_by("heating")
+    .agg(
+        pl.col("before_kwh").mean().alias("summer_before_kwh"),
+        pl.col("after_kwh").mean().alias("summer_after_kwh"),
+    )
+)
+retrofit_summary = (
+    _winter_change.join(_summer_change, on="heating")
+    .with_columns(pl.col("heating").cast(pl.Enum(HEATING_ORDER)))
+    .sort("heating")
+)
+_er = retrofit_summary.filter(pl.col("heating") == "Electric resistance")
+er_winter_before = float(_er["winter_before_kwh"][0])
+er_winter_after = float(_er["winter_after_kwh"][0])
+
+change_kde: dict[tuple[str, int, str, int], gaussian_kde | None] = {}
+_change_rows: list[dict[str, object]] = []
+for key, group in hourly.group_by("heating", "month", "daytype", "hour"):
+    heating, month, daytype, hour = (str(key[0]), int(key[1]), str(key[2]), int(key[3]))
+    sample_mw = group["change_kwh"].to_numpy() / 1_000.0
+    n_bldgs = int(group["bldg_id"].n_unique())
+    hours_per_bldg = int(sample_mw.size / n_bldgs)
+    if n_bldgs * hours_per_bldg != sample_mw.size:
+        raise ValueError(f"{heating} month {month} {daytype} hour {hour} is missing building-hours")
+    sample_std = float(sample_mw.std(ddof=1))
+    point_var = float(np.mean((sample_mw - sample_mw.mean()) ** 2))
+    if sample_std == 0.0:
+        kde = None
+        bandwidth_mw = 0.0
+    else:
+        kde = gaussian_kde(sample_mw)
+        bandwidth_mw = float(np.sqrt(np.asarray(kde.covariance, dtype=float).reshape(-1)[0]))
+        if abs(bandwidth_mw - scott_bandwidth(sample_mw)) > 1e-9:
+            raise ValueError(f"{heating} month {month} {daytype} hour {hour} bandwidth is not Scott's rule")
+    change_kde[(heating, month, daytype, hour)] = kde
+    _change_rows.append(
+        {
+            "heating": heating,
+            "month": month,
+            "daytype": daytype,
+            "hour": hour,
+            "n_bldgs": n_bldgs,
+            "hours_per_bldg": hours_per_bldg,
+            "n_obs": int(sample_mw.size),
+            "mean_kwh": float(sample_mw.mean() * 1_000.0),
+            "bandwidth_kwh": bandwidth_mw * 1_000.0,
+            "var_mw": point_var + bandwidth_mw ** 2,
+        }
+    )
+del hourly
+change_kde_table = (
+    pl.DataFrame(_change_rows)
+    .with_columns(pl.col("heating").cast(pl.Enum(HEATING_ORDER)))
+    .sort("heating", "month", "daytype", "hour")
+)
+if change_kde_table.height != len(HEATING_ORDER) * 12 * 2 * 24 or len(change_kde) != change_kde_table.height:
+    raise ValueError(f"expected {len(HEATING_ORDER) * 576} change densities, got {change_kde_table.height}")
+if change_kde_table.join(heating_counts, on="heating").filter(pl.col("n_bldgs") != pl.col("n_bldgs_right")).height:
+    raise ValueError("a cell is missing buildings")
+n_home_cells = change_kde_table.height
+```
+
+```{python}
+#| echo: false
+heating_counts
+```
+
+```{python}
+#| echo: false
+change_kde_table.group_by("heating").agg(
+    pl.col("n_bldgs").first(),
+    pl.len().alias("cells"),
+    pl.col("n_obs").min().alias("fewest_hours"),
+    pl.col("n_obs").max().alias("most_hours"),
+    pl.col("bandwidth_kwh").min().round(3).alias("narrowest_bandwidth_kwh"),
+    pl.col("bandwidth_kwh").max().round(3).alias("widest_bandwidth_kwh"),
+).sort("heating")
+```
+
+There are `{python} f"{homes.height:,}"` Eversource buildings and `{python} f"{n_home_cells:,}"` densities, 576 for each of the six heating groups. Every building is in every cell of its group, and every hour of the year is in the sample. `change_kde` holds the fitted density for each group and cell, in megawatts. `change_kde_table` holds the cell, the number of hours, the mean change, and the bandwidth.
+
+Upgrade 02 is the heat pump retrofit the testimony uses for the representative home. It puts a heat pump with electric backup in each building, on the same 2018 weather and the same clock. The change in an hour is that building's upgrade 02 grid consumption minus its upgrade 00 grid consumption. The group stays the group from upgrade 00.
+
+```{python}
+#| echo: false
+retrofit_summary.select(
+    "heating",
+    pl.col("winter_before_kwh").round(2),
+    pl.col("winter_after_kwh").round(2),
+    pl.col("summer_before_kwh").round(2),
+    pl.col("summer_after_kwh").round(2),
+)
+```
+
+The table is the average kilowatt-hour in a winter hour and in a summer hour, with each hour of each building counted once. An electric resistance home averages `{python} f"{er_winter_before:.2f}"` kWh in a winter hour before the retrofit and `{python} f"{er_winter_after:.2f}"` kWh after.
+
+## Heating and cooling equipment
+
+The shares below are Eversource households in the 2024 Residential Appliance Saturation Survey, surveyed May through July 2024. They include renters. The survey's owner-only tables are statewide, not for Eversource, and are not the shares used here.
+
+Primary heating system and primary heating fuel are reported separately. The grouped shares use the fuel table for fossil fuel and wood, and subtract the heat-pump share from the electric-fuel share to get electric resistance. That remainder, 12 percent, equals electric baseboard (9 percent) plus space heaters (3 percent) on the system table.
+
+The survey does not cross heating equipment with cooling coverage, for Eversource or statewide. Heating and cooling are separate tables.
+
+```{python}
+#| echo: false
+# Eversource column, RASS detailed tables, Appendix E.
+# Table 455, primary heating system. Table 456, primary heating fuel.
+# Table 457, penetration of any heating system of that type (not primary).
+# Table 459, primary cooling system.
+PRIMARY_SYSTEM = {
+    "Boiler": 0.48,
+    "Furnace": 0.27,
+    "Electric baseboard": 0.09,
+    "Heat pump": 0.09,
+    "Space heater": 0.03,
+    "Fireplace": 0.02,
+    "Wood or pellet stove": 0.03,
+}
+PRIMARY_FUEL = {
+    "Oil": 0.39,
+    "Natural gas": 0.29,
+    "Electricity": 0.21,
+    "Propane": 0.07,
+    "Wood": 0.03,
+}
+PRIMARY_COOLING = {
+    "Central air conditioner": 0.35,
+    "Room air conditioner": 0.38,
+    "Heat pump": 0.10,
+    "Ceiling fan": 0.08,
+    "Portable fan": 0.05,
+    "Whole-house fan": 0.01,
+    "No cooling system": 0.01,
+}
+
+HEAT_PUMP_PRIMARY = PRIMARY_SYSTEM["Heat pump"]
+HEAT_PUMP_PRESENT = 0.20  # Table 457, any heat pump, not necessarily primary
+ELECTRIC_RESISTANCE = PRIMARY_FUEL["Electricity"] - HEAT_PUMP_PRIMARY
+FOSSIL = PRIMARY_FUEL["Oil"] + PRIMARY_FUEL["Natural gas"] + PRIMARY_FUEL["Propane"]
+WOOD = PRIMARY_FUEL["Wood"]
+
+# Statewide, Table 19 of the RASS report: share of homes with that equipment
+# whose system cools every room. Not an Eversource figure, and not joint with heating.
+FULL_COVERAGE_GIVEN_EQUIPMENT = {
+    "Central air conditioner": 0.79,
+    "Ducted heat pump": 0.59,
+    "Room air conditioner": 0.24,
+    "Mini-split heat pump": 0.15,
+}
+```
+
+**Primary heating, Eversource.** Nine percent use a heat pump as their primary system. Twenty percent have a heat pump present, including homes that use it as a supplement, so about 11 percent have one but do not heat with it primarily. Twelve percent heat with electricity other than a heat pump. Oil, natural gas, and propane are 39, 29, and 7 percent, and those three sum to 75 percent. Three percent heat with wood.
+
+| Group | Eversource share | Source |
+| --- | ---: | --- |
+| Heat pump, primary | 9% | Table 455 |
+| Heat pump present, primary or not | 20% | Table 457 |
+| Electric resistance | 12% | Table 456 electricity, 21%, minus the 9% primary heat pump |
+| Oil | 39% | Table 456 |
+| Natural gas | 29% | Table 456 |
+| Propane | 7% | Table 456 |
+| Fossil fuel (oil, natural gas, propane) | 75% | Table 456 |
+| Wood | 3% | Table 456 |
+
+The first two rows overlap, and the fossil row is the sum of oil, natural gas, and propane. The caps on the load calculation are the 9 percent already on a primary heat pump, who are not converted, and the 12 percent on electric resistance, the 39 percent on oil, the 29 percent on natural gas, the 7 percent on propane, and the 3 percent on wood. Each of those five groups is added on its own. They sum to 99 percent with the heat pump share because the survey percentages are rounded.
+
+On the primary system table, which is not the same split, 48 percent use a boiler, 27 percent a furnace, 9 percent electric baseboard, 9 percent a heat pump, 3 percent a space heater, 2 percent a fireplace, and 3 percent a wood or pellet stove (Table 455). Those rows sum to 101 percent because of rounding.
+
+**Cooling, Eversource.** Primary cooling does partition the sample (Table 459). The rows below sum to 98 percent because of rounding. Ceiling, portable, and whole-house fans together are the 14 percent whose primary cooling is a fan.
+
+| Primary cooling | Eversource share |
+| --- | ---: |
+| Central air conditioner | 35% |
+| Room air conditioner | 38% |
+| Heat pump | 10% |
+| Ceiling fan | 8% |
+| Portable fan | 5% |
+| Whole-house fan | 1% |
+| No cooling system | 1% |
+
+**Whole-home cooling.** No table gives the share of homes with every room cooled inside each heating group, for Eversource or statewide.
+
+Statewide, not for Eversource alone, 48 percent of homes report some uncooled space, and 64 percent have a central air conditioner or a heat pump. Among homes that have each equipment type, the share whose system cools every room is 79 percent for central air conditioners, 59 percent for ducted heat pumps, 24 percent for room air conditioners, and 15 percent for mini-splits (RASS report, Table 19).
+
+Eversource Table 461 does ask what portion of the home the cooling system serves, and 51 percent say all rooms. That table is not a partition of homes. All rooms, more than half, less than half, and not sure are 51, 33, 40, and 5 percent, which sum to about 129 percent. The 51 percent cannot be read as the share of Eversource households with whole-home cooling.
+
+
+## The percentile that sets the peak
+
+`peak_quantile` is the only percentile in the calculation. It is `0.90`. Changing that one number changes the load in every cell, both seasonal peaks, and the crossing count.
+
+The load assigned to a cell is that percentile of the cell's density, in megawatts on the scaled 2025 level. Before any retrofit, the density is the system density fit to `load_mw_2025`. The summer peak is the largest of those values in June through September. The winter peak is the largest in December through February. The cell that sets each peak can be any hour and either day type inside the season.
+
+```{python}
+#| echo: false
+# The only percentile in the peak calculation.
+PEAK_QUANTILE = 0.90
+
+_CIEC = Path("/ebs/home/lee_switch_box/reports2/reports/ct_hp_rates/ciec_requests")
+if str(_CIEC) not in sys.path:
+    sys.path.insert(0, str(_CIEC))
+
+from ciec_1 import rate_year_residential_customers  # noqa: E402
+from kde_sum import SumKDE, added_normal_ppf  # noqa: E402
+
+n_customers = rate_year_residential_customers()
+# Display name, ResStock heating label, RASS share. The share times the
+# rate-year bill count is the most homes of that group the search adds.
+CONVERTED_GROUPS = [
+    ("Electric resistance", "Electric resistance", ELECTRIC_RESISTANCE),
+    ("Natural gas", "Natural gas", PRIMARY_FUEL["Natural gas"]),
+    ("Fuel oil", "Fuel oil", PRIMARY_FUEL["Oil"]),
+    ("Propane", "Propane", PRIMARY_FUEL["Propane"]),
+    ("Wood", "Wood", WOOD),
+]
+if abs(sum(share for _, _, share in CONVERTED_GROUPS) + HEAT_PUMP_PRIMARY - 0.99) > 1e-12:
+    raise ValueError("the heating partition no longer sums to 99 percent")
+
+
+def _season_peak(group: str, k: int, months: list[int]) -> float:
+    """Highest cell percentile inside one season after k homes of one group."""
+    key = (group, months[0])
+    packed = _season_cells.get(key)
+    if packed is None:
+        rows = change_kde_table.filter(
+            (pl.col("heating") == group) & pl.col("month").is_in(months)
+        )
+        packed = []
+        for row in rows.iter_rows(named=True):
+            system = system_kde[(int(row["month"]), str(row["daytype"]), int(row["hour"]))]
+            packed.append((system, float(row["mean_kwh"]) / 1_000.0, float(row["var_mw"])))
+        if not packed:
+            raise ValueError(f"{group} has no cells in months {months}")
+        _season_cells[key] = packed
+    peak = -np.inf
+    for system, mean_mw, var_mw in packed:
+        peak = max(peak, added_normal_ppf(system, k * mean_mw, k * var_mw, PEAK_QUANTILE))
+    return float(peak)
+
+
+_season_cells: dict[tuple[str, int], list[tuple[gaussian_kde, float, float]]] = {}
+
+
+summer_now = _season_peak("Natural gas", 0, SUMMER_MONTHS)
+winter_now = _season_peak("Natural gas", 0, WINTER_MONTHS)
+# k = 0 does not use a group's change density. Any group returns the same peaks.
+if abs(_season_peak("Fuel oil", 0, SUMMER_MONTHS) - summer_now) > 1e-6:
+    raise ValueError("the no-retrofit summer peak depends on the heating group")
+if winter_now >= summer_now:
+    raise ValueError("the scaled system is already winter peaking at this percentile")
+gap_now = summer_now - winter_now
+```
+
+With no homes added, the summer peak is `{python} f"{summer_now:,.0f}"` MW and the winter peak is `{python} f"{winter_now:,.0f}"` MW. The winter peak would have to rise `{python} f"{gap_now:,.0f}"` MW more than the summer peak to pass it. These are percentiles of the scaled load, so they are not the highest metered hour in each season.
+
+## One home, then many
+
+Adding one home of a group replaces each cell's density with the sum of the system density and that group's change density in the same cell. The January weekday hour-18 system density is added only to the January weekday hour-18 change density. One home changes all 576 cells together. A second home is another independent copy of the same change density. Homes from other groups are not in the sum. Each group starts again from today's system.
+
+The sum of one system density and one change density is the convolution in `kde_sum.py`. For the counts below, the sum of many independent copies of the change density is a normal with that density's mean times the count and that density's variance times the count. The variance of one home is the population variance of its hourly changes plus the Scott bandwidth squared. That normal is convolved with the system mixture, and the percentile is the inverse of the mixture cdf. At zero homes the normal has mean and variance zero, so the percentile is the system density's own.
+
+The check below compares that normal approximation at one home with the exact convolution, in every cell of every converted group.
+
+```{python}
+#| echo: false
+_approx_gap = []
+for _name, label, _share in CONVERTED_GROUPS:
+    _rows = change_kde_table.filter(pl.col("heating") == label)
+    for row in _rows.iter_rows(named=True):
+        cell = (int(row["month"]), str(row["daytype"]), int(row["hour"]))
+        system = system_kde[cell]
+        change = change_kde[(label, *cell)]
+        if change is None:
+            raise ValueError(f"{label} {cell} has no change density")
+        exact = float(SumKDE(system, change).ppf(PEAK_QUANTILE))
+        approx = added_normal_ppf(
+            system,
+            float(row["mean_kwh"]) / 1_000.0,
+            float(row["var_mw"]),
+            PEAK_QUANTILE,
+        )
+        _approx_gap.append(abs(exact - approx))
+approx_gap_mw = float(max(_approx_gap))
+```
+
+Across all `{python} f"{len(_approx_gap):,}"` cells, the exact one-home percentile and the normal approximation differ by at most `{python} f"{approx_gap_mw:.2e}"` MW.
+
+## How many homes until the system is winter peaking
+
+Each of electric resistance, natural gas, oil, propane, and wood is added on its own. The heat pump group is not added. The search stops at the group's share of the `{python} f"{n_customers:,}"` rate-year residential bills for Rates 1, 5, and 7. Winter peaking means the winter peak is above the summer peak. The count is whole homes, each one an independent draw from the group's change density.
+
+```{python}
+#| echo: false
+from plotnine import aes, facet_wrap, geom_line, geom_vline, ggplot, labs, scale_color_manual, theme
+
+from lib.plotnine import SB_COLORS, theme_switchbox
+
+conversion = pl.DataFrame(
+    {
+        "group": [name for name, _, _ in CONVERTED_GROUPS],
+        "share": [share for _, _, share in CONVERTED_GROUPS],
+        "cap": [int(round(share * n_customers)) for _, _, share in CONVERTED_GROUPS],
+    }
+)
+
+
+def _gap(group: str, k: int) -> float:
+    return _season_peak(group, k, WINTER_MONTHS) - _season_peak(group, k, SUMMER_MONTHS)
+
+
+def _first_crossing(group: str, cap: int) -> int | None:
+    """Smallest whole-home count at which the winter peak passes the summer peak."""
+    if cap < 1:
+        raise ValueError(f"{group} has no homes to convert")
+    if _gap(group, 0) > 0:
+        return 0
+    if _gap(group, cap) <= 0:
+        return None
+    grid = [int(k) for k in np.linspace(0, cap, 21)]
+    gaps = [_gap(group, k) for k in grid]
+    increasing = all(gaps[i] <= gaps[i + 1] + 1e-4 for i in range(len(gaps) - 1))
+    if increasing:
+        lo, hi = 0, cap
+    else:
+        lo, hi = 0, cap
+        for i in range(len(grid) - 1):
+            if gaps[i] <= 0 < gaps[i + 1]:
+                lo, hi = grid[i], grid[i + 1]
+                break
+    while hi - lo > 1:
+        mid = (lo + hi) // 2
+        if _gap(group, mid) > 0:
+            hi = mid
+        else:
+            lo = mid
+    return hi
+
+
+crossing_rows = []
+path_rows = []
+for name, label, _share in CONVERTED_GROUPS:
+    cap = int(conversion.filter(pl.col("group") == name)["cap"][0])
+    k_star = _first_crossing(label, cap)
+    reported = cap if k_star is None else k_star
+    summer = _season_peak(label, reported, SUMMER_MONTHS)
+    winter = _season_peak(label, reported, WINTER_MONTHS)
+    crossing_rows.append(
+        {
+            "group": name,
+            "cap": cap,
+            "homes": k_star,
+            "summer_mw": summer,
+            "winter_mw": winter,
+            "gap_mw": summer - winter,
+        }
+    )
+    for k in np.linspace(0, cap, 41):
+        k_int = int(round(k))
+        path_rows.append(
+            {
+                "group": name,
+                "homes": k_int / 1_000.0,
+                "season": "Summer",
+                "mw": _season_peak(label, k_int, SUMMER_MONTHS),
+            }
+        )
+        path_rows.append(
+            {
+                "group": name,
+                "homes": k_int / 1_000.0,
+                "season": "Winter",
+                "mw": _season_peak(label, k_int, WINTER_MONTHS),
+            }
+        )
+
+crossings = pl.DataFrame(crossing_rows)
+paths = pl.DataFrame(path_rows)
+_group_order = [name for name, _, _ in CONVERTED_GROUPS]
+paths = paths.with_columns(pl.col("group").cast(pl.Enum(_group_order)))
+_crossed = crossings.filter(pl.col("homes").is_not_null()).with_columns(
+    (pl.col("homes") / 1_000.0).alias("homes"),
+    pl.col("group").cast(pl.Enum(_group_order)),
+)
+
+
+def _sentence(row: dict[str, object]) -> str:
+    group = str(row["group"]).lower()
+    cap = int(row["cap"])
+    if row["homes"] is None:
+        return (
+            f"Converting all {cap:,} {group} homes leaves the summer peak above the winter peak, "
+            f"by {float(row['gap_mw']):,.0f} MW."
+        )
+    homes = int(row["homes"])
+    share = homes / cap
+    return (
+        f"{str(row['group'])} homes, added on their own, make the system winter peaking after {homes:,} homes, "
+        f"{share:.0%} of the {cap:,} in the group. The summer peak is then {float(row['summer_mw']):,.0f} MW "
+        f"and the winter peak is {float(row['winter_mw']):,.0f} MW."
+    )
+
+
+crossing_text = " ".join(_sentence(row) for row in crossings.iter_rows(named=True))
+```
+
+```{python}
+#| echo: false
+conversion
+```
+
+```{python}
+#| echo: false
+crossings.select(
+    "group",
+    "cap",
+    pl.col("homes").cast(pl.Int64),
+    pl.col("summer_mw").round(0),
+    pl.col("winter_mw").round(0),
+    pl.col("gap_mw").round(0),
+)
+```
+
+The bill count is `{python} f"{n_customers:,}"`. `{python} crossing_text` A blank homes count means the group does not flip the system before every home in the group has converted. The gap is the summer peak minus the winter peak at the count in the homes column, or at the cap when that column is blank.
+
+```{python}
+#| echo: false
+#| fig-width: 8
+#| fig-height: 7
+_chart = (
+    ggplot(paths, aes("homes", "mw", color="season"))
+    + geom_line(size=1)
+    + scale_color_manual(values={"Summer": SB_COLORS["carrot"], "Winter": SB_COLORS["midnight"]})
+    + facet_wrap("~group", ncol=2)
+    + labs(
+        title="Summer and winter peaks as homes of one heating group convert",
+        x="Homes converted (thousands)",
+        y=f"Peak at the {PEAK_QUANTILE:.0%} of the cell (MW)",
+        color="",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(8, 7))
+)
+if _crossed.height:
+    _chart = _chart + geom_vline(_crossed, aes(xintercept="homes"), color=SB_COLORS["gray"])
+_chart
+```
+
+The lines in a panel are that group added alone. The vertical line, where there is one, is the count at which the winter peak passes the summer peak. Electric resistance homes lower their winter use when they convert, so that panel can widen the gap instead of closing it.
+
+## Fossil fuels first, and fossil fuels second
+
+The same peaks are computed again with the groups added in sequence. A group is finished, up to its cap, before the next group starts. Both sequences use the same caps.
+
+- **Fossil first.** Natural gas, then fuel oil, then propane, then wood, then electric resistance.
+- **Fossil second.** Electric resistance first, then natural gas, fuel oil, propane, and wood in that same order.
+
+Wood stays with the fossil block in both sequences. The heat pump group is still not added. The cell density at a count is the system density convolved with a normal whose mean is the sum of each group's mean change times the homes converted so far, and whose variance is the sum of each group's variance times those homes. Winter peaking means the same thing as above.
+
+```{python}
+#| echo: false
+_CAPS = {row["group"]: int(row["cap"]) for row in conversion.iter_rows(named=True)}
+FOSSIL_FIRST = ["Natural gas", "Fuel oil", "Propane", "Wood", "Electric resistance"]
+FOSSIL_SECOND = ["Electric resistance", "Natural gas", "Fuel oil", "Propane", "Wood"]
+SEQUENCES = [("Fossil first", FOSSIL_FIRST), ("Fossil second", FOSSIL_SECOND)]
+if set(FOSSIL_FIRST) != set(_CAPS) or set(FOSSIL_SECOND) != set(_CAPS):
+    raise ValueError("a sequence is missing a heating group")
+
+
+def _pack_season(months: list[int]) -> list[dict[str, object]]:
+    rows = change_kde_table.filter(pl.col("month").is_in(months))
+    cells: dict[tuple[int, str, int], dict[str, object]] = {}
+    for row in rows.iter_rows(named=True):
+        key = (int(row["month"]), str(row["daytype"]), int(row["hour"]))
+        cell = cells.get(key)
+        if cell is None:
+            cell = {"kde": system_kde[key], "mean": {}, "var": {}}
+            cells[key] = cell
+        heating = str(row["heating"])
+        cell["mean"][heating] = float(row["mean_kwh"]) / 1_000.0
+        cell["var"][heating] = float(row["var_mw"])
+    if len(cells) != len(months) * 2 * 24:
+        raise ValueError(f"expected {len(months) * 48} seasonal cells, got {len(cells)}")
+    return list(cells.values())
+
+
+_summer_cells = _pack_season(SUMMER_MONTHS)
+_winter_cells = _pack_season(WINTER_MONTHS)
+
+
+def _counts_at(order: list[str], k: int) -> dict[str, int]:
+    """Homes converted in each group after the first k homes on that order."""
+    left = int(k)
+    counts = {name: 0 for name in order}
+    for name in order:
+        take = min(left, _CAPS[name])
+        counts[name] = take
+        left -= take
+        if left <= 0:
+            break
+    return counts
+
+
+def _sequence_peak(order: list[str], k: int, cells: list[dict[str, object]]) -> float:
+    counts = _counts_at(order, k)
+    peak = -np.inf
+    for cell in cells:
+        mean = cell["mean"]
+        var = cell["var"]
+        loc = sum(counts[name] * mean[name] for name in order)
+        variance = sum(counts[name] * var[name] for name in order)
+        peak = max(peak, added_normal_ppf(cell["kde"], loc, variance, PEAK_QUANTILE))
+    return float(peak)
+
+
+# One group at its cap is the sequence that converts only that group.
+_gas_cap = _CAPS["Natural gas"]
+if abs(_sequence_peak(FOSSIL_FIRST, _gas_cap, _summer_cells) - _season_peak("Natural gas", _gas_cap, SUMMER_MONTHS)) > 1e-4:
+    raise ValueError("the sequence does not match the single-group summer peak")
+_er_cap = _CAPS["Electric resistance"]
+if abs(_sequence_peak(FOSSIL_SECOND, _er_cap, _winter_cells) - _season_peak("Electric resistance", _er_cap, WINTER_MONTHS)) > 1e-4:
+    raise ValueError("the sequence does not match the single-group winter peak")
+
+
+def _sequence_gap(order: list[str], k: int) -> float:
+    return _sequence_peak(order, k, _winter_cells) - _sequence_peak(order, k, _summer_cells)
+
+
+def _sequence_crossing(order: list[str]) -> int | None:
+    """Smallest whole-home count at which the winter peak passes the summer peak."""
+    cap = sum(_CAPS[name] for name in order)
+    if _sequence_gap(order, 0) > 0:
+        return 0
+    if _sequence_gap(order, cap) <= 0:
+        return None
+    grid = [int(k) for k in np.linspace(0, cap, 21)]
+    gaps = [_sequence_gap(order, k) for k in grid]
+    increasing = all(gaps[i] <= gaps[i + 1] + 1e-4 for i in range(len(gaps) - 1))
+    if increasing:
+        lo, hi = 0, cap
+    else:
+        lo, hi = 0, cap
+        for i in range(len(grid) - 1):
+            if gaps[i] <= 0 < gaps[i + 1]:
+                lo, hi = grid[i], grid[i + 1]
+                break
+    while hi - lo > 1:
+        mid = (lo + hi) // 2
+        if _sequence_gap(order, mid) > 0:
+            hi = mid
+        else:
+            lo = mid
+    return hi
+
+
+def _sequence_phrase(order: list[str], counts: dict[str, int]) -> str:
+    parts = []
+    for name in order:
+        n = counts[name]
+        if n <= 0:
+            continue
+        label = name.lower()
+        if n >= _CAPS[name]:
+            parts.append(f"all {n:,} {label} homes")
+        else:
+            parts.append(f"{n:,} of {_CAPS[name]:,} {label} homes")
+    return ", then ".join(parts)
+
+
+_sequence_rows = []
+_sequence_paths = []
+_sequence_lines = []
+for order_name, order in SEQUENCES:
+    total = sum(_CAPS[name] for name in order)
+    k_star = _sequence_crossing(order)
+    reported = total if k_star is None else k_star
+    counts = _counts_at(order, reported)
+    summer = _sequence_peak(order, reported, _summer_cells)
+    winter = _sequence_peak(order, reported, _winter_cells)
+    _sequence_rows.append(
+        {
+            "order": order_name,
+            "homes": k_star,
+            "natural_gas": counts["Natural gas"],
+            "fuel_oil": counts["Fuel oil"],
+            "propane": counts["Propane"],
+            "wood": counts["Wood"],
+            "electric_resistance": counts["Electric resistance"],
+            "summer_mw": summer,
+            "winter_mw": winter,
+            "gap_mw": summer - winter,
+        }
+    )
+    if k_star is None:
+        _sequence_lines.append(
+            f"{order_name} leaves the summer peak above the winter peak after all {total:,} homes, "
+            f"by {summer - winter:,.0f} MW."
+        )
+    else:
+        _sequence_lines.append(
+            f"{order_name} makes the system winter peaking after {k_star:,} homes: "
+            f"{_sequence_phrase(order, counts)}. The summer peak is then {summer:,.0f} MW and the "
+            f"winter peak is {winter:,.0f} MW."
+        )
+    for k in np.linspace(0, total, 41):
+        k_int = int(round(k))
+        _sequence_paths.append(
+            {"order": order_name, "homes": k_int / 1_000.0, "season": "Summer", "mw": _sequence_peak(order, k_int, _summer_cells)}
+        )
+        _sequence_paths.append(
+            {"order": order_name, "homes": k_int / 1_000.0, "season": "Winter", "mw": _sequence_peak(order, k_int, _winter_cells)}
+        )
+
+sequence_crossings = pl.DataFrame(_sequence_rows)
+sequence_text = " ".join(_sequence_lines)
+_sequence_order = [name for name, _order in SEQUENCES]
+sequence_paths = pl.DataFrame(_sequence_paths).with_columns(pl.col("order").cast(pl.Enum(_sequence_order)))
+_sequence_crossed = sequence_crossings.filter(pl.col("homes").is_not_null()).with_columns(
+    (pl.col("homes") / 1_000.0).alias("homes"),
+    pl.col("order").cast(pl.Enum(_sequence_order)),
+)
+```
+
+```{python}
+#| echo: false
+sequence_crossings.select(
+    "order",
+    pl.col("homes").cast(pl.Int64),
+    "natural_gas",
+    "fuel_oil",
+    "propane",
+    "wood",
+    "electric_resistance",
+    pl.col("summer_mw").round(0),
+    pl.col("winter_mw").round(0),
+    pl.col("gap_mw").round(0),
+)
+```
+
+`{python} sequence_text` A blank homes count means that order does not flip the system before every home in the sequence has converted. The counts in the table are the homes converted at the flip, or at the end of the sequence when it does not flip.
+
+```{python}
+#| echo: false
+#| fig-width: 8
+#| fig-height: 6
+_sequence_chart = (
+    ggplot(sequence_paths, aes("homes", "mw", color="season"))
+    + geom_line(size=1)
+    + scale_color_manual(values={"Summer": SB_COLORS["carrot"], "Winter": SB_COLORS["midnight"]})
+    + facet_wrap("~order", ncol=1)
+    + labs(
+        title="Summer and winter peaks as homes convert in sequence",
+        x="Homes converted (thousands)",
+        y=f"Peak at the {PEAK_QUANTILE:.0%} of the cell (MW)",
+        color="",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(8, 6))
+)
+if _sequence_crossed.height:
+    _sequence_chart = _sequence_chart + geom_vline(
+        _sequence_crossed, aes(xintercept="homes"), color=SB_COLORS["gray"]
+    )
+_sequence_chart
+```
+
+Each panel is one sequence, on the same home-count axis. The vertical line is the count at which the winter peak passes the summer peak.

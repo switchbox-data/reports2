@@ -14,9 +14,10 @@ inputs
     allocation shares, and company-wide billed sales.  Yellow cells are
     inputs.
 shortfall
-    Annual distribution and transmission shortfall, non-residential share,
-    and the RDM per-kWh impact.  Every number is a formula referencing
-    the inputs sheet.
+    Annual distribution and transmission shortfall, the part allocated to
+    non-residential classes, and the RDM adjustment per kWh.  Every number
+    is a formula referencing the inputs sheet.  Distribution and transmission
+    are kept separate, as in the response.
 """
 
 from __future__ import annotations
@@ -93,7 +94,12 @@ def _write_readme(wb: Workbook) -> None:
             False,
         ),
         (
-            "RDM and TAC impact of auto-enrolling existing heat pump customers in Rate HP on non-residential classes.",
+            "Calculations behind the shortfall figures in the response to CIEC-2(d): the annual distribution "
+            "and transmission revenue shortfall if the existing heat pump customers identified in CIEC-1(b) "
+            "were auto-enrolled in Rate HP after Rate 1 and Rate HP are set, the part of each that the RDM "
+            "and TAC would allocate to non-residential classes until the next rate case, and the resulting "
+            "RDM adjustment per kWh. These are the response's worst-case figures; the response explains how "
+            "the shortfall can be avoided.",
             False,
         ),
         ("", False),
@@ -101,19 +107,19 @@ def _write_readme(wb: Workbook) -> None:
         ("", False),
         ("inputs", True),
         (
-            "Per-customer revenue decrease (distribution and transmission) from "
-            "CIEC-1(a).  Existing-customer count from CIEC-1(b).  "
-            "Company-wide billed MWh from Exhibit CLP-RATES-2 at 3.  "
-            "TAC demand allocation from Docket 26-01-03 Exhibit 4 at 4.",
+            "Per-customer revenue decrease (distribution and transmission) from CIEC-1(a). "
+            "Existing-customer count from CIEC-1(b). "
+            "Rate Year billed sales by class from Exhibit CLP-RATES-2 at 3. "
+            "Class demand at the Company's 12 monthly system peaks from RAM Exhibit 4 at 4 (Docket No. 26-01-03).",
             False,
         ),
         ("", False),
         ("shortfall", True),
         (
-            "Annual distribution and transmission shortfall = existing customers * "
-            "per-customer decrease.  Non-residential share = shortfall * allocation "
-            "share (kWh for RDM, demand for TAC).  RDM cents/kWh = distribution shortfall "
-            "/ company-wide kWh.",
+            "Annual shortfall = existing customers times the per-customer decrease. "
+            "Allocated to non-residential classes = shortfall times the non-residential share of the allocator "
+            "(billed kWh for the RDM, demand at the 12 monthly system peaks for the TAC). "
+            "RDM adjustment = distribution shortfall ÷ company-wide billed kWh.",
             False,
         ),
     ]
@@ -124,6 +130,7 @@ def _write_readme(wb: Workbook) -> None:
             cell.font = TITLE_FONT if row == 1 else HEADER_FONT
     ws.column_dimensions["A"].width = 120
     ws.row_dimensions[1].height = 22
+    ws.row_dimensions[3].height = 64
     for row in (8, 11):
         ws.row_dimensions[row].height = 48
 
@@ -138,12 +145,12 @@ def _write_inputs(wb: Workbook, inp: Inputs) -> dict[str, str]:
     r += 1
     _put(ws, r, 1, "Distribution (annual)")
     _put(ws, r, 2, inp.dec_dist, input_=True, fmt=FMT_DOLLAR)
-    _put(ws, r, 3, "CIEC-1(a), representative home", wrap=True)
+    _put(ws, r, 3, "CIEC-1(a) (representative home, Exhibit JPV-2)", wrap=True)
     dec_dist_cell = f"B{r}"
     r += 1
     _put(ws, r, 1, "Transmission (annual)")
     _put(ws, r, 2, inp.dec_tx, input_=True, fmt=FMT_DOLLAR)
-    _put(ws, r, 3, "CIEC-1(a), representative home", wrap=True)
+    _put(ws, r, 3, "CIEC-1(a) (representative home, Exhibit JPV-2)", wrap=True)
     dec_tx_cell = f"B{r}"
     r += 1
     _put(ws, r, 1, "T&D total")
@@ -152,9 +159,9 @@ def _write_inputs(wb: Workbook, inp: Inputs) -> dict[str, str]:
     r += 2
     _put(ws, r, 1, "Existing heat pump customers", bold=True)
     r += 1
-    _put(ws, r, 1, "Count (auto-enrolled)")
+    _put(ws, r, 1, "Customers auto-enrolled")
     _put(ws, r, 2, inp.existing_customers, input_=True, fmt=FMT_COUNT)
-    _put(ws, r, 3, "CIEC-1(b), EnergizeCT installations rounded to thousand", wrap=True)
+    _put(ws, r, 3, "CIEC-1(b): homes with Energize CT-rebated heat pumps, rounded to the nearest thousand", wrap=True)
     existing_cell = f"B{r}"
 
     r += 2
@@ -162,7 +169,7 @@ def _write_inputs(wb: Workbook, inp: Inputs) -> dict[str, str]:
     r += 1
     _put(ws, r, 1, "Company-wide billed sales (MWh)")
     _put(ws, r, 2, inp.rdm_total_mwh, input_=True, fmt=FMT_MWH)
-    _put(ws, r, 3, "Exhibit CLP-RATES-2 at 3, all retail classes", wrap=True)
+    _put(ws, r, 3, "Exhibit CLP-RATES-2 at 3, Rate Year, all retail classes", wrap=True)
     rdm_total_cell = f"B{r}"
     r += 1
     _put(ws, r, 1, "Residential billed sales (MWh)")
@@ -179,12 +186,12 @@ def _write_inputs(wb: Workbook, inp: Inputs) -> dict[str, str]:
     r += 1
     _put(ws, r, 1, "Company-wide demand (kW)")
     _put(ws, r, 2, inp.tac_total_kw, input_=True, fmt="#,##0.0")
-    _put(ws, r, 3, "Docket 26-01-03, Exhibit 4 at 4", wrap=True)
+    _put(ws, r, 3, "RAM Exhibit 4 at 4:56 (Docket No. 26-01-03), all rate classes", wrap=True)
     tac_total_cell = f"B{r}"
     r += 1
     _put(ws, r, 1, "Residential demand (kW)")
     _put(ws, r, 2, inp.tac_res_kw, input_=True, fmt="#,##0.0")
-    _put(ws, r, 3, "Rates 1+7 and Rate 5", wrap=True)
+    _put(ws, r, 3, "RAM Exhibit 4 at 4:18 (Rates 1 and 7 combined) plus 4:20 (Rate 5)", wrap=True)
     tac_res_cell = f"B{r}"
     r += 1
     _put(ws, r, 1, "Non-residential share")
@@ -213,11 +220,12 @@ def _write_shortfall(wb: Workbook, refs: dict[str, str]) -> None:
         ws,
         2,
         1,
-        "All numbers are formulas referencing the inputs sheet. "
-        "The shortfall is the same every year: existing customers are enrolled once.",
+        "All numbers are formulas referencing the inputs sheet. Existing customers are enrolled once, "
+        "so the shortfall is the same each year until the next rate case, when Rate 1 is reset "
+        "without these customers' load.",
         wrap=True,
     )
-    ws.merge_cells("A2:E2")
+    ws.merge_cells("A2:D2")
     ws.row_dimensions[2].height = 32
 
     dec_dist = f"inputs!{refs['dec_dist']}"
@@ -230,34 +238,31 @@ def _write_shortfall(wb: Workbook, refs: dict[str, str]) -> None:
     r = 4
     _put(ws, r, 1, "Annual shortfall", bold=True)
     r += 1
-    headers = ["", "Distribution", "Transmission", "T&D total"]
+    headers = ["", "Distribution (RDM)", "Transmission (TAC)"]
     for col, h in enumerate(headers, start=1):
         _put(ws, r, col, h, bold=True)
     r += 1
-    _put(ws, r, 1, "Total shortfall")
+    _put(ws, r, 1, "All classes")
     _put(ws, r, 2, f"={existing}*{dec_dist}", fmt=FMT_REVENUE)
     _put(ws, r, 3, f"={existing}*{dec_tx}", fmt=FMT_REVENUE)
-    _put(ws, r, 4, f"=B{r}+C{r}", fmt=FMT_REVENUE)
     total_dist = f"B{r}"
     total_tx = f"C{r}"
     r += 1
-    _put(ws, r, 1, "Non-residential share")
+    _put(ws, r, 1, "Allocated to non-residential classes")
     _put(ws, r, 2, f"={total_dist}*{nonres_kwh}", fmt=FMT_REVENUE)
     _put(ws, r, 3, f"={total_tx}*{nonres_demand}", fmt=FMT_REVENUE)
-    _put(ws, r, 4, f"=B{r}+C{r}", fmt=FMT_REVENUE)
 
     r += 2
-    _put(ws, r, 1, "RDM per-kWh impact", bold=True)
+    _put(ws, r, 1, "RDM adjustment", bold=True)
     r += 1
-    _put(ws, r, 1, "¢/kWh")
+    _put(ws, r, 1, "¢/kWh, all classes")
     _put(ws, r, 2, f"={total_dist}/({rdm_total}*1000)*100", fmt=FMT_CENTS)
-    _put(ws, r, 3, "Distribution shortfall ÷ company-wide kWh", wrap=True)
+    _put(ws, r, 3, "Distribution shortfall ÷ company-wide billed kWh (MWh times 1,000)", wrap=True)
 
-    ws.column_dimensions["A"].width = 30
+    ws.column_dimensions["A"].width = 36
     ws.column_dimensions["B"].width = 22
-    ws.column_dimensions["C"].width = 22
+    ws.column_dimensions["C"].width = 40
     ws.column_dimensions["D"].width = 22
-    ws.column_dimensions["E"].width = 50
 
 
 def build_workbook(inp: Inputs) -> Workbook:

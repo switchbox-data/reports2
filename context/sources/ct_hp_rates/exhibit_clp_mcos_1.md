@@ -1,6 +1,11 @@
 ---
 source_file: "Eversource - 2026 - Docket 26-05-10 Exhibit CLP-MCOS-1.pdf"
 citekey: clp_Docket260510Exhibit_2026d
+zotero_item: "3PP4RRUY"
+public_url: https://drive.google.com/file/d/1cVPNhcurGpgrTcOoM3oNazi6fZsIFlpq/view
+short_url: https://pub.switch.box/clp_Docket260510Exhibit_2026d
+md5: "ef0e6e589a8f42e497c8f9eba090a927"
+validated: 2026-11-16
 docket: "26-05-10"
 utility: The Connecticut Light and Power Company d/b/a Eversource Energy
 filer: The Connecticut Light and Power Company d/b/a Eversource Energy
@@ -9,6 +14,9 @@ filing_date: 2026-07-14
 pages_total: 21
 extraction_scope: full
 citation_scheme: page_line
+context: Direct testimony of Amparo Nieto, filed July 14, 2026 with CL&P's application to amend its rate schedules in PURA Docket 26-05-10. It introduces the Company's marginal cost of service study (Exhibit CLP-MCOS-2) that supports its rate design.
+contents: The role of a marginal cost study in rate design; the methods used in the rate case study; and the rate design implications of marginal costs.
+why_here: The Company's own statements that marginal-cost rates serve affordability and limit cross-subsidies as customers electrify, cited in the CIEC interrogatory responses.
 ---
 
 # Exhibit CLP-MCOS-1 — Direct Testimony of Amparo Nieto (Marginal Cost of Service Study)

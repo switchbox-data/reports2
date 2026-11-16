@@ -1,12 +1,12 @@
 ---
 source_file: Heat Pump Installations, Excluding Water Heaters.xlsx
-citekey: clp_HeatPumpInstallations_2026a
+citekey: clp_EnergizeCTHeat_2026
 zotero_item: "T9MEWFCK"
 public_url: https://drive.google.com/file/d/1FOyH0HAEUvyIe56CuWNS98ZTQFFpCpFk/view
-short_url: https://pub.switch.box/clp_HeatPumpInstallations_2026a
+short_url: https://pub.switch.box/clp_EnergizeCTHeat_2026
 source_url: https://www.ctenergydashboard.com/heat-pump
 md5: "dcd33d07b1b4bb66b8c1902ef59ad8ad"
-validated: 2026-11-10
+validated: 2026-11-15
 context: Eversource Connecticut publishes this export from the Connecticut Energy Efficiency Dashboard so readers can see Conservation and Load Management heat pump installations.
 contents: A matrix of residential installations for Eversource Electric by year, 2017 through 2026, and by equipment type, plus the sub-program detail the matrix sums. Heat pump water heaters are excluded. The five remaining types total 67,306 installations. Ducted air-source and ground-source still total 21,765, and 18,799 since 2023. Every kept type-year count matches the November 5, 2026 export. The dashboard prints no as-of date; this copy was saved on November 10, 2026.
 why_here: CIEC-1 checked enrollment bounds against this dashboard. The November 5 export included heat pump water heaters, so this copy is the same residential Eversource Electric extract with those installations removed.

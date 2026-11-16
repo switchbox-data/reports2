@@ -27,11 +27,7 @@ def _load() -> ModuleType:
 builder = _load()
 
 
-def _generation() -> dict[str, float]:
-    return {f"2025-{month:02d}": 0.02 for month in range(1, 13)}
-
-
-def _case() -> tuple[list, list, pl.DataFrame, dict[str, float]]:
+def _case() -> tuple[list, list, pl.DataFrame]:
     floor = [
         builder.RevenueRow("Existing", 10, 100.0, 40.0),
         builder.RevenueRow("2027", 12, 200.0, 80.0),
@@ -47,18 +43,17 @@ def _case() -> tuple[list, list, pl.DataFrame, dict[str, float]]:
             "annual_kwh": [100.0, 40.0],
         }
     )
-    return floor, ceiling, buildings, _generation()
+    return floor, ceiling, buildings
 
 
 def test_workbook_divides_pasted_revenue_by_scaled_kwh() -> None:
-    floor, ceiling, buildings, generation = _case()
+    floor, ceiling, buildings = _case()
     wb = builder.build_workbook(
         floor,
         ceiling,
         buildings,
         distribution=0.11,
         transmission=0.05,
-        generation_monthly=generation,
         rate_year_customers=100,
     )
 
@@ -109,11 +104,7 @@ def test_workbook_divides_pasted_revenue_by_scaled_kwh() -> None:
     assert rates["C6"].value == 0.05
     assert rates["C7"].value == "=C5+C6"
     assert rates["D5"].value == "=C5*100"
-    assert rates["C11"].value == 0.02
-    assert rates["C22"].value == 0.02
-    assert rates["D11"].value == "=C11*100"
-    assert rates["C23"].value == "=AVERAGE(C11:C22)"
-    assert rates["C25"].value == "=C7+C23"
+    assert rates.max_row == 7
 
     increase = wb["increase"]
     assert increase["A5"].value == "=revenue!A5"
@@ -121,24 +112,24 @@ def test_workbook_divides_pasted_revenue_by_scaled_kwh() -> None:
     assert increase["C5"].value == "=revenue!D5/payers!E9"
     assert increase["D5"].value == "=B5+C5"
     assert increase["E5"].value == "=D5/rates!$C$7"
-    assert increase["F5"].value == "=D5/rates!$C$25"
-    assert increase["G6"].value == "=revenue!G6/payers!I10"
-    assert increase["I6"].value == "=G6+H6"
-    assert increase["K6"].value == "=I6/rates!$C$25"
+    assert increase["F6"].value == "=revenue!G6/payers!I10"
+    assert increase["G6"].value == "=revenue!H6/payers!I10"
+    assert increase["H6"].value == "=F6+G6"
+    assert increase["I6"].value == "=H6/rates!$C$7"
+    assert increase.max_column == 9
     assert increase["B5"].value.startswith("=")
 
 
 def test_enrollment_range_is_formulas_between_floor_and_ceiling() -> None:
     floor = [builder.RevenueRow("Existing", 10, 100.0, 40.0)]
     ceiling = [builder.RevenueRow("Existing", 30, 300.0, 120.0)]
-    _floor, _ceiling, buildings, generation = _case()
+    _floor, _ceiling, buildings = _case()
     wb = builder.build_workbook(
         floor,
         ceiling,
         buildings,
         distribution=0.11,
         transmission=0.05,
-        generation_monthly=generation,
         rate_year_customers=100,
         per_customer_distribution=10.0,
         per_customer_transmission=4.0,
@@ -172,12 +163,12 @@ def test_enrollment_range_is_formulas_between_floor_and_ceiling() -> None:
     assert increase["C13"].value == "=revenue!D13/payers!E13"
     assert increase["D9"].value == "=B9+C9"
     assert increase["E12"].value == "=D12/rates!$C$7"
-    assert increase["F13"].value == "=D13/rates!$C$25"
+    assert increase.max_column == 5
     assert increase["B8"].fill.patternType is None
 
 
 def test_rejects_inputs_that_cannot_support_the_increase() -> None:
-    floor, ceiling, buildings, generation = _case()
+    floor, ceiling, buildings = _case()
     with pytest.raises(ValueError, match="labels"):
         builder.build_workbook(
             [floor[0]],
@@ -185,19 +176,6 @@ def test_rejects_inputs_that_cannot_support_the_increase() -> None:
             buildings,
             distribution=0.11,
             transmission=0.05,
-            generation_monthly=generation,
-            rate_year_customers=100,
-        )
-    missing = dict(generation)
-    missing.pop("2025-07")
-    with pytest.raises(ValueError, match="generation months"):
-        builder.build_workbook(
-            floor,
-            ceiling,
-            buildings,
-            distribution=0.11,
-            transmission=0.05,
-            generation_monthly=missing,
             rate_year_customers=100,
         )
     with pytest.raises(ValueError, match="empty"):
@@ -207,7 +185,6 @@ def test_rejects_inputs_that_cannot_support_the_increase() -> None:
             buildings.clear(),
             distribution=0.11,
             transmission=0.05,
-            generation_monthly=generation,
             rate_year_customers=100,
         )
     with pytest.raises(ValueError, match="positive"):
@@ -217,7 +194,6 @@ def test_rejects_inputs_that_cannot_support_the_increase() -> None:
             buildings,
             distribution=0.0,
             transmission=0.05,
-            generation_monthly=generation,
             rate_year_customers=100,
         )
     with pytest.raises(ValueError, match="nobody"):
@@ -227,6 +203,5 @@ def test_rejects_inputs_that_cannot_support_the_increase() -> None:
             buildings,
             distribution=0.11,
             transmission=0.05,
-            generation_monthly=generation,
             rate_year_customers=40,
         )

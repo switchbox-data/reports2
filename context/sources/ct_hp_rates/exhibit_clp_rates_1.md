@@ -1,6 +1,11 @@
 ---
 source_file: "Eversource - 2026 - Docket 26-05-10 Exhibit CLP-RATES-1.pdf"
 citekey: clp_Docket260510Exhibit_2026f
+zotero_item: "YE6YP88Y"
+public_url: https://drive.google.com/file/d/1soCUJQ3BR6CFm2U9N7jyz_vqGLm4rF69/view
+short_url: https://pub.switch.box/clp_Docket260510Exhibit_2026f
+md5: "2963020803f35b81890fdb5d8cf308cb"
+validated: 2026-11-16
 docket: "26-05-10"
 utility: The Connecticut Light and Power Company d/b/a Eversource Energy
 filer: The Connecticut Light and Power Company d/b/a Eversource Energy
@@ -9,6 +14,9 @@ filing_date: 2026-07-14
 pages_total: 41
 extraction_scope: full
 citation_scheme: page_line
+context: Joint direct testimony of Edward Davis and Kimberly R. Parsons, filed July 14, 2026 with CL&P's application to amend its rate schedules in PURA Docket 26-05-10. It is the rate-design companion to the revenue requirement testimony and to Exhibits CLP-RATES-2 and CLP-RATES-3.
+contents: Prior PURA directives; cost allocation, the Rate Year sales forecast and the maximum residential customer charge; the proposed distribution rate increase; streetlighting rates; the revenue decoupling mechanism; new rate initiatives (Economic Development Rate, optional residential space-heating Rate 6, SCRAF and PBMRP); and terms and conditions changes.
+why_here: The Company's rationale for Rate 1 and Rate 6, the RDM and the Economic Development Rate, cited in the CIEC interrogatory responses on revenue neutrality, the reconciling mechanisms and the EDR comparison.
 ---
 
 # Exhibit CLP-RATES-1 — Joint Direct Testimony of Edward Davis and Kimberly R. Parsons (Rate and Tariff Amendments)

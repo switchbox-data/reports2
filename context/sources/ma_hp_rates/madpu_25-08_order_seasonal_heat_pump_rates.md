@@ -1,6 +1,18 @@
 ---
+source_file: DPU - 2026 - Docket 25-08 Order on Seasonal Heat Pump Rates.pdf
 citekey: madpu_Docket2508Order_2026
+zotero_item: "5YMV5THK"
+public_url: https://drive.google.com/file/d/1n5KCZ9jhtx8WxtZ6YO8yyMgXn5w5X00h/view
+short_url: https://pub.switch.box/madpu_Docket2508Order_2026
+md5: "729955dca183b785318fe49da7ec08e8"
+validated: 2026-11-15
 citation_scheme: page
+docket: 25-08
+pages_total: 44
+extraction_scope: full
+context: The DPU's order in its own-motion inquiry (D.P.U. 25-08-A), issued after DOER's petition, the Interagency Rates Working Group's proposals and stakeholder comments.
+contents: Directs National Grid and Unitil to file winter transmission charges for heat pump rates by June 15, 2026, declines to seasonally differentiate reconciling mechanisms, and sets enrollment, marketing and outreach, and reporting directives, including comparing billed heat pump revenue with what default-rate billing would have produced.
+why_here: The outcome of the Massachusetts proceeding that Switchbox's first heat pump rate report, on Massachusetts, was submitted to influence. Also the source for technical details we cite elsewhere, such as auto-enrollment and reporting heat pump revenue in annual revenue decoupling filings.
 ---
 
 # Order on Seasonal Heat Pump Rates

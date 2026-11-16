@@ -1,6 +1,11 @@
 ---
 source_file: Exhibit CLP-RATES-3.pdf
 citekey: clp_Docket260510Exhibit_2026h
+zotero_item: "TEXU2NQX"
+public_url: https://drive.google.com/file/d/16NIyN6w2UhdNTqKWisRIBAE1Vqqz7D0N/view
+short_url: https://pub.switch.box/clp_Docket260510Exhibit_2026h
+md5: "5ac840d9989c3220f567f90203a1e807"
+validated: 2026-11-16
 docket: 26-05-10
 utility: The Connecticut Light and Power Company d/b/a Eversource Energy
 filer: The Connecticut Light and Power Company d/b/a Eversource Energy
@@ -8,9 +13,9 @@ document_type: tariff
 pages_total: 439
 extraction_scope: "partial: Schedule E-1.1 (unmarked proposed tariffs, effective July 1, 2027) residential rate schedules Rates 1, 5, 6, 7 (PDF pp. 243-258) and the rider / adjustment-clause sheets that residential customers take or that the residential schedules point to (PDF pp. 376-396, 401-405, 409, 422, 426-435). Not transcribed: the redlined Schedule E-1.0, the Terms and Conditions, all non-residential rate schedules, and the riders listed in the not-transcribed runs below."
 citation_scheme: page
-context: "Exhibit CLP-RATES-3 is the tariff book CL&P filed in its 2026 rate case, Docket 26-05-10, showing the rate schedules, riders and terms and conditions it proposes to take effect July 1, 2027. It comes in two forms: Schedule E-1.0, a scored (redlined) copy showing changes from the current tariffs, and Schedule E-1.1, a clean copy of the proposed tariffs."
-contents: "Cover sheet (p. 1); Schedule E-1.0 redlined tariffs (pp. 2-201); Schedule E-1.1 clean tariffs (pp. 202-439): Terms and Conditions (pp. 203-242), rate schedules (Rate 1 at pp. 243-245, Rate 5 at 246-248, Rate 6 at 249-254, Rate 7 at 255-258, then Rates 18 through 980), and riders and adjustment clauses (pp. 376-439), including the Revenue Decoupling Mechanism (RDM) Rider, Systems Benefits Cost Adjustment, Transmission Adjustment Clause, Competitive Transition Assessment Cost Adjustment, FMCC, Storm Cost Recovery Adjustment Factor (SCRAF) and the Performance-Based Multi-Year Rate Plan (PBMRP) Rider."
-why_here: "The proposed Rate 1/5/6/7 tariff language and rates, and the rules for the riders that sit on top of them: which reconciling charges (RDM, TAC, SBC, CTA, FMCC, SCRAF) are billed as separate line items, how each is calculated, and how the PBMRP will adjust base distribution rates from July 1, 2028. Read with exhibit_clp_rates_2_residential.md (the rate workpapers) for how the proposed rates were built."
+context: Exhibit CLP-RATES-3 is the tariff book CL&P filed in its 2026 rate case, Docket 26-05-10, showing the rate schedules, riders and terms and conditions it proposes to take effect July 1, 2027. It comes in two forms, Schedule E-1.0, a scored (redlined) copy showing changes from the current tariffs, and Schedule E-1.1, a clean copy of the proposed tariffs.
+contents: Cover sheet; Schedule E-1.0 redlined tariffs (pp. 2-201); Schedule E-1.1 clean tariffs (pp. 202-439), including Terms and Conditions, rate schedules (Rate 1 at pp. 243-245, Rate 5 at 246-248, Rate 6 at 249-254, Rate 7 at 255-258, then Rates 18 through 980), and riders and adjustment clauses (pp. 376-439) such as the RDM Rider, Transmission Adjustment Clause, Systems Benefits Cost Adjustment and PBMRP Rider.
+why_here: The proposed Rate 1, 5, 6 and 7 tariff language and the rules for the riders on top of them, including how the RDM and TAC are calculated and who bears their reconciliation. Cited in the CIEC interrogatory responses.
 ---
 
 # Exhibit CLP-RATES-3 — Clean and Scored Tariffs (Residential schedules Rate 1, 5, 6, 7, and the riders and adjustment clauses that apply to residential customers)

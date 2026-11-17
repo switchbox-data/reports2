@@ -62,6 +62,7 @@ WRAP = Alignment(wrap_text=True, vertical="top")
 
 FMT_DOLLAR = "$#,##0.00"
 FMT_RATE = "0.00000"
+FMT_RATE_FINE = "0.0000000"
 FMT_KWH = "#,##0.00"
 FMT_FACTOR = "0.000000%"
 
@@ -113,6 +114,8 @@ MOD_GAP = 16
 MOD_SCALED = 18
 MOD_MC = 19
 MOD_COST_GAP = 20
+MOD_DIST_RATE = 22
+MOD_TX_RATE = 23
 
 
 @dataclass(frozen=True)
@@ -399,7 +402,8 @@ README_LINES = (
         f"{SHEET_MODIFIED}: the revenue given up by scaling distribution and transmission rates to the scaling "
         f"factor, spread across Rate 1's customers as a customer charge increase (cell B{MOD_INCREASE}), and the "
         f"redesigned customer charge (cell B{MOD_FIXED}). Cells B{MOD_GAP} and B{MOD_COST_GAP} check that class "
-        "revenue is unchanged and that the home's overpayment is zero.",
+        f"revenue is unchanged and that the home's overpayment is zero. Cells B{MOD_DIST_RATE} and B{MOD_TX_RATE} are the "
+        "redesigned distribution and transmission rates: the filed rates times the scaling factor.",
         False,
     ),
 )
@@ -549,8 +553,10 @@ def _write_class(wb: Workbook, inputs: WorkbookInputs, layout: _Layout) -> None:
     ws.freeze_panes = "A2"
 
 
-def _write_modified(wb: Workbook) -> None:
+def _write_modified(wb: Workbook, layout: _Layout) -> None:
     ws = wb.create_sheet(SHEET_MODIFIED)
+    dist_total = get_column_letter(layout.dist_total)
+    tx_total = get_column_letter(layout.tx_total)
     _headers(ws, MOD_HEADER, ["Step", "Value"])
     _put(ws, MOD_LAMBDA, 1, "Scaling factor")
     _put(ws, MOD_LAMBDA, 2, f"={SHEET_BILLS}!D{BILLS_LAMBDA}", fmt=FMT_FACTOR)
@@ -596,6 +602,22 @@ def _write_modified(wb: Workbook) -> None:
     _put(ws, MOD_MC, 2, f"={SHEET_BILLS}!D{BILLS_MC}", fmt=FMT_DOLLAR)
     _put(ws, MOD_COST_GAP, 1, "Check: home's overpayment at redesigned rates (zero)")
     _put(ws, MOD_COST_GAP, 2, f"=B{MOD_SCALED}-B{MOD_MC}", fmt=FMT_DOLLAR)
+    _put(ws, MOD_DIST_RATE, 1, "Redesigned distribution rate, including riders ($/kWh)")
+    _put(
+        ws,
+        MOD_DIST_RATE,
+        2,
+        f"=B{MOD_LAMBDA}*AVERAGE({SHEET_RATES}!{dist_total}{RATE_FIRST}:{dist_total}{RATE_LAST})",
+        fmt=FMT_RATE_FINE,
+    )
+    _put(ws, MOD_TX_RATE, 1, "Redesigned transmission rate ($/kWh)")
+    _put(
+        ws,
+        MOD_TX_RATE,
+        2,
+        f"=B{MOD_LAMBDA}*AVERAGE({SHEET_RATES}!{tx_total}{RATE_FIRST}:{tx_total}{RATE_LAST})",
+        fmt=FMT_RATE_FINE,
+    )
     ws.column_dimensions["A"].width = 48
     ws.column_dimensions["B"].width = 22
     ws.freeze_panes = "A2"
@@ -611,7 +633,7 @@ def build_workbook(inputs: WorkbookInputs) -> Workbook:
     _write_rates(wb, inputs, layout)
     _write_bills(wb, inputs, layout)
     _write_class(wb, inputs, layout)
-    _write_modified(wb)
+    _write_modified(wb, layout)
     return wb
 
 

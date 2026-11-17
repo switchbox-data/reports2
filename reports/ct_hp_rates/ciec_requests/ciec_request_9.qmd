@@ -1,0 +1,237 @@
+---
+title: "Responses to Connecticut Industrial Energy Consumers, CIEC-9(c)"
+subtitle: "Docket No. 26-05-10"
+author: "Conservation Law Foundation and Sierra Club"
+date: 2026-11-16
+execute:
+  warning: false
+  message: false
+format:
+  html:
+    theme: ../../.style/switchbox.scss
+    page-layout: article
+    toc: false
+---
+
+CIEC-9(c) asks whether Rate HP should expire if winter loads begin to drive distribution capacity investment. The response argues that Rate HP would still be needed, because heat pump customers' incremental marginal cost would rise but stay well below what Rate 1 charges them. This notebook gives an illustrative upper bound on that cost if the Company's whole system became winter peaking, and exports it as CIEC-9 Attachment 1.
+
+The method: take the testimony's hourly marginal distribution and bulk transmission capacity costs, sort them from highest to lowest, and hand them out to the November–March hours in order of the average converting home's load after installing a heat pump. Multiplying by the home's added load in each hour gives the incremental marginal cost under a winter peak that always lands on heat pump homes' highest-use hours. Applying the same reassignment to April–October shows how much the method overstates relative to the testimony's hour-by-hour figure.
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+import pickle
+from pathlib import Path
+from typing import cast
+
+import polars as pl
+import yaml
+from openpyxl import load_workbook
+
+from lib.rates_analysis.rate_case_funcs import (
+    load_billing_kwh_8760,
+    load_delivery_mc_heatmap,
+    load_master_bills,
+    segment_name,
+    weighted_avg_hourly,
+)
+```
+
+## Parameters
+
+The batch and scenario come from the report's `batch_config.yaml`. Winter is November–March, the testimony's Rate HP winter season. Load timestamps are shifted from UTC to Eastern Standard Time, as in Exhibit JPV-3, so they line up with the marginal cost schedule.
+
+```{python}
+#| label: params
+
+_cfg = yaml.safe_load(Path("../batch_config.yaml").read_text())
+STATE = _cfg["STATE"]
+BATCH = _cfg["BATCH"]
+SCENARIO = _cfg["BASELINE_BILL_SCENARIO"]
+UTILITY = "ct_eversource"
+MC_YEAR = 2025
+UTC_OFFSET_HOURS = -5
+WINTER_MONTHS = [11, 12, 1, 2, 3]
+```
+
+## Population and load
+
+The testimony's average converting home: Eversource homes heated with natural gas, fuel oil, or propane before the retrofit, weighted by ResStock sample weight. Before is the precalc segment, after the calibrated segment, both from CAIRO's `billing_kwh_8760`.
+
+```{python}
+#| label: load
+
+_bills = load_master_bills(STATE, BATCH, segment_name(SCENARIO, "precalc"))
+pop = cast(
+    pl.DataFrame,
+    _bills.filter((pl.col("month") == "Annual") & (pl.col("sb.electric_utility") == UTILITY))
+    .filter(pl.col("heats_with_natgas") | pl.col("heats_with_oil") | pl.col("heats_with_propane"))
+    .select("bldg_id", "weight")
+    .unique(subset=["bldg_id"])
+    .collect(),
+)
+_ids = pop["bldg_id"].to_list()
+
+
+def _avg(stage: str) -> pl.DataFrame:
+    kwh = load_billing_kwh_8760(STATE, UTILITY, BATCH, segment_name(SCENARIO, stage))
+    out = weighted_avg_hourly(kwh, _ids, pop).with_columns(pl.col("timestamp") + pl.duration(hours=UTC_OFFSET_HOURS))
+    if out["timestamp"].dtype.time_zone is not None:  # ty: ignore[unresolved-attribute]
+        out = out.with_columns(pl.col("timestamp").dt.replace_time_zone(None))
+    return out
+
+
+hourly = (
+    _avg("precalc")
+    .rename({"kwh": "kwh_before"})
+    .join(_avg("calibrated").rename({"kwh": "kwh_after"}), on="timestamp")
+    .sort("timestamp")
+)
+print(f"{pop.height:,} buildings; {hourly.height} hours")
+hourly.head(3)
+```
+
+## Marginal costs
+
+The testimony's hourly marginal capacity costs, in \$/kWh. Each column sums to its \$/kW-year cost.
+
+```{python}
+#| label: mc
+
+_mc = load_delivery_mc_heatmap(STATE, UTILITY, MC_YEAR).select(
+    "timestamp", pl.col("mc_dist_sub_tx").alias("mc_dist"), pl.col("mc_bulk_tx").alias("mc_tx")
+)
+if _mc["timestamp"].dtype.time_zone is not None:  # ty: ignore[unresolved-attribute]
+    _mc = _mc.with_columns(pl.col("timestamp").dt.replace_time_zone(None))
+assert hourly["timestamp"].to_list() == _mc.sort("timestamp")["timestamp"].to_list(), "load and MC hours differ"
+hourly = hourly.join(_mc, on="timestamp").with_columns(
+    pl.when(pl.col("timestamp").dt.month().is_in(WINTER_MONTHS))
+    .then(pl.lit("Nov-Mar"))
+    .otherwise(pl.lit("Apr-Oct"))
+    .alias("season"),
+)
+print(hourly.select(pl.col("mc_dist").sum(), pl.col("mc_tx").sum()))
+```
+
+As a check, the home's annual kWh before and after, and its incremental marginal cost computed hour by hour, must match the testimony (`notebooks/representative_home.qmd`).
+
+```{python}
+#| label: check-testimony
+
+_rep = pickle.loads(Path("../cache/representative_home_vars.pkl").read_bytes())
+assert abs(hourly["kwh_before"].sum() - _rep["all_fossil_annual_kwh_before"]) < 1e-4
+assert abs(hourly["kwh_after"].sum() - _rep["all_fossil_annual_kwh_after"]) < 1e-4
+hourly = hourly.with_columns((pl.col("kwh_after") - pl.col("kwh_before")).alias("kwh_added"))
+inc_mc_testimony = float((hourly["kwh_added"] * (hourly["mc_dist"] + hourly["mc_tx"])).sum())
+_inc_mc_rep = _rep["all_fossil_annual_mc_dist_delta"] + _rep["all_fossil_annual_mc_tx_delta"]
+assert abs(inc_mc_testimony - _inc_mc_rep) < 1e-6, (inc_mc_testimony, _inc_mc_rep)
+overpay = float(_rep["all_fossil_annual_total_overcharge"])
+print(f"incremental marginal cost, hour by hour: ${inc_mc_testimony:,.2f}; overpayment ${overpay:,.2f}")
+```
+
+## Winter-peaking reassignment
+
+Each hour's rank is one plus the number of hours in its season with higher after-retrofit load, the same formula as the workbook's `COUNTIFS`. The hour of rank *k* gets the *k*-th largest marginal cost of the year.
+
+```{python}
+#| label: reassign
+
+_dist_sorted = sorted(hourly["mc_dist"].to_list(), reverse=True)
+_tx_sorted = sorted(hourly["mc_tx"].to_list(), reverse=True)
+
+
+def _rank_in_season(df: pl.DataFrame) -> pl.Series:
+    # "min" ranking descending = 1 + number of hours with strictly higher load, as COUNTIFS(...,">"&x)+1
+    return df.select(pl.col("kwh_after").rank("min", descending=True).over("season").cast(pl.Int64))["kwh_after"]
+
+
+hourly = hourly.with_columns(_rank_in_season(hourly).alias("rank_in_season"))
+hourly = hourly.with_columns(
+    pl.col("rank_in_season").map_elements(lambda k: _dist_sorted[k - 1], return_dtype=pl.Float64).alias("mc_dist_re"),
+    pl.col("rank_in_season").map_elements(lambda k: _tx_sorted[k - 1], return_dtype=pl.Float64).alias("mc_tx_re"),
+)
+
+
+def _reassigned(season: str, col: str) -> float:
+    s = hourly.filter(pl.col("season") == season)
+    return float((s["kwh_added"] * s[col]).sum())
+
+
+summer_check = _reassigned("Apr-Oct", "mc_dist_re") + _reassigned("Apr-Oct", "mc_tx_re")
+winter_dist = _reassigned("Nov-Mar", "mc_dist_re")
+winter_tx = _reassigned("Nov-Mar", "mc_tx_re")
+winter_peak_mc = winter_dist + winter_tx
+overpay_remaining = overpay - (winter_peak_mc - inc_mc_testimony)
+print(
+    f"Apr-Oct reassigned ${summer_check:,.2f} (vs ${inc_mc_testimony:,.2f} hour by hour)\n"
+    f"winter peaking: distribution ${winter_dist:,.2f} + transmission ${winter_tx:,.2f} = ${winter_peak_mc:,.2f}\n"
+    f"overpayment remaining ${overpay_remaining:,.2f} of ${overpay:,.2f}"
+)
+```
+
+## Attachment 1
+
+The layout lives in `build_ciec_9c_workbook.py`. After writing, we read the inputs back from the file and recompute every result from the stored cells, using the workbook's own formulas, before uploading.
+
+```{python}
+#| label: attachment
+#| output: false
+
+from build_ciec_9c_workbook import DRIVE_FOLDER_ID, DRIVE_NAME, Inputs, build_workbook, upload_xlsx
+
+_wb = build_workbook(Inputs(hourly=hourly, n_bldg=pop.height, overpay=overpay))
+_xlsx_path = Path("../cache") / DRIVE_NAME
+_wb.save(_xlsx_path)
+
+_ws = load_workbook(_xlsx_path)["hourly"]
+_rows = list(_ws.iter_rows(min_row=2, max_row=8761, max_col=7, values_only=True))
+_back = pl.DataFrame(
+    {
+        "season": [r[1] for r in _rows],
+        "kwh_before": [float(r[2]) for r in _rows],
+        "kwh_after": [float(r[3]) for r in _rows],
+        "mc_dist": [float(r[5]) for r in _rows],
+        "mc_tx": [float(r[6]) for r in _rows],
+    }
+)
+assert _back["season"].to_list() == hourly["season"].to_list()
+for _c in ("kwh_before", "kwh_after", "mc_dist", "mc_tx"):
+    _gap = float((_back[_c] - hourly[_c].cast(pl.Float64)).abs().max())  # ty: ignore[invalid-argument-type]
+    assert _gap < 1e-12, (_c, _gap)
+_back = _back.with_columns((pl.col("kwh_after") - pl.col("kwh_before")).alias("kwh_added"))
+_back = _back.with_columns(_rank_in_season(_back).alias("rank_in_season"))
+_d = sorted(_back["mc_dist"].to_list(), reverse=True)
+_t = sorted(_back["mc_tx"].to_list(), reverse=True)
+_win = _back.filter(pl.col("season") == "Nov-Mar")
+_wb_winter = sum(a * (_d[k - 1] + _t[k - 1]) for a, k in zip(_win["kwh_added"], _win["rank_in_season"]))
+_wb_inc = float((_back["kwh_added"] * (_back["mc_dist"] + _back["mc_tx"])).sum())
+assert abs(_wb_winter - winter_peak_mc) < 1e-6 and abs(_wb_inc - inc_mc_testimony) < 1e-6
+assert abs(float(_ws["N9"].value) - overpay) < 1e-9
+
+attachment_link = upload_xlsx(_xlsx_path, DRIVE_FOLDER_ID, DRIVE_NAME)
+_xlsx_path.unlink()
+print(f"Uploaded {DRIVE_NAME}: {attachment_link}")
+```
+
+## Report variables
+
+```{python}
+#| label: report-vars
+
+Path("../cache/ciec_9_vars.pkl").write_bytes(
+    pickle.dumps(
+        {
+            "inc_mc_testimony": inc_mc_testimony,
+            "summer_check": summer_check,
+            "winter_dist": winter_dist,
+            "winter_tx": winter_tx,
+            "winter_peak_mc": winter_peak_mc,
+            "overpay_remaining": overpay_remaining,
+            "attachment_name": DRIVE_NAME,
+            "attachment_link": attachment_link,
+        }
+    )
+)
+```

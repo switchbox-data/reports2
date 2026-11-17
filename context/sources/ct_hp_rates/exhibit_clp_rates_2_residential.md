@@ -2,7 +2,10 @@
 source_file: "Eversource - 2026 - Docket 26-05-10 Exhibit CLP-RATES-2.pdf"
 citekey: clp_Docket260510Exhibit_2026g
 zotero_item: "UAN7NCMX"
+public_url: https://drive.google.com/file/d/1gDuzgvfD3aayAHHFZxGW8jOkptdKdVyu/view
+short_url: https://pub.switch.box/clp_Docket260510Exhibit_2026g
 md5: "375c838ccb7dac55175462a666903eba"
+validated: 2026-11-13
 docket: 26-05-10
 utility: The Connecticut Light and Power Company d/b/a Eversource Energy
 filer: The Connecticut Light and Power Company d/b/a Eversource Energy

@@ -32,6 +32,29 @@ export-figures path_qmd="expert_testimony.qmd" dpi="300":
 provenance:
     uv run python provenance/build_provenance.py
 
+# Stage the CAIRO input files for CIEC-11(c) (ResStock, consolidated Eversource loads, marginal
+# costs, fuel prices, CPI, config at e97a3ca) with staged_inputs.csv; the outputs are copied server-side on upload.
+ciec-11c-stage path_output_dir="cache/ciec_11c_share":
+    uv run python ciec_requests/build_ciec_11c_share.py --path-output-dir {{ path_output_dir }}
+
+# Upload the CIEC-11(c) outputs (server-side copy), staged inputs, MANIFEST.csv and README.md to the
+# still-private public bucket. Dry run unless called with --execute.
+ciec-11c-publish path_staged_dir="cache/ciec_11c_share" *flags:
+    uv run python ciec_requests/publish_ciec_11c_share.py --path-staged-dir {{ path_staged_dir }} {{ flags }}
+
+# Build CIEC-11 Attachment 2, the Excel file list, from MANIFEST.csv. Pass --upload-xlsx to upload it to Drive.
+ciec-11c-file-list path_staged_dir="cache/ciec_11c_share" *flags:
+    uv run python ciec_requests/build_ciec_11c_file_list.py --path-staged-dir {{ path_staged_dir }} {{ flags }}
+
+# Remove files of scenarios no longer shared from the public folder. Dry run unless called with --execute.
+ciec-11c-prune path_staged_dir="cache/ciec_11c_share" *flags:
+    uv run python ciec_requests/prune_ciec_11c_share.py --path-staged-dir {{ path_staged_dir }} {{ flags }}
+
+# Public bucket for the CIEC-11(c) files: setup (private, with budget alert), open, close, status.
+# `close` is the response to a budget alert. Deletion after the docket is tracked in R2-190.
+ciec-11c-bucket action:
+    bash ciec_requests/ciec_11c_bucket.sh {{ action }}
+
 # Screenshot each native Markdown table as "Table N.png" via headless Chrome.
 export-tables path_qmd="expert_testimony.qmd" scale="3":
     uv run python -m lib.just.export_tables {{ path_qmd }} --name-style word --scale {{ scale }}
@@ -41,5 +64,9 @@ interrogatories path_qmd="ciec_responses.qmd":
     uv run python -m lib.just.interrogatory render {{ path_qmd }}
 
 # Render the same responses as one Word file per response in ./filing/, each with its own header and "Page n of N"
-interrogatories-split path_qmd="ciec_responses.qmd":
-    uv run python -m lib.just.interrogatory render {{ path_qmd }} --split
+interrogatories-split path_qmd="ciec_responses.qmd" *flags:
+    uv run python -m lib.just.interrogatory render {{ path_qmd }} --split {{ flags }}
+
+# Filing copy of one or more responses, no DRAFT watermark, e.g. `just interrogatories-final ciec_responses.qmd CIEC-1`
+interrogatories-final path_qmd="ciec_responses.qmd" *labels:
+    uv run python -m lib.just.interrogatory render {{ path_qmd }} --final {{ prepend('--only ', labels) }}

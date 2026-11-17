@@ -1,6 +1,11 @@
 ---
 source_file: "Eversource - 2026 - Docket 26-05-10 Exhibit CLP-RATES-6.pdf"
 citekey: clp_Docket260510Exhibit_2026i
+zotero_item: "TYSRMLPL"
+public_url: https://drive.google.com/file/d/1dG1FY29ykS7l7AeybHhk5q3Ce9hGXhP_/view
+short_url: https://pub.switch.box/clp_Docket260510Exhibit_2026i
+md5: "f8f491bf744bdc2a6de33c7ec3eadea4"
+validated: 2026-11-16
 docket: "26-05-10"
 utility: The Connecticut Light and Power Company d/b/a Eversource Energy
 filer: The Connecticut Light and Power Company d/b/a Eversource Energy
@@ -8,9 +13,9 @@ document_type: exhibit
 pages_total: 3
 extraction_scope: full
 citation_scheme: page_line
-context: Supporting schedule to the Davis and Parsons joint direct testimony (Exhibit CLP-RATES-1) in CL&P's 2026 rate case, Connecticut PURA Docket 26-05-10. It sets the proposed distribution rates for Rate 6, the optional residential space heating rate (not stated in the PDF itself; extractor note).
-contents: Page 1 is the cover and contents. Page 2 is the Rate 6 rate design worksheet, a two-column Excel print. The left column builds the customer charge and the Block 1 and winter Block 2 energy charges from proposed Rate 1 revenues. The right column rebuilds the winter Block 2 rate from marginal facilities cost, marginal energy cost and a coincidence-factor-adjusted residual. Page 3 shows the Rate 6 and Rate 1 distribution rates, the Rate 6 minus Rate 1 differences, an illustrative monthly bill-impact table, and an embedded consumption-profile chart.
-why_here: Shows how Eversource derives the Rate 6 Block 1 rate ($0.09431/kWh) and the discounted winter Block 2 rate ($0.07517/kWh), and whether any line of the worksheet recovers the Block 2 discount elsewhere. Use it for questions on the heat pump (space heating) rate design.
+context: Supporting schedule to the Davis and Parsons joint direct testimony (Exhibit CLP-RATES-1) in CL&P's 2026 rate case, PURA Docket 26-05-10. It sets the proposed distribution rates for Rate 6, the optional residential space heating rate (not stated in the PDF itself; extractor note).
+contents: Cover and contents; the Rate 6 rate design worksheet, which builds the customer charge and the Block 1 and winter Block 2 energy charges from proposed Rate 1 revenues and rebuilds the winter Block 2 rate from marginal cost; and a Rate 6 versus Rate 1 rate and bill-impact comparison.
+why_here: How Eversource derives the Rate 6 Block 1 and winter Block 2 rates and whether the worksheet recovers the Block 2 discount elsewhere. Use it for questions on the Company's heat pump rate design.
 ---
 
 # Exhibit CLP-RATES-6 — Rate 6 Optional Residential Space Heating Rate (Rate Design Worksheet and Bill Impacts)

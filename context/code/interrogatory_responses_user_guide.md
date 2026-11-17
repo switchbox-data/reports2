@@ -9,7 +9,7 @@ How to answer another party's interrogatories or data requests and get Word file
 3. **Add each question**, copied exactly, then **check** it: `just check-interrogatory-responses reports/<report>/<name>.qmd`
 4. **Write the responses**, with every citation in a footnote in the testimony's format, even in a first draft. Run the check again: it also fails on inline citations, "p." pinpoints and footnote formatting mistakes.
 5. **Render for review:** from the report folder, `just interrogatories` (Connecticut report: `ciec_responses.qmd`).
-6. **Render for filing:** `just interrogatories-split`, which writes one Word file per response into `filing/`.
+6. **Render for filing:** `just interrogatories-split`, which writes one Word file per response into `filing/`. To file one finished response while the others are still in progress, use `just interrogatories-final ciec_responses.qmd CIEC-1` (or `just interrogatories-split ciec_responses.qmd --only CIEC-1 --final`). `--only` renders just the named responses (repeat it for several), and `--final` drops the DRAFT watermark and refuses while those responses still have `[TK: ...]` or `[EST]` markers. Markers in responses you did not name do not matter.
 
 If you use an AI agent in Cursor, ask it to "set up responses to <the requests>": the `interrogatory-response` skill covers steps 1 to 3, including copying the questions out of the extract.
 
@@ -29,12 +29,12 @@ interrogatory_responses:
   expected_responses: 19
 ```
 
-`docket`, `responding_party`, `requesting_party`, `set`, `date_issued`, `date_filed` and `witness` are required; they are printed in the header and caption of every response. The rest are optional:
+`docket`, `responding_party`, `requesting_party`, `set`, `date_issued`, `date_filed` and `witness` are required; the header and caption of every response pull from them. The rest are optional:
 
 - `file_prefix` starts each split file name (`CT 26-05-10_CIEC-1 Response.docx`).
 - `source_extract` is the markdown extract of the requests. When it is set, `check` and every render confirm that each line of each question appears in it.
 - `expected_responses` is how many responses the set has; the check fails if the file has a different number.
-- `draft` defaults to true and prints DRAFT FOR COUNSEL REVIEW at the top of every page. Set it to `false` for the filing copy.
+- `draft` defaults to true and puts a DRAFT watermark diagonally across every page (behind the text). Set it to `false` for the filing copy, which removes the watermark.
 
 A value left in `[BRACKETS]`, a misspelled field name and a missing field are all reported together, before any rendering.
 
@@ -65,7 +65,7 @@ When CIEC cites Velez Direct, set `testimony_extract` in the frontmatter (path t
 
 ## What the Word files look like
 
-Every response is its own Word section that restarts at page 1. Its header has the responding party, docket, set, date issued, the response label and "Page n of N" counted within that response; the first page then shows Date Filed, Witness and Request from, followed by "Question:" and "Response:". The combined review file has all responses back to back; the split files have one each, in the same format. Open the combined review file in Word, not Google Docs or LibreOffice: only Word computes the per-response "of N" (the others show "of 1"). The split filing files work in all three.
+Every response is its own Word section that restarts at page 1. Its header has the responding party, the docket, the set label, the date issued, the response label and "Page n of N" counted within that response; the first page then shows Date Filed, Witness and Request from, followed by "Question CIEC-1:" (the response label) and "Response:". The combined review file has all responses back to back; the split files have one each, in the same format. Open the combined review file in Word, not Google Docs or LibreOffice: only Word computes the per-response "of N" (the others show "of 1"). The split filing files work in all three.
 
 Responses are separate PDFs on the PURA site, with attachments (Excel and the like) uploaded alongside, not embedded. See the `interrogatory-response` skill and its `connecticut.md` for filing details and for how the other parties' responses in the docket look.
 

@@ -164,6 +164,18 @@ def test_reworded_question_is_reported_with_the_point_of_divergence() -> None:
     assert "CIEC-1" in problems[0] and "give the estimate" in problems[0] and "provide the estimate" in problems[0]
 
 
+def test_question_parts_as_divs_still_match_extract() -> None:
+    # Question parts are wrapped in part divs; the fence lines are markup, not request text.
+    body = BODY.replace(
+        "a. Please provide the estimate.\nb. Please explain _why_ not.",
+        ':::: {.part label="a."}\nPlease provide the estimate.\n::::\n\n'
+        ':::: {.part label="b."}\nPlease explain _why_ not.\n::::',
+    )
+    responses, problems = ir.parse_body(_qmd(body=body))
+    assert problems == []
+    assert ir.verify_questions(responses, EXTRACT) == []
+
+
 # ---------------------------------------------------------------------------
 # Citations in the responses
 # ---------------------------------------------------------------------------
@@ -207,6 +219,19 @@ def test_citation_key_and_page_abbreviation_are_reported_in_footnotes_too() -> N
     assert any("never p., pp. or PDF p." in p for p in problems)
 
 
+def test_citation_check_keeps_reading_after_a_nested_part() -> None:
+    # A response's parts are nested divs. Closing the first part must not end the
+    # response for the citation check, or everything after it goes unchecked.
+    text = (
+        "::: {.response}\n\n"
+        ':::: {.part label="a."}\nFirst part, cleanly written.\n::::\n\n'
+        ':::: {.part label="b."}\nSecond part cites Velez Direct at 14:5 inline.\n::::\n'
+        ":::\n"
+    )
+    problems = ir.check_citations(_qmd(body=f"\n## CIEC-1\n\n{text}"))
+    assert any("move it to a footnote" in p and "CIEC-1" in p for p in problems)
+
+
 def test_footnote_problems_are_reported() -> None:
     text = (
         "a. First.[^a] Again.[^a] Missing.[^c]\n\n"
@@ -248,8 +273,10 @@ def test_header_has_label_and_section_page_count() -> None:
     xml_text = ir.header_xml(f, "CIEC-7")
     xml.dom.minidom.parseString(xml_text)  # well-formed
     plain = re.sub(r"<[^>]+>", "|", xml_text)
+    assert "DRAFT" not in plain  # the DRAFT mark is a watermark shape, not header text
+    assert 'string="DRAFT"' in xml_text
+    assert "rotation:315" in xml_text and "mso-position-horizontal-relative:margin" in xml_text
     for expected in (
-        "DRAFT FOR COUNSEL REVIEW",
         "Conservation Law Foundation and Sierra Club",
         "PURA Docket No. 26-05-10",
         "Set CIEC-02",
@@ -294,7 +321,9 @@ def test_render_combined_and_split(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert "CIEC-2" in re.sub(r"<[^>]+>", "", headers["word/headerIR2.xml"])
     text = re.sub(r"<[^>]+>", " ", document)
     assert "Someone Else" in text and "Juan-Pablo Velez" in text
+    assert "Date Issued:" not in text  # date issued prints in the header only
     assert "Date Filed:" in text and "November 12, 2026" in text
+    assert "Question CIEC-1:" in text and "Question CIEC-2:" in text
 
     files = ir.render(qmd, split=True)
     assert [p.name for p in files] == ["CT 26-05-10_CIEC-1 Response.docx", "CT 26-05-10_CIEC-2 Response.docx"]
@@ -305,3 +334,37 @@ def test_render_combined_and_split(tmp_path: Path, monkeypatch: pytest.MonkeyPat
         assert "rIdIRHeader1" in document
     only_second = re.sub(r"<[^>]+>", " ", _document(files[1])[0])
     assert "Someone Else" in only_second and "Exhibit JPV-3" not in only_second
+
+
+def test_select_responses_matches_labels_case_insensitively() -> None:
+    responses, _ = ir.parse_body(_qmd())
+    assert [r.label for r in ir.select_responses(responses, ["ciec-2"])] == ["CIEC-2"]
+    with pytest.raises(ir.InterrogatoryError) as exc:
+        ir.select_responses(responses, ["CIEC-9"])
+    assert "CIEC-9" in "\n".join(exc.value.problems) and "CIEC-1, CIEC-2" in "\n".join(exc.value.problems)
+
+
+def test_open_markers_only_look_at_the_given_responses() -> None:
+    body = (
+        "\n## CIEC-1\n\n::: {.question}\nQ\n:::\n\n::: {.response}\nDone.\n\n"
+        '```{python}\ndef est(key):\n    return "[EST]"\n```\n:::\n'
+        "\n## CIEC-2\n\n::: {.question}\nQ\n:::\n\n::: {.response}\nNeeds work **[TK: check]** and `{python} est('x')`.\n:::\n"
+    )
+    first, second = ir.parse_body(_qmd(body=body))[0]
+    assert ir.open_markers([first]) == []
+    found = ir.open_markers([second])
+    assert any("[TK: check]" in item for item in found) and any("est()" in item for item in found)
+
+
+@needs_quarto
+def test_render_only_and_final(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    qmd = tmp_path / "responses.qmd"
+    qmd.write_text(_qmd(), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    files = ir.render(qmd, only=["CIEC-1"], final=True)
+    assert [p.name for p in files] == ["CT 26-05-10_CIEC-1 Response.docx"]
+    _, headers = _document(files[0])
+    assert "PowerPlusWaterMarkObject" not in headers["word/headerIR1.xml"]  # --final drops the watermark
+    drafted = ir.render(qmd, only=["CIEC-1"])
+    assert "PowerPlusWaterMarkObject" in _document(drafted[0])[1]["word/headerIR1.xml"]

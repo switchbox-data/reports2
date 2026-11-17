@@ -7,6 +7,9 @@ Yellow cells are inputs. Every other number is a formula.
 
 Sheets, in order
 ----------------
+README
+    What the workbook derives, where each input comes from, and what each
+    sheet does.
 representative_home_consumption
     The representative fossil-fuel home's monthly kWh, before and after the
     heat pump. The change and the annual totals are formulas.
@@ -44,6 +47,7 @@ MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", 
 N_MONTHS = len(MONTHS)
 DRIVE_NAME = "CIEC-15a_customer_charge.xlsx"
 
+SHEET_README = "README"
 SHEET_CONSUMPTION = "representative_home_consumption"
 SHEET_RATES = "rate_1"
 SHEET_BILLS = "representative_home_bills"
@@ -53,6 +57,8 @@ SHEET_MODIFIED = "modified_rate_1"
 INPUT_FILL = PatternFill("solid", fgColor="FFF2CC")
 HEADER_FONT = Font(bold=True)
 HEADER_ALIGN = Alignment(wrap_text=True, vertical="center", horizontal="center")
+TITLE_FONT = Font(bold=True, size=14)
+WRAP = Alignment(wrap_text=True, vertical="top")
 
 FMT_DOLLAR = "$#,##0.00"
 FMT_RATE = "0.00000"
@@ -339,9 +345,79 @@ def _sum_product(kwh_col: str, rate_col: str) -> str:
     )
 
 
-def _write_consumption(wb: Workbook, inputs: WorkbookInputs) -> None:
+README_LINES = (
+    ("CIEC-15(a) workpaper: the $121.49 Rate 1 customer charge", True),
+    ("Docket No. 26-05-10. Witness: Juan-Pablo Velez. Request from Connecticut Industrial Energy Consumers.", False),
+    (
+        "This workbook derives the monthly Rate 1 customer charge that would eliminate the representative fossil "
+        "fuel-heated home's overpayment after it installs a heat pump while holding Rate 1's revenue constant "
+        "(Velez Direct at 97:11-13 and n.85; Ex. JPV-2, Section 6). It is a redesign of Rate 1 for every customer, "
+        "not Rate HP. Yellow cells are inputs; every other number is a formula.",
+        False,
+    ),
+    ("", False),
+    ("Inputs", True),
+    (
+        "Monthly kWh: the representative fossil fuel-heated home before and after heat pump installation, the same "
+        "home as in Ex. JPV-2, Section 2, and Ex. JPV-4, sheet monthly.",
+        False,
+    ),
+    (
+        "Rates: proposed Rate 1 customer charge, Distribution Energy Charge and transmission rate, and the filed "
+        "delivery riders (Ex. CLP-RATES-2; Ex. CLP-RATES-3 at 243-244). Generation is CL&P's 2025 standard service "
+        "rate, as in Ex. JPV-2 at 2 and Ex. JPV-4; it does not affect the result.",
+        False,
+    ),
+    (
+        "Marginal T&D cost: the home's annual marginal distribution, sub-transmission and bulk transmission cost "
+        "before and after installation (Ex. JPV-3, sheet hourly_marginal_cost, cells N4 and O4).",
+        False,
+    ),
+    (
+        "Rate 1 billing determinants: Rate Year billing months (annual bills) and billed sales "
+        "(Ex. CLP-RATES-2.4, Rate Year Workpapers, page 3 of 75).",
+        False,
+    ),
+    ("", False),
+    ("Sheets", True),
+    (f"{SHEET_CONSUMPTION}: monthly kWh before and after, and the change.", False),
+    (
+        f"{SHEET_RATES}: proposed Rate 1 by month. Each distribution rider is in its own column, and the "
+        "distribution total includes them.",
+        False,
+    ),
+    (
+        f"{SHEET_BILLS}: the home's annual charges before and after. Cell D{BILLS_LAMBDA} is the scaling factor: "
+        "the home's incremental marginal T&D cost divided by its increase in distribution and transmission charges.",
+        False,
+    ),
+    (
+        f"{SHEET_CLASS}: Rate 1 customers, billed sales, and distribution and transmission revenue at filed rates.",
+        False,
+    ),
+    (
+        f"{SHEET_MODIFIED}: the revenue given up by scaling distribution and transmission rates to the scaling "
+        f"factor, spread across Rate 1's customers as a customer charge increase (cell B{MOD_INCREASE}), and the "
+        f"redesigned customer charge (cell B{MOD_FIXED}). Cells B{MOD_GAP} and B{MOD_COST_GAP} check that class "
+        "revenue is unchanged and that the home's overpayment is zero.",
+        False,
+    ),
+)
+
+
+def _write_readme(wb: Workbook) -> None:
     ws = wb.active
-    ws.title = SHEET_CONSUMPTION
+    ws.title = SHEET_README
+    for row, (text, bold) in enumerate(README_LINES, start=1):
+        cell = ws.cell(row, 1, text)
+        cell.alignment = WRAP
+        if bold:
+            cell.font = TITLE_FONT if row == 1 else HEADER_FONT
+    ws.column_dimensions["A"].width = 120
+
+
+def _write_consumption(wb: Workbook, inputs: WorkbookInputs) -> None:
+    ws = wb.create_sheet(SHEET_CONSUMPTION)
     _headers(ws, CONSUMPTION_HEADER, ["Month", "Before", "After", "Change"])
     for offset, (month, before, after) in enumerate(zip(MONTHS, inputs.kwh_before, inputs.kwh_after, strict=True)):
         row = CONSUMPTION_FIRST + offset
@@ -456,17 +532,17 @@ def _revenue_formula(layout: _Layout) -> str:
 def _write_class(wb: Workbook, inputs: WorkbookInputs, layout: _Layout) -> None:
     ws = wb.create_sheet(SHEET_CLASS)
     _headers(ws, CLASS_HEADER, ["Determinant", "Value"])
-    _put(ws, CLASS_BILLS, 1, "Annual bills rendered")
+    _put(ws, CLASS_BILLS, 1, "Annual bills (Rate Year billing months)")
     _put(ws, CLASS_BILLS, 2, inputs.annual_bills, input_=True, fmt=FMT_KWH)
     _put(ws, CLASS_MWH, 1, "Billed sales (MWh)")
     _put(ws, CLASS_MWH, 2, inputs.billed_mwh, input_=True, fmt=FMT_KWH)
-    _put(ws, CLASS_CUSTOMERS, 1, "Rate 1 customers")
+    _put(ws, CLASS_CUSTOMERS, 1, "Rate 1 customers (average per month)")
     _put(ws, CLASS_CUSTOMERS, 2, f"=B{CLASS_BILLS}/12", fmt=FMT_KWH)
     _put(ws, CLASS_ANNUAL_KWH, 1, "Annual kWh")
     _put(ws, CLASS_ANNUAL_KWH, 2, f"=B{CLASS_MWH}*1000", fmt=FMT_KWH)
     _put(ws, CLASS_MONTHLY_KWH, 1, "Monthly kWh")
     _put(ws, CLASS_MONTHLY_KWH, 2, f"=B{CLASS_ANNUAL_KWH}/12", fmt=FMT_KWH)
-    _put(ws, CLASS_REVENUE, 1, "Distribution and transmission revenue")
+    _put(ws, CLASS_REVENUE, 1, "Distribution and transmission revenue at filed rates ($/year)")
     _put(ws, CLASS_REVENUE, 2, _revenue_formula(layout), fmt=FMT_DOLLAR)
     ws.column_dimensions["A"].width = 44
     ws.column_dimensions["B"].width = 22
@@ -480,23 +556,23 @@ def _write_modified(wb: Workbook) -> None:
     _put(ws, MOD_LAMBDA, 2, f"={SHEET_BILLS}!D{BILLS_LAMBDA}", fmt=FMT_FACTOR)
     _put(ws, MOD_REVENUE, 1, "Distribution and transmission revenue")
     _put(ws, MOD_REVENUE, 2, f"={SHEET_CLASS}!B{CLASS_REVENUE}", fmt=FMT_DOLLAR)
-    _put(ws, MOD_SHIFT, 1, "Delivery revenue removed")
+    _put(ws, MOD_SHIFT, 1, "Distribution and transmission revenue given up ($/year)")
     _put(ws, MOD_SHIFT, 2, f"=(1-B{MOD_LAMBDA})*B{MOD_REVENUE}", fmt=FMT_DOLLAR)
     _put(ws, MOD_CUSTOMERS, 1, "Rate 1 customers")
     _put(ws, MOD_CUSTOMERS, 2, f"={SHEET_CLASS}!B{CLASS_CUSTOMERS}", fmt=FMT_KWH)
-    _put(ws, MOD_INCREASE, 1, "Monthly increase")
+    _put(ws, MOD_INCREASE, 1, "Customer charge increase ($/month)")
     _put(ws, MOD_INCREASE, 2, f"=B{MOD_SHIFT}/(B{MOD_CUSTOMERS}*12)", fmt=FMT_DOLLAR)
     _put(ws, MOD_BASE, 1, "Proposed customer charge ($/month)")
     _put(ws, MOD_BASE, 2, f"=AVERAGE({SHEET_RATES}!B{RATE_FIRST}:B{RATE_LAST})", fmt=FMT_DOLLAR)
-    _put(ws, MOD_FIXED, 1, "Customer charge")
+    _put(ws, MOD_FIXED, 1, "Redesigned customer charge ($/month)")
     _put(ws, MOD_FIXED, 2, f"=B{MOD_BASE}+B{MOD_INCREASE}", fmt=FMT_DOLLAR)
-    _put(ws, MOD_FIXED_ROUNDED, 1, "Customer charge, rounded to the cent")
+    _put(ws, MOD_FIXED_ROUNDED, 1, "Redesigned customer charge, rounded to the cent")
     _put(ws, MOD_FIXED_ROUNDED, 2, f"=ROUND(B{MOD_FIXED},2)", fmt=FMT_DOLLAR)
-    _put(ws, MOD_INCREASE_ROUNDED, 1, "Monthly increase, rounded to the cent")
+    _put(ws, MOD_INCREASE_ROUNDED, 1, "Customer charge increase, rounded to the cent")
     _put(ws, MOD_INCREASE_ROUNDED, 2, f"=ROUND(B{MOD_INCREASE},2)", fmt=FMT_DOLLAR)
-    _put(ws, MOD_PER_CUSTOMER, 1, "Volumetric revenue per customer")
+    _put(ws, MOD_PER_CUSTOMER, 1, "Distribution and transmission revenue per customer at filed rates ($/year)")
     _put(ws, MOD_PER_CUSTOMER, 2, f"=B{MOD_REVENUE}/{SHEET_CLASS}!B{CLASS_CUSTOMERS}", fmt=FMT_DOLLAR)
-    _put(ws, MOD_FILED, 1, "Filed class revenue")
+    _put(ws, MOD_FILED, 1, "Rate 1 revenue at filed rates: customer charge, distribution and transmission ($/year)")
     _put(
         ws,
         MOD_FILED,
@@ -504,7 +580,7 @@ def _write_modified(wb: Workbook) -> None:
         f"=12*B{MOD_BASE}*{SHEET_CLASS}!B{CLASS_CUSTOMERS}+B{MOD_REVENUE}",
         fmt=FMT_DOLLAR,
     )
-    _put(ws, MOD_REDESIGNED, 1, "Redesigned class revenue")
+    _put(ws, MOD_REDESIGNED, 1, "Rate 1 revenue at redesigned rates ($/year)")
     _put(
         ws,
         MOD_REDESIGNED,
@@ -512,13 +588,13 @@ def _write_modified(wb: Workbook) -> None:
         f"=12*B{MOD_FIXED}*{SHEET_CLASS}!B{CLASS_CUSTOMERS}+B{MOD_LAMBDA}*B{MOD_REVENUE}",
         fmt=FMT_DOLLAR,
     )
-    _put(ws, MOD_GAP, 1, "Revenue gap")
+    _put(ws, MOD_GAP, 1, "Check: redesigned minus filed revenue (zero)")
     _put(ws, MOD_GAP, 2, f"=B{MOD_REDESIGNED}-B{MOD_FILED}", fmt=FMT_DOLLAR)
-    _put(ws, MOD_SCALED, 1, "Scaled incremental charges")
+    _put(ws, MOD_SCALED, 1, "Home's increase in distribution and transmission charges at redesigned rates")
     _put(ws, MOD_SCALED, 2, f"=B{MOD_LAMBDA}*{SHEET_BILLS}!D{BILLS_VOL}", fmt=FMT_DOLLAR)
-    _put(ws, MOD_MC, 1, "Incremental marginal cost")
+    _put(ws, MOD_MC, 1, "Home's incremental marginal T&D cost")
     _put(ws, MOD_MC, 2, f"={SHEET_BILLS}!D{BILLS_MC}", fmt=FMT_DOLLAR)
-    _put(ws, MOD_COST_GAP, 1, "Cost gap")
+    _put(ws, MOD_COST_GAP, 1, "Check: home's overpayment at redesigned rates (zero)")
     _put(ws, MOD_COST_GAP, 2, f"=B{MOD_SCALED}-B{MOD_MC}", fmt=FMT_DOLLAR)
     ws.column_dimensions["A"].width = 48
     ws.column_dimensions["B"].width = 22
@@ -530,6 +606,7 @@ def build_workbook(inputs: WorkbookInputs) -> Workbook:
     _check(inputs)
     layout = _layout(inputs)
     wb = Workbook()
+    _write_readme(wb)
     _write_consumption(wb, inputs)
     _write_rates(wb, inputs, layout)
     _write_bills(wb, inputs, layout)

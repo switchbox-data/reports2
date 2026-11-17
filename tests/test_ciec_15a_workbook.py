@@ -69,6 +69,7 @@ def test_customer_charge_follows_consumption_and_rate_1() -> None:
 
     wb = builder.build_workbook(inputs)
     assert wb.sheetnames == [
+        "README",
         "representative_home_consumption",
         "rate_1",
         "representative_home_bills",

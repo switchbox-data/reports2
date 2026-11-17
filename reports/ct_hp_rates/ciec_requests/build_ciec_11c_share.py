@@ -47,15 +47,11 @@ BATCH_PREFIX = "switchbox/cairo/outputs/hp_rates/ct/ct_eversource/ct_20261015_a"
 PATH_CT_CONFIG = "rate_design/hp_rates/ct/config/"
 PATH_POST_DATA = "utils/post/data/"
 
+# The scenarios the testimony cites. The batch's other five Rate 6 and flat-rate variants are not shared.
 SCENARIOS = {
     "r1": ("160225", "160326", "160414", "160511"),
     "r6": ("160633", "160804", "160924", "161051"),
-    "r6_ratemc": ("161220", "161357", "161520", "161649"),
-    "r6_fixed_ratemc": ("161811", "161941", "162059", "162229"),
-    "r6_ratemc_trans": ("162351", "162520", "162643", "162810"),
-    "r6_fixed_ratemc_trans": ("162933", "163106", "163235", "163409"),
     "r6_ratemc_mfc0_trans": ("163533", "163702", "163821", "163948"),
-    "icos_fair_flat": ("164040", "164139", "164228", "164326"),
     "icos_fair_seasonal": ("164420", "164519", "164607", "164704"),
 }
 RUN_SUFFIXES = ("precalc_delivery", "precalc_supply", "calibrated_delivery", "calibrated_supply")
@@ -188,8 +184,8 @@ def stage_config(stager: Stager, settings: dict[str, dict[str, Any]], path_rdp: 
         paths.add(repo_relative(s["path_tariff_maps_gas"]))
 
     counts = {
-        "tariffs/electric/": 18,
-        "tariff_maps/electric/": 18,
+        "tariffs/electric/": 8,
+        "tariff_maps/electric/": 8,
         "tariffs/gas/": 8,
         "tariff_maps/gas/": 2,
     }
@@ -218,7 +214,7 @@ def stage_config(stager: Stager, settings: dict[str, dict[str, Any]], path_rdp: 
 
 
 def stage_marginal_costs(stager: Stager, mc_used: dict[str, dict[str, Any]]) -> None:
-    """The two hourly marginal cost files CAIRO reads; all 36 runs must agree on path and sha256."""
+    """The two hourly marginal cost files CAIRO reads; every shared run must agree on path and sha256."""
     for key in MC_KEYS:
         recorded = {(m["marginal_costs"][key]["path"], m["marginal_costs"][key]["sha256"]) for m in mc_used.values()}
         assert len(recorded) == 1, f"{key}: runs disagree: {recorded}"

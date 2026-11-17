@@ -279,11 +279,11 @@ def test_header_has_label_and_section_page_count() -> None:
     for expected in (
         "Conservation Law Foundation and Sierra Club",
         "PURA Docket No. 26-05-10",
+        "Set CIEC-02",
+        "Date Issued: October 29, 2026",
         "CIEC-7",
     ):
         assert expected in plain
-    assert "Date Issued" not in plain  # date issued is in the caption block, not the header
-    assert "Set CIEC-02" not in plain  # the set label is not printed in the header
     assert " PAGE " in xml_text and " SECTIONPAGES " in xml_text
     final = ir.parse_fields(
         {**_meta(_qmd()), "interrogatory_responses": {**_meta(_qmd())["interrogatory_responses"], "draft": False}}
@@ -321,7 +321,7 @@ def test_render_combined_and_split(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert "CIEC-2" in re.sub(r"<[^>]+>", "", headers["word/headerIR2.xml"])
     text = re.sub(r"<[^>]+>", " ", document)
     assert "Someone Else" in text and "Juan-Pablo Velez" in text
-    assert "Date Issued:" in text and "October 29, 2026" in text
+    assert "Date Issued:" not in text  # date issued prints in the header only
     assert "Date Filed:" in text and "November 12, 2026" in text
     assert "Question CIEC-1:" in text and "Question CIEC-2:" in text
 

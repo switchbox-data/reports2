@@ -65,7 +65,7 @@ When CIEC cites Velez Direct, set `testimony_extract` in the frontmatter (path t
 
 ## What the Word files look like
 
-Every response is its own Word section that restarts at page 1. Its header has the responding party, the docket, the response label and "Page n of N" counted within that response (the set label is not printed); the first page then shows Date Issued, Date Filed, Witness and Request from, followed by "Question CIEC-1:" (the response label) and "Response:". The combined review file has all responses back to back; the split files have one each, in the same format. Open the combined review file in Word, not Google Docs or LibreOffice: only Word computes the per-response "of N" (the others show "of 1"). The split filing files work in all three.
+Every response is its own Word section that restarts at page 1. Its header has the responding party, the docket, the set label, the date issued, the response label and "Page n of N" counted within that response; the first page then shows Date Filed, Witness and Request from, followed by "Question CIEC-1:" (the response label) and "Response:". The combined review file has all responses back to back; the split files have one each, in the same format. Open the combined review file in Word, not Google Docs or LibreOffice: only Word computes the per-response "of N" (the others show "of 1"). The split filing files work in all three.
 
 Responses are separate PDFs on the PURA site, with attachments (Excel and the like) uploaded alongside, not embedded. See the `interrogatory-response` skill and its `connecticut.md` for filing details and for how the other parties' responses in the docket look.
 

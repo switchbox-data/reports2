@@ -42,7 +42,7 @@ OUTPUT = HERE / "interrogatory_response.docx"
 SECTPR_XML = """<w:sectPr>
     <w:headerReference w:type="default" r:id="rIdIRHeader"/>
     <w:pgSz w:w="12240" w:h="15840" w:code="1"/>
-    <w:pgMar w:top="1680" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
+    <w:pgMar w:top="2300" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
     <w:pgNumType w:start="1"/>
     <w:cols w:space="720"/>
     <w:docGrid w:linePitch="360"/>

@@ -4,7 +4,6 @@
 --! Every level-2 heading in the QMD is one response (its text is the response
 --! label, e.g. "CIEC-1").  For each response this filter writes, in order:
 --!
---!   Date Issued: <date>
 --!   Date Filed:  <date>
 --!   Witness:     <witness>
 --!   Request from: <requesting party>
@@ -55,7 +54,7 @@ local SECTION_BREAK = [[
     <w:sectPr>
       <w:type w:val="nextPage"/>
       <w:pgSz w:w="12240" w:h="15840" w:code="1"/>
-      <w:pgMar w:top="1680" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
+      <w:pgMar w:top="2300" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
       <w:pgNumType w:start="1"/>
       <w:cols w:space="720"/>
       <w:docGrid w:linePitch="360"/>
@@ -510,7 +509,6 @@ function Pandoc(doc)
   local requesting_party = field(cfg, "requesting_party") or ""
   local default_witness = field(cfg, "witness") or ""
   local date_filed = field(doc.meta, "ir-date-filed-long") or field(cfg, "date_filed") or ""
-  local date_issued = field(doc.meta, "ir-date-issued-long") or field(cfg, "date_issued") or ""
   local only = field(doc.meta, "ir-only")
 
   -- Gather the responses: each heading starts one; its question/response divs fill it.
@@ -546,7 +544,6 @@ function Pandoc(doc)
   local out = {}
   for i, s in ipairs(sections) do
     local witness = s.witness or default_witness
-    table.insert(out, styled("IR Meta", { pandoc.Strong({ pandoc.Str("Date Issued:") }), tab(), pandoc.Str(date_issued) }))
     table.insert(out, styled("IR Meta", { pandoc.Strong({ pandoc.Str("Date Filed:") }), tab(), pandoc.Str(date_filed) }))
     table.insert(out, styled("IR Meta", { pandoc.Strong({ pandoc.Str("Witness:") }), tab(), pandoc.Str(witness) }))
     table.insert(out, styled("IR Meta", { pandoc.Strong({ pandoc.Str("Request from:") }), tab(), pandoc.Str(requesting_party) }))

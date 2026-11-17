@@ -104,7 +104,7 @@ FIELD_HELP: dict[str, str] = {
     "docket": 'docket as it prints in the header, e.g. "PURA Docket No. 26-05-10"',
     "responding_party": 'who is answering, e.g. "Conservation Law Foundation and Sierra Club"',
     "requesting_party": "who asked the questions (prints as 'Request from')",
-    "set": 'the set label, e.g. "Set CIEC-02" (kept on record; not printed in the header)',
+    "set": 'the set label, e.g. "Set CIEC-02" (prints in the header)',
     "date_issued": "date the requests were issued, e.g. 2026-10-29",
     "date_filed": "filing date, e.g. 2026-11-12 (use the due date until you know)",
     "witness": "default witness for every response (override per response with {witness=...})",
@@ -636,14 +636,15 @@ def header_xml(fields: Fields, label: str, pages_field: str = "SECTIONPAGES", in
     With ``draft: true`` the header carries the DRAFT watermark instead of a line
     of text; ``index`` keeps each section's watermark shape id unique.
     """
-    # Compact block: party, docket, the label, and the page count. Date issued
-    # prints in the caption block with Date Filed (Lua filter). The set label is
-    # not printed. The DRAFT watermark rides in the first line so it adds no
-    # height to the header.
+    # Block as counsel files it: party, docket, set, date issued, the label, and
+    # the page count. Date issued prints only here, not in the caption block. The
+    # DRAFT watermark rides in the first line so it adds no height to the header.
     lead = _watermark(index) if fields.draft else ""
     paragraphs = [
         _line(fields.responding_party, lead=lead),
         _line(fields.docket),
+        _line(fields.set_label),
+        _line(f"Date Issued: {long_date(fields.date_issued)}"),
         _line(label),
         (
             '<w:p><w:pPr><w:pStyle w:val="Header"/></w:pPr><w:r><w:t xml:space="preserve">Page </w:t></w:r>'

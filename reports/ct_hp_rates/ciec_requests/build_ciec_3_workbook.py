@@ -1,6 +1,6 @@
 """Helpers for the CIEC-3(c) Excel workpaper.
 
-``ciec_request_3.qmd`` loads the CIEC-1 revenue reductions, the non-heat-pump
+``ciec_request_3.qmd`` loads the CIEC-1 net revenue reductions, the non-heat-pump
 buildings, and today's Rate 1 charges, then calls :func:`build_workbook`.
 Upload uses :func:`build_ciec_1a_workbook.upload_xlsx`. Yellow cells are inputs.
 Every other number is a formula.
@@ -10,13 +10,10 @@ Sheets
 README
     What the file is and how the sheets connect.
 revenue
-    Floor and ceiling customer counts, and the per-customer distribution and
-    transmission decreases, are inputs. The 20, 40, 60, and 80 percent rows
-    place the customer count that share of the way from the floor to the
-    ceiling. Distribution and transmission are that count times the
-    per-customer decrease, rounded to the dollar. Later installers are not
-    included. T&D adds the two components. A file with more than one year
-    keeps one pasted row per year instead of this range.
+    Net revenue reduction by year: revenue lost from existing heat pump
+    customers minus revenue gained from new customers. Low and high are the
+    estimates of new heat pump customers. Distribution and transmission are
+    inputs, already rounded to the dollar. T&D adds them. One row per rate year.
 nonhp_kwh
     One row per Eversource home without a heat pump. Annual kWh is CAIRO grid
     consumption. Weight is the ResStock sample weight. Weighted kWh is the product.
@@ -28,17 +25,16 @@ payers
     Year residential count minus the customers who move. Weighted kWh scales
     the ResStock total by that count over the ResStock weight sum.
 rates
-    Today's Rate 1 distribution, transmission, and twelve monthly generation
-    charges. T&D and T&D-plus-generation are formulas. The increase sheet
-    divides by them.
+    The Company's proposed Rate Year distribution and transmission charges for
+    Rate 1. T&D is a formula. The increase sheet divides by it.
 increase
-    The auto-enrolled revenue reduction divided by that bound's weighted kWh
-    on payers, and that increase as a share of the Rate 1 charges.
+    Each year's net revenue reduction divided by that year's weighted kWh on
+    payers, and that increase as a share of the Rate 1 T&D charge.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -48,7 +44,6 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
-MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 DRIVE_NAME = "CIEC-3c_rate1_charge_increase.xlsx"
 
 INPUT_FILL = PatternFill("solid", fgColor="FFF2CC")
@@ -75,10 +70,6 @@ KWH_FIRST = 8
 RATES_DIST_ROW = 5
 RATES_TX_ROW = 6
 RATES_TD_ROW = 7
-RATES_GEN_FIRST = 11
-RATES_GEN_LAST = 22
-RATES_AVG_ROW = 23
-RATES_FULL_ROW = 25
 INCREASE_HEADER = 4
 INCREASE_FIRST = 5
 PAYERS_RATE_YEAR_ROW = 4
@@ -173,17 +164,9 @@ def _check_revenue(floor: Sequence[RevenueRow], ceiling: Sequence[RevenueRow]) -
         raise ValueError("revenue label is empty")
 
 
-def _check_rates(distribution: float, transmission: float, generation_monthly: Mapping[str, float]) -> list[float]:
+def _check_rates(distribution: float, transmission: float) -> None:
     if distribution <= 0 or transmission <= 0:
         raise ValueError(f"rates must be positive, got distribution={distribution} and transmission={transmission}")
-    expected = [f"2025-{month:02d}" for month in range(1, 13)]
-    found = sorted(generation_monthly)
-    if found != expected:
-        raise ValueError(f"generation months {found} are not the twelve months of 2025")
-    rates = [float(generation_monthly[key]) for key in expected]
-    if any(rate <= 0 for rate in rates):
-        raise ValueError(f"generation rates must be positive, got {rates}")
-    return rates
 
 
 def _buildings(buildings: pl.DataFrame) -> pl.DataFrame:
@@ -227,11 +210,12 @@ def _write_readme(wb: Workbook, *, ranged: bool) -> None:
             False,
         ),
         (
-            "Increase in the Rate 1 distribution and transmission charges if the revenue no longer collected "
-            "from auto-enrolled heat pump customers were recovered from residential customers who are not on Rate HP. "
-            "Customers who install a heat pump later are not part of this recovery. Rate HP is calibrated so that "
-            "a new heat pump customer pays the embedded-cost revenue requirement and the additional transmission "
-            "and distribution marginal cost.",
+            "Increase in the Rate 1 distribution and transmission charges if the net revenue reduction from "
+            "Rate HP were recovered solely from residential customers who are not on Rate HP. The reduction comes "
+            "from existing heat pump customers who are auto-enrolled in Rate HP. New heat pump customers who enroll "
+            "at installation pay slightly more than they did before installing a heat pump, so they do not add to "
+            "the reduction. The response to CIEC-3(c) cites 2031 under the high estimate of new heat pump customers "
+            "(increase sheet, last row).",
             False,
         ),
         ("", False),
@@ -249,47 +233,49 @@ def _write_readme(wb: Workbook, *, ranged: bool) -> None:
             )
             if ranged
             else (
-                "Floor and ceiling revenue reductions from CIEC-1(a) for the customers already enrolled, including "
-                "the 2026 installations. Distribution and transmission are the values already calculated there, "
-                "rounded to the dollar. This sheet does not recompute them. T&D adds the two components. "
-                "Installations in 2027 through 2031 are not on this sheet."
+                "Net revenue reduction in each rate year, from CIEC-1(a), Tables 1 and 2: revenue lost from existing "
+                "heat pump customers auto-enrolled in Rate HP, minus revenue gained from new heat pump customers "
+                "enrolled at installation. Customers are everyone on Rate HP that year, existing and new. The low "
+                "and high estimates are the low and high estimates of new heat pump customers in CIEC-1(c). "
+                "Distribution and transmission are the values calculated there, rounded to the dollar. This sheet "
+                "does not recompute them. T&D adds the two components."
             ),
             False,
         ),
         ("", False),
         ("nonhp_kwh", True),
         (
-            "One row per Eversource home without a heat pump in the ResStock baseline. Annual kWh is CAIRO "
-            "grid consumption. Weight is the ResStock sample weight, before the Rate Year scale. Weighted kWh "
-            "multiplies annual kWh by that weight. Homes on Rate 5 and Rate 7 are included with Rate 1. "
-            "Customers on Rate HP are not on this sheet. The per-kWh increase divides by the scaled total on payers.",
+            "One row per home without a heat pump in the ResStock 2024.2 sample of Eversource's territory used in "
+            "Mr. Velez's direct testimony (Exhibit JPV-2, Section 2). Annual kWh is the electricity the home draws from the grid "
+            "in a year. Weight is the number of customers the home represents. Homes on Rates 5 and 7 are "
+            "included with Rate 1. The payers sheet scales the total to the Rate Year.",
             False,
         ),
         ("", False),
         ("payers", True),
         (
-            "Heat pump customers who move to Rate HP, and the residential customers who remain and pay the "
+            "Heat pump customers on Rate HP, and the residential customers who remain and pay the "
             "increase. The Rate Year count is an input, the average bills rendered for Rates 1, 5, and 7. "
-            "Customers who remain are that count minus the customers who move. The scale is the customers who "
+            "Customers who remain are that count minus the customers on Rate HP. The scale is the customers who "
             "remain divided by the ResStock weight sum. Weighted kWh is the ResStock weighted kWh times that scale. "
-            "Each step from the floor to the ceiling has its own scale, because a different number of customers move.",
+            "Each year and estimate has its own scale, because a different number of customers are on Rate HP.",
             False,
         ),
         ("", False),
         ("rates", True),
         (
-            "Today's Rate 1 charges, the denominators of the percent change. Distribution includes riders and "
-            "is flat across months. Transmission is flat across months. Generation is the twelve monthly supply "
-            "rates, and the average is their mean. T&D is distribution plus transmission. T&D and generation "
-            "adds that average. The customer charge is unchanged and is not part of these percents.",
+            "The Company's proposed Rate 1 charges for the Rate Year (Exhibit CLP-RATES-3), the denominator of "
+            "the percent change. Distribution includes riders and is flat across months. Transmission is flat "
+            "across months. T&D is distribution plus transmission. The customer charge is unchanged and is not "
+            "part of the percent.",
             False,
         ),
         ("", False),
         ("increase", True),
         (
-            "Each row divides that bound's revenue reduction by that bound's weighted kWh on payers. "
-            "Distribution and transmission are separate. T&D adds them. % of T&D divides the combined increase "
-            "by the T&D rate. % of T&D and generation divides it by T&D plus average generation.",
+            "Each row divides that year's net revenue reduction by that year's weighted kWh on payers, under "
+            "each estimate. Distribution and transmission are separate. T&D adds them. % of T&D divides the "
+            "combined increase by the T&D rate.",
             False,
         ),
     ]
@@ -306,28 +292,30 @@ def _write_readme(wb: Workbook, *, ranged: bool) -> None:
 
 def _write_revenue(wb: Workbook, floor: Sequence[RevenueRow], ceiling: Sequence[RevenueRow]) -> None:
     ws = wb.create_sheet("revenue")
-    _heading(ws, 1, "Revenue reduction")
+    _heading(ws, 1, "Net revenue reduction")
     _note(
         ws,
         2,
-        "Annual revenue reduction from CIEC-1(a) for customers who would move from Rate 1 to Rate HP. "
-        "The row is the starting stock, including the 2026 installations. Distribution and transmission "
-        "are inputs, already rounded to the dollar. T&D adds them. Later heat pump installations are excluded.",
+        "Net revenue reduction from CIEC-1(a): revenue lost from existing heat pump customers who move "
+        "to Rate HP, minus revenue gained from new heat pump customers who enroll at installation. "
+        "Customers are everyone on Rate HP that year. Low and high are the estimates of new heat pump "
+        "customers in CIEC-1(c). Distribution and transmission are inputs, already rounded to the dollar. "
+        "T&D adds them.",
         9,
     )
     _headers(
         ws,
         REVENUE_HEADER,
         [
-            "Year",
-            "Floor customers",
-            "Floor distribution",
-            "Floor transmission",
-            "Floor T&D",
-            "Ceiling customers",
-            "Ceiling distribution",
-            "Ceiling transmission",
-            "Ceiling T&D",
+            "Rate year",
+            "Low: customers on Rate HP",
+            "Low: distribution",
+            "Low: transmission",
+            "Low: T&D",
+            "High: customers on Rate HP",
+            "High: distribution",
+            "High: transmission",
+            "High: T&D",
         ],
     )
     for i, (left, right) in enumerate(zip(floor, ceiling, strict=True)):
@@ -353,10 +341,10 @@ def _write_kwh(wb: Workbook, buildings: pl.DataFrame) -> None:
     _note(
         ws,
         2,
-        "Eversource homes without a heat pump in the ResStock baseline. Annual kWh is CAIRO grid consumption, "
-        "the same billing basis as the heat pump bill in CIEC-1(a). Weight is the ResStock sample weight. "
-        "Weighted kWh is annual kWh times that weight. The payers sheet scales this total. Homes on Rate 5 and "
-        "Rate 7 are included with Rate 1.",
+        "Homes without a heat pump in the ResStock 2024.2 sample of Eversource's territory (Exhibit JPV-2, "
+        "Section 2). Annual kWh is the electricity the home draws from the grid in a year, the same basis as "
+        "the bills in CIEC-1(a). Weight is the number of customers the home represents. Weighted kWh is annual "
+        "kWh times that weight. Homes on Rates 5 and 7 are included with Rate 1.",
         4,
         height=48,
     )
@@ -381,20 +369,15 @@ def _write_kwh(wb: Workbook, buildings: pl.DataFrame) -> None:
         ws.column_dimensions[get_column_letter(col)].width = 20
 
 
-def _write_rates(
-    wb: Workbook,
-    distribution: float,
-    transmission: float,
-    generation: Sequence[float],
-) -> None:
+def _write_rates(wb: Workbook, distribution: float, transmission: float) -> None:
     ws = wb.create_sheet("rates")
     _heading(ws, 1, "Rate 1 charges")
     _note(
         ws,
         2,
-        "Today's Rate 1 charges, used as the denominators of the percent change. Distribution includes riders. "
-        "Transmission is separate. Both are flat across months. Generation is the twelve monthly supply rates. "
-        "The customer charge is unchanged and is not part of these percents.",
+        "The Company's proposed Rate 1 charges for the Rate Year (Exhibit CLP-RATES-3), used as the "
+        "denominator of the percent change. Distribution includes riders. Transmission is separate. Both are "
+        "flat across months. The customer charge is unchanged and is not part of the percent.",
         5,
     )
     _headers(ws, 4, ["Component", "Unit", "$/kWh", "¢/kWh", "Note"])
@@ -413,33 +396,6 @@ def _write_rates(
     _put(ws, RATES_TD_ROW, 3, f"=C{RATES_DIST_ROW}+C{RATES_TX_ROW}", fmt=FMT_RATE, bold=True)
     _put(ws, RATES_TD_ROW, 4, f"=C{RATES_TD_ROW}*100", fmt=FMT_CENTS, bold=True)
     _put(ws, RATES_TD_ROW, 5, "Denominator of % of T&D.", wrap=True)
-
-    _put(ws, 9, 1, "Generation", bold=True)
-    _headers(ws, 10, ["Month", "Unit", "$/kWh", "¢/kWh", "Note"])
-    for i, (month, rate) in enumerate(zip(MONTHS, generation, strict=True)):
-        row = RATES_GEN_FIRST + i
-        _put(ws, row, 1, month)
-        _put(ws, row, 2, "$/kWh")
-        _put(ws, row, 3, rate, input_=True, fmt=FMT_RATE)
-        _put(ws, row, 4, f"=C{row}*100", fmt=FMT_CENTS)
-    _put(ws, RATES_AVG_ROW, 1, "Average", bold=True)
-    _put(ws, RATES_AVG_ROW, 2, "$/kWh")
-    _put(
-        ws,
-        RATES_AVG_ROW,
-        3,
-        f"=AVERAGE(C{RATES_GEN_FIRST}:C{RATES_GEN_LAST})",
-        fmt=FMT_RATE,
-        bold=True,
-    )
-    _put(ws, RATES_AVG_ROW, 4, f"=C{RATES_AVG_ROW}*100", fmt=FMT_CENTS, bold=True)
-    _put(ws, RATES_AVG_ROW, 5, "Mean of the twelve monthly rates.", wrap=True)
-
-    _put(ws, RATES_FULL_ROW, 1, "T&D and generation", bold=True)
-    _put(ws, RATES_FULL_ROW, 2, "$/kWh")
-    _put(ws, RATES_FULL_ROW, 3, f"=C{RATES_TD_ROW}+C{RATES_AVG_ROW}", fmt=FMT_RATE, bold=True)
-    _put(ws, RATES_FULL_ROW, 4, f"=C{RATES_FULL_ROW}*100", fmt=FMT_CENTS, bold=True)
-    _put(ws, RATES_FULL_ROW, 5, "Denominator of % of T&D and generation.", wrap=True)
 
     ws.column_dimensions["A"].width = 24
     ws.column_dimensions["B"].width = 12
@@ -465,11 +421,11 @@ def _write_payers(wb: Workbook, n_years: int, rate_year_customers: float) -> Non
     _note(
         ws,
         2,
-        "Heat pump customers who move from Rate 1 to Rate HP, and the residential customers who remain. "
+        "Heat pump customers on Rate HP, and the residential customers who remain. "
         "The Rate Year count is the average bills rendered for Rates 1, 5, and 7. Customers who remain are "
-        "that count minus the customers who move. The scale divides the customers who remain by the ResStock "
+        "that count minus the customers on Rate HP. The scale divides the customers who remain by the ResStock "
         "weight sum on nonhp_kwh. Weighted kWh multiplies the ResStock weighted kWh by that scale. The increase "
-        "sheet divides each bound's revenue reduction by that bound's weighted kWh.",
+        "sheet divides each year's net revenue reduction by that year's weighted kWh.",
         9,
         height=64,
     )
@@ -483,15 +439,15 @@ def _write_payers(wb: Workbook, n_years: int, rate_year_customers: float) -> Non
         ws,
         PAYERS_HEADER,
         [
-            "Year",
-            "Floor HP customers",
-            "Floor non-HP customers",
-            "Floor scale",
-            "Floor weighted kWh",
-            "Ceiling HP customers",
-            "Ceiling non-HP customers",
-            "Ceiling scale",
-            "Ceiling weighted kWh",
+            "Rate year",
+            "Low: customers on Rate HP",
+            "Low: customers who remain",
+            "Low: scale",
+            "Low: weighted kWh",
+            "High: customers on Rate HP",
+            "High: customers who remain",
+            "High: scale",
+            "High: weighted kWh",
         ],
     )
     for i in range(n_years):
@@ -518,26 +474,24 @@ def _write_increase(wb: Workbook, n_years: int) -> None:
     _note(
         ws,
         2,
-        "Each increase is that bound's auto-enrolled revenue reduction divided by that bound's weighted kWh on payers. "
+        "Each increase is that year's net revenue reduction divided by that year's weighted kWh on payers. "
         "Distribution and transmission are separate, and T&D adds them. % of T&D divides the combined "
-        "increase by the T&D rate. % of T&D and generation divides it by T&D plus average generation.",
-        11,
+        "increase by the T&D rate. The response to CIEC-3(c) cites 2031 under the high estimate.",
+        9,
     )
     _headers(
         ws,
         INCREASE_HEADER,
         [
-            "Year",
-            "Floor distribution ($/kWh)",
-            "Floor transmission ($/kWh)",
-            "Floor T&D ($/kWh)",
-            "Floor % of T&D",
-            "Floor % of T&D and generation",
-            "Ceiling distribution ($/kWh)",
-            "Ceiling transmission ($/kWh)",
-            "Ceiling T&D ($/kWh)",
-            "Ceiling % of T&D",
-            "Ceiling % of T&D and generation",
+            "Rate year",
+            "Low: distribution ($/kWh)",
+            "Low: transmission ($/kWh)",
+            "Low: T&D ($/kWh)",
+            "Low: % of T&D",
+            "High: distribution ($/kWh)",
+            "High: transmission ($/kWh)",
+            "High: T&D ($/kWh)",
+            "High: % of T&D",
         ],
     )
     for i in range(n_years):
@@ -549,15 +503,13 @@ def _write_increase(wb: Workbook, n_years: int) -> None:
         _put(ws, row, 3, f"=revenue!D{src}/payers!E{payers}", fmt=FMT_RATE)
         _put(ws, row, 4, f"=B{row}+C{row}", fmt=FMT_RATE)
         _put(ws, row, 5, f"=D{row}/rates!$C${RATES_TD_ROW}", fmt=FMT_PCT)
-        _put(ws, row, 6, f"=D{row}/rates!$C${RATES_FULL_ROW}", fmt=FMT_PCT)
-        _put(ws, row, 7, f"=revenue!G{src}/payers!I{payers}", fmt=FMT_RATE)
-        _put(ws, row, 8, f"=revenue!H{src}/payers!I{payers}", fmt=FMT_RATE)
-        _put(ws, row, 9, f"=G{row}+H{row}", fmt=FMT_RATE)
-        _put(ws, row, 10, f"=I{row}/rates!$C${RATES_TD_ROW}", fmt=FMT_PCT)
-        _put(ws, row, 11, f"=I{row}/rates!$C${RATES_FULL_ROW}", fmt=FMT_PCT)
+        _put(ws, row, 6, f"=revenue!G{src}/payers!I{payers}", fmt=FMT_RATE)
+        _put(ws, row, 7, f"=revenue!H{src}/payers!I{payers}", fmt=FMT_RATE)
+        _put(ws, row, 8, f"=F{row}+G{row}", fmt=FMT_RATE)
+        _put(ws, row, 9, f"=H{row}/rates!$C${RATES_TD_ROW}", fmt=FMT_PCT)
     ws.freeze_panes = "B5"
     ws.column_dimensions["A"].width = 14
-    for col in range(2, 12):
+    for col in range(2, 10):
         ws.column_dimensions[get_column_letter(col)].width = 24
 
 
@@ -664,8 +616,8 @@ def _write_increase_range(wb: Workbook) -> None:
         2,
         "Each increase is that step's revenue reduction divided by that step's weighted kWh on payers. "
         "Distribution and transmission are separate, and T&D adds them. % of T&D divides the combined "
-        "increase by the T&D rate. % of T&D and generation divides it by T&D plus average generation.",
-        6,
+        "increase by the T&D rate.",
+        5,
     )
     _headers(
         ws,
@@ -676,7 +628,6 @@ def _write_increase_range(wb: Workbook) -> None:
             "Transmission ($/kWh)",
             "T&D ($/kWh)",
             "% of T&D",
-            "% of T&D and generation",
         ],
     )
     for i in range(len(RANGE_STEPS)):
@@ -686,10 +637,9 @@ def _write_increase_range(wb: Workbook) -> None:
         _put(ws, row, 3, f"=revenue!D{row}/payers!E{row}", fmt=FMT_RATE)
         _put(ws, row, 4, f"=B{row}+C{row}", fmt=FMT_RATE)
         _put(ws, row, 5, f"=D{row}/rates!$C${RATES_TD_ROW}", fmt=FMT_PCT)
-        _put(ws, row, 6, f"=D{row}/rates!$C${RATES_FULL_ROW}", fmt=FMT_PCT)
     ws.freeze_panes = "B8"
     ws.column_dimensions["A"].width = 42
-    for col in range(2, 7):
+    for col in range(2, 6):
         ws.column_dimensions[get_column_letter(col)].width = 24
 
 
@@ -700,7 +650,6 @@ def build_workbook(
     *,
     distribution: float,
     transmission: float,
-    generation_monthly: Mapping[str, float],
     rate_year_customers: float,
     per_customer_distribution: float | None = None,
     per_customer_transmission: float | None = None,
@@ -712,7 +661,7 @@ def build_workbook(
     """
     _check_revenue(floor, ceiling)
     _check_rate_year(rate_year_customers, floor, ceiling)
-    generation = _check_rates(distribution, transmission, generation_monthly)
+    _check_rates(distribution, transmission)
     rows = _buildings(buildings)
     ranged = per_customer_distribution is not None or per_customer_transmission is not None
     if ranged and (per_customer_distribution is None or per_customer_transmission is None):
@@ -729,12 +678,12 @@ def build_workbook(
         _write_revenue_range(wb, floor[0], ceiling[0], per_customer_distribution, per_customer_transmission)
         _write_kwh(wb, rows)
         _write_payers_range(wb, rate_year_customers)
-        _write_rates(wb, distribution, transmission, generation)
+        _write_rates(wb, distribution, transmission)
         _write_increase_range(wb)
     else:
         _write_revenue(wb, floor, ceiling)
         _write_kwh(wb, rows)
         _write_payers(wb, len(floor), rate_year_customers)
-        _write_rates(wb, distribution, transmission, generation)
+        _write_rates(wb, distribution, transmission)
         _write_increase(wb, len(floor))
     return wb

@@ -1,0 +1,191 @@
+---
+title: "Responses to Connecticut Industrial Energy Consumers, CIEC-15"
+subtitle: "Docket No. 26-05-10"
+author: "Conservation Law Foundation and Sierra Club"
+date: 2026-11-12
+bibliography: ../../references.yaml
+csl: ../../chicago-author-date-switchbox.csl
+reference-location: margin
+citation-location: document
+execute:
+  warning: false
+  message: false
+format:
+  html:
+    theme: ../../.style/switchbox.scss
+    page-layout: article
+    toc: false
+---
+
+```{python}
+#| echo: false
+
+from __future__ import annotations
+
+import pickle
+from pathlib import Path
+from types import SimpleNamespace
+
+import yaml
+
+from build_ciec_15a_workbook import RateLine, WorkbookInputs, derive
+from lib.rates_analysis.fair_default import fair_default_incremental_fixed_charge
+from lib.rdp import fetch_rdp_file
+
+_batch = yaml.safe_load(Path("../batch_config.yaml").read_text())
+_rep = SimpleNamespace(**pickle.loads(Path("../cache/representative_home_vars.pkl").read_bytes()))
+_filed = SimpleNamespace(**pickle.loads(Path("../cache/incremental_fair_default_report_variables.pkl").read_bytes()))
+
+# Exhibit CLP-RATES-2, Rate Year build: annual bills rendered and billed Rate 1 sales.
+CLASS_ANNUAL_BILLS = 12_920_344.76
+CLASS_BILLED_MWH = 8_716_958.14
+BASE_FIXED_CHARGE = 12.36
+
+# Distribution riders are billed with distribution. Transmission is its own charge.
+DISTRIBUTION = (
+    ("already_in_drr", "core_delivery_rate", "Distribution energy"),
+    ("add_to_drr", "electric_system_improvements_esi", "Electric system improvements"),
+    ("add_to_drr", "revenue_decoupling_mechanism_rdm", "Revenue decoupling"),
+    ("add_to_drr", "competitive_transition_assessment_cta", "Competitive transition assessment"),
+    ("add_to_drr", "non_bypassable_fmcc_delivery", "FMCC delivery"),
+    ("add_to_drr", "conservation_adjustment_mechanism_cam", "Conservation adjustment"),
+    ("add_to_drr", "renewable_energy_investment_clean_energy_fund", "Clean energy fund"),
+    ("add_to_drr", "system_benefits_charge_sbc", "System benefits"),
+)
+TRANSMISSION = (("add_to_drr", "transmission_charge", "Transmission"),)
+
+_rates_yaml = yaml.safe_load(fetch_rdp_file(_batch["DEFAULT_RATE_YAML"], ref=_batch["RDP_REF"]))
+_customer = _rates_yaml["already_in_drr"]["charges"]["customer_charge"]["monthly_rates"]
+if len(set(_customer.values())) != 1 or abs(float(next(iter(_customer.values()))) - BASE_FIXED_CHARGE) > 1e-12:
+    raise RuntimeError(f"proposed customer charge {_customer} is not {BASE_FIXED_CHARGE}")
+
+
+def _monthly(group: str, key: str) -> tuple[float, ...]:
+    rates = _rates_yaml[group]["charges"][key]["monthly_rates"]
+    months = [f"2025-{month:02d}" for month in range(1, 13)]
+    if sorted(rates) != months:
+        raise RuntimeError(f"{key} months {sorted(rates)} are not the twelve months of 2025")
+    return tuple(float(rates[month]) for month in months)
+
+
+def _monthly_kwh(name: str, annual: float) -> tuple[float, ...]:
+    values = tuple(float(value) for value in getattr(_rep, name))
+    if len(values) != 12:
+        raise RuntimeError(f"{name} has {len(values)} months, expected 12")
+    if abs(sum(values) - annual) > 1e-6:
+        raise RuntimeError(f"{name} sums to {sum(values)}, not the annual total {annual}")
+    return values
+
+
+inputs = WorkbookInputs(
+    kwh_before=_monthly_kwh("all_fossil_monthly_kwh_before", float(_rep.all_fossil_annual_kwh_before)),
+    kwh_after=_monthly_kwh("all_fossil_monthly_kwh_after", float(_rep.all_fossil_annual_kwh_after)),
+    customer_charge=_monthly("already_in_drr", "customer_charge"),
+    generation=_monthly("add_to_srr", "supply_commodity_bundled"),
+    distribution=tuple(RateLine(label, _monthly(group, key)) for group, key, label in DISTRIBUTION),
+    transmission=tuple(RateLine(label, _monthly(group, key)) for group, key, label in TRANSMISSION),
+    marginal_cost_before=float(_rep.all_fossil_annual_mc_delivery_before),
+    marginal_cost_after=float(_rep.all_fossil_annual_mc_delivery_after),
+    annual_bills=CLASS_ANNUAL_BILLS,
+    billed_mwh=CLASS_BILLED_MWH,
+)
+result = derive(inputs)
+solved = fair_default_incremental_fixed_charge(
+    class_variable_revenue=result.class_variable_revenue,
+    class_customers=result.class_customers,
+    retrofit_incremental_variable_charge=result.volumetric_delta,
+    retrofit_incremental_marginal_cost=result.marginal_cost_delta,
+    base_fixed_charge=BASE_FIXED_CHARGE,
+)
+
+_checks = {
+    "customer_charge_before": (_rep.all_fossil_annual_customer_charge_before, result.annual_customer_charge_before),
+    "customer_charge_after": (_rep.all_fossil_annual_customer_charge_after, result.annual_customer_charge_after),
+    "generation_before": (_rep.all_fossil_annual_generation_before, result.annual_generation_before),
+    "generation_after": (_rep.all_fossil_annual_generation_after, result.annual_generation_after),
+    "distribution_before": (_rep.all_fossil_annual_distribution_before, result.annual_distribution_before),
+    "distribution_after": (_rep.all_fossil_annual_distribution_after, result.annual_distribution_after),
+    "transmission_before": (_rep.all_fossil_annual_transmission_before, result.annual_transmission_before),
+    "transmission_after": (_rep.all_fossil_annual_transmission_after, result.annual_transmission_after),
+    "customer_charge_delta": (_rep.all_fossil_annual_customer_charge_delta, result.customer_charge_delta),
+    "generation_delta": (_rep.all_fossil_annual_generation_delta, result.generation_delta),
+    "distribution_delta": (_rep.all_fossil_annual_distribution_delta, result.distribution_delta),
+    "transmission_delta": (_rep.all_fossil_annual_transmission_delta, result.transmission_delta),
+    "marginal_cost_delta": (
+        _rep.all_fossil_annual_mc_delivery_after - _rep.all_fossil_annual_mc_delivery_before,
+        result.marginal_cost_delta,
+    ),
+    "scaling_factor": (solved.implied_lambda, result.scaling_factor),
+    "fixed_charge": (solved.fixed_charge, result.fixed_charge),
+    "fixed_charge_delta": (solved.delta, result.fixed_charge_delta),
+    "class_revenue_shift": (solved.class_revenue_shift, result.class_revenue_shift),
+    "filed_scaling_factor": (_filed.implied_lambda, result.scaling_factor),
+    "filed_fixed_charge": (_filed.fixed_charge, result.fixed_charge),
+    "filed_class_revenue": (_filed.class_variable_revenue, result.class_variable_revenue),
+    "filed_customers": (_filed.class_customers, result.class_customers),
+    "revenue_gap": (0.0, result.revenue_gap),
+    "cost_gap": (0.0, result.cost_gap),
+}
+for _name, (_expected, _actual) in _checks.items():
+    if abs(_actual - _expected) > 1e-6:
+        raise RuntimeError(f"{_name}: {_actual} != {_expected}")
+if abs(result.customer_charge_delta) > 1e-6:
+    raise RuntimeError(f"customer charge changes by {result.customer_charge_delta}")
+if round(result.fixed_charge, 2) != 121.49 or round(result.fixed_charge_delta, 2) != 109.13:
+    raise RuntimeError(f"rounded charge {result.fixed_charge} does not match the testimony")
+
+fixed_charge = result.fixed_charge
+fixed_charge_delta = result.fixed_charge_delta
+scaling_factor = result.scaling_factor
+volumetric_delta = result.volumetric_delta
+marginal_cost_delta = result.marginal_cost_delta
+generation_delta = result.generation_delta
+class_revenue_shift = result.class_revenue_shift
+class_customers = result.class_customers
+
+
+def dollar(x: float, accuracy: int = 0) -> str:
+    return f"${x:,.{accuracy}f}"
+
+
+def pct(x: float, accuracy: int = 1) -> str:
+    return f"{x * 100:,.{accuracy}f}%"
+
+
+def num(x: float, accuracy: int = 0) -> str:
+    return f"{x:,.{accuracy}f}"
+```
+
+**Witness:** Juan-Pablo Velez\
+**Request from:** Connecticut Industrial Energy Consumers\
+**Date issued:** October 29, 2026
+
+## CIEC-15(a)
+
+### Question
+
+Please provide the derivation of the $121.49 monthly customer charge, in Excel format with formulas intact, to the extent not already provided in Exhibit JPV-2, Section 6.
+
+### Response
+
+The $121.49 figure is a redesign of Rate 1 for every residential customer. It is the monthly customer charge that would remove the representative fossil-fuel home's overpayment when it installs a heat pump, and hold the residential class's delivery revenue constant.
+
+When that home installs a heat pump, the customer charge stays at **`{python} dollar(BASE_FIXED_CHARGE, 2)`** a month. Every customer on Rate 1 pays that charge, before and after, so it does not change the bill difference. The generation charge rises by **`{python} dollar(generation_delta, 2)`** a year with the additional electricity the heat pump uses. Each extra kWh is priced at the same generation rate, so that increase is left unchanged. Distribution and transmission are different. Under proposed Rate 1 they rise by **`{python} dollar(volumetric_delta, 2)`** a year, against an incremental marginal T&D cost of **`{python} dollar(marginal_cost_delta, 2)`**.
+
+For that increase to equal the incremental marginal T&D cost, the distribution and transmission rates, including the riders, would have to fall to **`{python} pct(scaling_factor, 2)`** of their filed levels. That reduction would remove **`{python} dollar(class_revenue_shift)`** a year of delivery revenue from the residential class. Replacing it across the class's **`{python} num(class_customers)`** customers raises the customer charge by **`{python} dollar(fixed_charge_delta, 2)`** a month, from **`{python} dollar(BASE_FIXED_CHARGE, 2)`** to **`{python} dollar(fixed_charge, 2)`**.
+
+```{python}
+#| echo: false
+#| output: false
+
+from build_ciec_15a_workbook import DRIVE_NAME, assert_workbook, build_workbook
+from build_ciec_1a_workbook import DRIVE_FOLDER_ID, upload_xlsx
+
+_wb = build_workbook(inputs)
+_xlsx_path = Path("../cache") / DRIVE_NAME
+_wb.save(_xlsx_path)
+assert_workbook(_xlsx_path, inputs, result)
+_link = upload_xlsx(_xlsx_path, DRIVE_FOLDER_ID, DRIVE_NAME)
+_xlsx_path.unlink()
+print(f"Uploaded {DRIVE_NAME}: {_link}")
+```

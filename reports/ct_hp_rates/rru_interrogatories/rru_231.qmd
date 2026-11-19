@@ -1,0 +1,567 @@
+---
+title: "Responses to the Public Utilities Regulatory Authority, RRU-231"
+subtitle: "Docket No. 26-05-10"
+author: "Conservation Law Foundation and Sierra Club"
+date: 2026-11-18
+bibliography: ../../references.yaml
+csl: ../../chicago-author-date-switchbox.csl
+reference-location: margin
+citation-location: document
+execute:
+  warning: false
+  message: false
+format:
+  html:
+    theme: ../../.style/switchbox.scss
+    page-layout: article
+    toc: false
+---
+
+```{python}
+#| echo: false
+
+from __future__ import annotations
+
+import math
+from pathlib import Path
+from typing import NamedTuple
+
+import polars as pl
+from scipy import stats
+
+# ResStock 2024.2 (AMY 2018), upgrade 0. The original release and the Switchbox
+# _sb release are both plotted. Utility assignment exists only on _sb.
+RELEASE = "res_2024_amy2018_2"
+RELEASE_SB = f"{RELEASE}_sb"
+UPGRADE = "00"
+EIA_YEAR = 2018
+STATES = ["CT", "NY", "RI"]
+S3_RESSTOCK = "s3://data.sb/nrel/resstock"
+S3_EIA = "s3://data.sb/eia/861/electric_utility_stats"
+# Connecticut has a consolidated _sb annual file. New York and Rhode Island do
+# not, so those states sum the monthly curves. The local mirror is the same data.
+LOCAL_SB = Path(f"/ebs/data/nrel/resstock/{RELEASE_SB}")
+BLDG_ID = "bldg_id"
+UTILITY_COL = "sb.electric_utility"
+BUILDING_TYPE = "in.geometry_building_type_recs"
+ANNUAL_KWH = "out.electricity.total.energy_consumption.kwh"
+# Utilities with fewer sample buildings than this are left out of both figures.
+MIN_BUILDINGS = 100
+
+# EIA utility_id_eia -> sb.electric_utility. From rate-design-platform
+# utils/utility_codes.py. Used only where the EIA-861 file has a null utility_code.
+EIA_ID_TO_CODE = {
+    3249: "cenhud",
+    4226: "coned",
+    13573: "nimo",
+    13511: "nyseg",
+    14154: "or",
+    11171: "psegli",
+    16183: "rge",
+    1167: "bge",
+    15270: "pepco",
+    15263: "poted",
+    5027: "dpl",
+    17637: "smeco",
+    3503: "choptank",
+    40167: "somerset_rec",
+    1615: "berlin_muni",
+    7908: "hagerstown_muni",
+    5625: "easton_muni",
+    4176: "ct_eversource",
+    19497: "ct_ui",
+    6207: "frp",
+    13831: "norwich_muni",
+    2089: "bozrah_muni",
+    9734: "jewett_muni",
+    17569: "south_norwalk_muni",
+    7716: "groton_muni",
+    49826: "mohegan_tribal",
+    13825: "norwalk_third_taxing",
+    20038: "wallingford_muni",
+    13214: "rie",
+}
+DISPLAY = {
+    "cenhud": "Central Hudson",
+    "coned": "Con Edison",
+    "nimo": "National Grid",
+    "nyseg": "NYSEG",
+    "or": "O&R",
+    "psegli": "LIPA",
+    "rge": "RG&E",
+    "bge": "BGE",
+    "pepco": "Pepco",
+    "poted": "Potomac Edison",
+    "dpl": "Delmarva",
+    "smeco": "SMECO",
+    "choptank": "Choptank",
+    "somerset_rec": "Somerset REC",
+    "berlin_muni": "Berlin",
+    "hagerstown_muni": "Hagerstown",
+    "easton_muni": "Easton",
+    "ct_eversource": "Eversource",
+    "ct_ui": "United Illuminating",
+    "frp": "Farmington River",
+    "norwich_muni": "Norwich",
+    "bozrah_muni": "Bozrah",
+    "jewett_muni": "Jewett City",
+    "south_norwalk_muni": "South Norwalk",
+    "groton_muni": "Groton",
+    "mohegan_tribal": "Mohegan",
+    "norwalk_third_taxing": "Norwalk Third",
+    "wallingford_muni": "Wallingford",
+    "rie": "Rhode Island Energy",
+}
+
+
+# End uses scaled by the multifamily correction. HVAC electricity is not in this list.
+NON_HVAC_KWH = (
+    "out.electricity.ceiling_fan.energy_consumption.kwh",
+    "out.electricity.clothes_dryer.energy_consumption.kwh",
+    "out.electricity.clothes_washer.energy_consumption.kwh",
+    "out.electricity.dishwasher.energy_consumption.kwh",
+    "out.electricity.freezer.energy_consumption.kwh",
+    "out.electricity.hot_water.energy_consumption.kwh",
+    "out.electricity.lighting_exterior.energy_consumption.kwh",
+    "out.electricity.lighting_garage.energy_consumption.kwh",
+    "out.electricity.lighting_interior.energy_consumption.kwh",
+    "out.electricity.permanent_spa_heat.energy_consumption.kwh",
+    "out.electricity.permanent_spa_pump.energy_consumption.kwh",
+    "out.electricity.plug_loads.energy_consumption.kwh",
+    "out.electricity.pool_heater.energy_consumption.kwh",
+    "out.electricity.pool_pump.energy_consumption.kwh",
+    "out.electricity.pv.energy_consumption.kwh",
+    "out.electricity.range_oven.energy_consumption.kwh",
+    "out.electricity.refrigerator.energy_consumption.kwh",
+    "out.electricity.well_pump.energy_consumption.kwh",
+)
+FLOOR_AREA = "in.geometry_floor_area"
+
+
+def times(x: float) -> str:
+    return f"{x:.3f} times"
+
+
+def fmt_p(p: float) -> str:
+    if p < 0.001:
+        return f"{p:.1e}"
+    return f"{p:.3f}"
+
+
+# Decisions below use a 5% significance level.
+ALPHA = 0.05
+
+
+class Fit(NamedTuple):
+    slope: float
+    intercept: float
+    r_squared: float
+    f_stat: float
+    df_den: int
+    p_positive: float
+    p_nonzero: float
+
+
+def _floor_sqft(val: str | None) -> float:
+    """Midpoint of a ResStock floor-area bin. The open top bin, '4000+', is 5,000."""
+    if val is None or str(val).strip() == "":
+        return float("nan")
+    text = str(val).strip()
+    if text.endswith("+"):
+        return 5000.0
+    if "-" in text:
+        lo, hi = text.split("-", 1)
+        try:
+            return (float(lo) + float(hi)) / 2.0
+        except ValueError:
+            return float("nan")
+    try:
+        return float(text)
+    except ValueError:
+        return float("nan")
+
+
+def _read_annual(path: str) -> pl.DataFrame | None:
+    try:
+        return pl.scan_parquet(path).select(BLDG_ID, pl.col(ANNUAL_KWH).alias("annual_kwh")).collect()
+    except (OSError, FileNotFoundError):
+        return None
+
+
+def _annual_kwh(state: str, *, sb: bool) -> pl.DataFrame:
+    """One row per bldg_id with annual electricity, in kWh."""
+    annual_name = f"{state}_upgrade{UPGRADE}_metadata_and_annual_results.parquet"
+    release = RELEASE_SB if sb else RELEASE
+    local_annual = LOCAL_SB / "load_curve_annual" / f"state={state}" / f"upgrade={UPGRADE}" / annual_name
+    s3_annual = (
+        f"{S3_RESSTOCK}/{release}/load_curve_annual/state={state}/upgrade={UPGRADE}/{annual_name}"
+    )
+    if not sb:
+        frame = _read_annual(s3_annual)
+        if frame is None:
+            raise RuntimeError(f"missing annual file for {state}")
+        return frame
+    # Connecticut has this file. New York and Rhode Island do not, so their
+    # annual electricity is the sum of monthly total electricity.
+    frame = _read_annual(str(local_annual)) if local_annual.is_file() else _read_annual(s3_annual)
+    if frame is not None:
+        return frame
+    local_monthly = LOCAL_SB / "load_curve_monthly" / f"state={state}" / f"upgrade={UPGRADE}"
+    path = (
+        str(local_monthly)
+        if local_monthly.is_dir()
+        else f"{S3_RESSTOCK}/{RELEASE_SB}/load_curve_monthly/state={state}/upgrade={UPGRADE}"
+    )
+    return (
+        pl.scan_parquet(path)
+        .select(BLDG_ID, pl.col("out.electricity.total.energy_consumption").alias("kwh"))
+        .group_by(BLDG_ID)
+        .agg(pl.col("kwh").sum().alias("annual_kwh"))
+        .collect()
+    )
+
+
+def _load_state(state: str, *, sb: bool) -> tuple[pl.DataFrame, list[str]]:
+    """One row per utility: multifamily share of bldg_ids, and the EIA gap."""
+    annual = _annual_kwh(state, sb=sb)
+    metadata_name = "metadata-sb.parquet" if sb else "metadata.parquet"
+    release = RELEASE_SB if sb else RELEASE
+    metadata = (
+        pl.scan_parquet(f"{S3_RESSTOCK}/{release}/metadata/state={state}/upgrade={UPGRADE}/{metadata_name}")
+        .select(BLDG_ID, "weight", BUILDING_TYPE)
+        .collect()
+    )
+    # The original release has no utility assignment. This file is Switchbox's.
+    assignment = (
+        pl.scan_parquet(f"{S3_RESSTOCK}/{RELEASE_SB}/metadata_utility/state={state}/utility_assignment.parquet")
+        .select(BLDG_ID, UTILITY_COL)
+        .collect()
+    )
+    buildings = (
+        annual.join(metadata, on=BLDG_ID, how="inner")
+        .join(assignment, on=BLDG_ID, how="inner")
+        .filter(pl.col(UTILITY_COL).is_not_null())
+        .with_columns(pl.col(BUILDING_TYPE).str.contains("Multi-Family").alias("is_mf"))
+    )
+    by_utility = (
+        buildings.group_by(UTILITY_COL)
+        .agg(
+            pl.len().alias("n_bldgs"),
+            pl.col("is_mf").sum().alias("n_mf"),
+            pl.col("weight").sum().alias("resstock_customers"),
+            (pl.col("weight") * pl.col("is_mf").cast(pl.Float64)).sum().alias("mf_weight"),
+            (pl.col("annual_kwh") * pl.col("weight")).sum().alias("resstock_kwh"),
+        )
+        .with_columns(
+            (pl.col("n_mf") / pl.col("n_bldgs")).alias("pct_mf_bldgs"),
+            (pl.col("mf_weight") / pl.col("resstock_customers")).alias("pct_mf_weighted"),
+            pl.lit(state).alias("state"),
+        )
+        .rename({UTILITY_COL: "utility_code"})
+    )
+    eia = pl.scan_parquet(f"{S3_EIA}/year={EIA_YEAR}/state={state}/data.parquet").collect()
+    eia = eia.with_columns(
+        pl.coalesce(
+            pl.col("utility_code"),
+            pl.col("utility_id_eia").replace_strict(EIA_ID_TO_CODE, default=None),
+        ).alias("utility_code")
+    )
+    eia_by_utility = (
+        eia.filter(pl.col("utility_code").is_not_null())
+        .group_by("utility_code")
+        .agg(
+            (pl.col("residential_sales_mwh").sum() * 1000).alias("eia_kwh"),
+            pl.col("residential_customers").sum().alias("eia_customers"),
+        )
+    )
+    joined = by_utility.join(eia_by_utility, on="utility_code", how="left")
+    omitted = joined.filter(pl.col("eia_kwh").is_null())["utility_code"].to_list()
+    compared = joined.filter(
+        pl.col("eia_customers").is_not_null()
+        & (pl.col("eia_customers") > 0)
+        & (pl.col("resstock_customers") > 0)
+        & (pl.col("eia_kwh") > 0)
+    ).with_columns(
+        (
+            (pl.col("resstock_kwh") * pl.col("eia_customers") / pl.col("resstock_customers") - pl.col("eia_kwh"))
+            / pl.col("eia_kwh")
+        ).alias("pct_diff")
+    )
+    return compared, omitted
+
+
+def _prepare(sb: bool) -> tuple[pl.DataFrame, list[str]]:
+    frames: list[pl.DataFrame] = []
+    omitted: list[str] = []
+    for state in STATES:
+        frame, missing = _load_state(state, sb=sb)
+        frames.append(frame)
+        omitted.extend(missing)
+    utilities = pl.concat(frames)
+    label = "_sb" if sb else "original"
+    if utilities["utility_code"].n_unique() != utilities.height:
+        raise RuntimeError(f"{label}: utility_code is not unique across states")
+    if omitted:
+        raise RuntimeError(f"{label}: utilities with no EIA-861 sales: {omitted}")
+    # Sample weights do not differ between multifamily and other buildings, so
+    # the unweighted bldg_id share and the weighted share are the same number.
+    share_gap = (utilities["pct_mf_bldgs"] - utilities["pct_mf_weighted"]).abs().max()
+    if share_gap is None or share_gap > 1e-6:
+        raise RuntimeError(f"{label}: multifamily bldg_id share and weighted share differ by {share_gap}")
+    excluded = utilities.filter(pl.col("n_bldgs") < MIN_BUILDINGS).sort("n_bldgs", "utility_code")
+    kept = utilities.filter(pl.col("n_bldgs") >= MIN_BUILDINGS)
+    ny = kept.filter(pl.col("state") == "NY")
+    if ny.sort("pct_mf_bldgs")["utility_code"][0] != "psegli":
+        raise RuntimeError(f"{label}: LIPA is no longer the least multifamily utility in New York")
+    if ny.sort("pct_mf_bldgs")["utility_code"][-1] != "coned":
+        raise RuntimeError(f"{label}: Con Edison is no longer the most multifamily utility in New York")
+    if kept.sort("pct_mf_bldgs")["utility_code"][-1] != "coned":
+        raise RuntimeError(f"{label}: Con Edison is no longer the most multifamily utility")
+    # On the original release Con Edison is also the largest gap. The _sb
+    # correction changes that ordering, so this check is only for the original.
+    if not sb and kept.sort("pct_diff")["utility_code"][-1] != "coned":
+        raise RuntimeError(f"{label}: Con Edison is no longer the largest gap")
+    names = [DISPLAY[code] for code in excluded["utility_code"].to_list()]
+    return kept, names
+
+
+def _fit(df: pl.DataFrame) -> Fit:
+    """OLS of the EIA gap on multifamily share, both in percentage points.
+
+    The F statistic is the regression mean square divided by the residual mean
+    square, on 1 and n−2 degrees of freedom. It is the square of the t statistic
+    for the slope. p_nonzero is the usual two-sided F test that the slope is zero.
+    p_positive is the one-sided t test that the slope is positive.
+    """
+    x = (df["pct_mf_bldgs"] * 100).to_list()
+    y = (df["pct_diff"] * 100).to_list()
+    n = len(x)
+    if n < 3:
+        raise RuntimeError(f"need at least 3 utilities to fit a line, got {n}")
+    x_mean = sum(x) / n
+    y_mean = sum(y) / n
+    ss_xx = sum((value - x_mean) ** 2 for value in x)
+    ss_yy = sum((value - y_mean) ** 2 for value in y)
+    ss_xy = sum((x_i - x_mean) * (y_i - y_mean) for x_i, y_i in zip(x, y, strict=True))
+    slope = ss_xy / ss_xx
+    intercept = y_mean - slope * x_mean
+    r_squared = (ss_xy ** 2) / (ss_xx * ss_yy)
+    ss_reg = ss_xy ** 2 / ss_xx
+    ss_resid = ss_yy - ss_reg
+    df_den = n - 2
+    if ss_resid <= 0 or ss_xx <= 0:
+        raise RuntimeError("regression residual is zero")
+    f_stat = (ss_reg / 1) / (ss_resid / df_den)
+    t_stat = slope / math.sqrt((ss_resid / df_den) / ss_xx)
+    p_nonzero = float(stats.f.sf(f_stat, 1, df_den))
+    p_positive = float(stats.t.sf(t_stat, df_den))
+    p_from_t = 2 * float(stats.t.sf(abs(t_stat), df_den))
+    if abs(p_nonzero - p_from_t) > 1e-8:
+        raise RuntimeError(f"F and t p-values disagree: {p_nonzero} vs {p_from_t}")
+    return Fit(slope, intercept, r_squared, f_stat, df_den, p_positive, p_nonzero)
+
+
+def reading_positive(fit: Fit) -> str:
+    """One-sided test that a higher multifamily share goes with a larger EIA gap."""
+    test = f"F(1, {fit.df_den}) = {fit.f_stat:.2f}, one-sided p = {fmt_p(fit.p_positive)}."
+    if fit.slope > 0 and fit.p_positive < ALPHA:
+        return (
+            test
+            + " We reject a flat or negative slope. A higher multifamily share is correlated with"
+            " ResStock consumption further above EIA-861."
+        )
+    return (
+        test + " We do not have enough evidence that a higher multifamily share goes with"
+        " ResStock consumption above EIA-861."
+    )
+
+
+def reading_zero(fit: Fit) -> str:
+    """Two-sided test that multifamily share is still correlated with the EIA gap."""
+    test = f"F(1, {fit.df_den}) = {fit.f_stat:.2f}, two-sided p = {fmt_p(fit.p_nonzero)}."
+    if fit.p_nonzero < ALPHA:
+        return (
+            test + " There is enough evidence that multifamily share is still correlated with"
+            " how far ResStock sits from EIA-861."
+        )
+    return (
+        test + " There is not enough evidence that multifamily share is still correlated with"
+        " how far ResStock sits from EIA-861."
+    )
+
+
+comparison, excluded_names = _prepare(sb=False)
+comparison_sb, excluded_names_sb = _prepare(sb=True)
+if excluded_names != excluded_names_sb:
+    raise RuntimeError(f"excluded utilities differ: {excluded_names} vs {excluded_names_sb}")
+_same = comparison.select("utility_code", "n_bldgs", "pct_mf_bldgs").join(
+    comparison_sb.select(
+        "utility_code",
+        pl.col("n_bldgs").alias("n_sb"),
+        pl.col("pct_mf_bldgs").alias("mf_sb"),
+    ),
+    on="utility_code",
+)
+if _same.height != comparison.height or _same.filter(
+    (pl.col("n_bldgs") != pl.col("n_sb")) | ((pl.col("pct_mf_bldgs") - pl.col("mf_sb")).abs() > 1e-9)
+).height:
+    raise RuntimeError("sample or multifamily share differs between the original release and _sb")
+
+fit_raw = _fit(comparison)
+fit_sb = _fit(comparison_sb)
+slope_raw, intercept_raw, r2_raw = fit_raw.slope, fit_raw.intercept, fit_raw.r_squared
+slope_sb, intercept_sb, r2_sb = fit_sb.slope, fit_sb.intercept, fit_sb.r_squared
+
+# Both figures share this vertical scale so the slopes can be compared.
+_deviations = (comparison["pct_diff"] * 100).to_list() + (comparison_sb["pct_diff"] * 100).to_list()
+_pad = max(2.0, 0.06 * (max(_deviations) - min(_deviations)))
+Y_LO = math.floor((min(_deviations) - _pad) / 5) * 5
+Y_HI = math.ceil((max(_deviations) + _pad) / 5) * 5
+Y_BREAKS = list(range(Y_LO, Y_HI, 10))
+
+
+def _intensity_ratio(state: str) -> float:
+    """Mean multifamily non-HVAC kWh per sq ft, divided by the single-family mean."""
+    annual = (
+        pl.scan_parquet(
+            f"{S3_RESSTOCK}/{RELEASE}/load_curve_annual/state={state}/upgrade={UPGRADE}/"
+            f"{state}_upgrade{UPGRADE}_metadata_and_annual_results.parquet"
+        )
+        .select(BLDG_ID, *NON_HVAC_KWH)
+        .collect()
+    )
+    metadata = (
+        pl.scan_parquet(f"{S3_RESSTOCK}/{RELEASE}/metadata/state={state}/upgrade={UPGRADE}/metadata.parquet")
+        .select(BLDG_ID, BUILDING_TYPE, FLOOR_AREA)
+        .collect()
+    )
+    metadata = metadata.with_columns(
+        pl.Series([_floor_sqft(value) for value in metadata[FLOOR_AREA].to_list()]).alias("sqft")
+    )
+    buildings = (
+        annual.join(metadata, on=BLDG_ID, how="inner")
+        .filter(pl.col("sqft").is_finite() & (pl.col("sqft") > 0))
+        .with_columns(
+            pl.col(BUILDING_TYPE).str.contains("Single-Family").alias("is_sf"),
+            pl.col(BUILDING_TYPE).str.contains("Multi-Family").alias("is_mf"),
+            (pl.sum_horizontal(NON_HVAC_KWH) / pl.col("sqft")).alias("intensity"),
+        )
+    )
+    sf_mean = buildings.filter("is_sf")["intensity"].mean()
+    mf_mean = buildings.filter("is_mf")["intensity"].mean()
+    if sf_mean is None or mf_mean is None or sf_mean == 0:
+        raise RuntimeError(f"{state}: could not compute a non-HVAC intensity ratio")
+    return float(mf_mean) / float(sf_mean)
+
+
+intensity_ratio = {state: _intensity_ratio(state) for state in STATES}
+if any(not 1.0 < ratio < 3.0 for ratio in intensity_ratio.values()):
+    raise RuntimeError(f"non-HVAC intensity ratios look wrong: {intensity_ratio}")
+
+
+```
+
+**Witness:** Juan-Pablo Velez\
+**Request from:** Public Utilities Regulatory Authority
+
+## RRU-231
+
+### Question
+
+Provide evidentiary support for the claim that ResStock “systematically overstates electricity consumption for multifamily buildings.”
+
+### Response
+
+Exhibit JPV-2 says that ResStock systematically overstates electricity consumption for multifamily buildings, and that the overstatement grows with a utility’s multifamily share [@velez_Docket260510JPV2_2026, p. 3].
+
+That is what we found in our previous works in New York and Rhode Island, and the same pattern was observed in Connecticut. The share of a utility’s sample buildings that are multifamily lines up with how far ResStock’s residential electricity sits above EIA-861. Prior to our adjustment, this gap rises by `{python} f"{slope_raw:.3f}"` percentage points for each percentage point of multifamily share. That is, for every percentage point increase in the utility's share of multifamily buildings, ResStock's residential electricity consumption is simulated to be `{python} f"{slope_raw:.3f}"` percentage points higher than EIA-861. A statistical test performed on the significance of this slope shows that this correlation is indeed statistically significant, with an F score of `{python} f"{fit_raw.f_stat:.2f}"` and a one-sided p-value of `{python} fmt_p(fit_raw.p_positive)`.
+
+```{python}
+#| echo: false
+#| label: fig-mf-eia
+#| fig-cap: "Original NREL release, upgrade 0. Each point is an electric utility in Connecticut, New York, or Rhode Island with at least 100 sample buildings. Utilities below that count are omitted. The horizontal axis is the share of sample buildings that are multifamily. The vertical axis is how far ResStock’s residential electricity sits from EIA-861 after scaling ResStock to the utility’s EIA-861 customer count. Positive means ResStock is higher. The line is the ordinary least-squares fit. The vertical scale matches the sb-release figure."
+#| fig-cap-location: margin
+
+from plotnine import (
+    aes,
+    geom_abline,
+    geom_hline,
+    geom_point,
+    ggplot,
+    labs,
+    scale_color_manual,
+    scale_x_continuous,
+    scale_y_continuous,
+    theme,
+)
+
+from lib.plotnine import SB_COLORS, theme_switchbox
+from lib.quarto import display_figure
+
+STATE_COLOR = {
+    "CT": SB_COLORS["sky"],
+    "NY": SB_COLORS["midnight"],
+    "RI": SB_COLORS["pistachio_text"],
+}
+
+
+def draw_scatter(df: pl.DataFrame, fit: Fit, test_line: str):
+    plot_df = df.with_columns(
+        (pl.col("pct_mf_bldgs") * 100).alias("mf_pct"),
+        (pl.col("pct_diff") * 100).alias("dev_pct"),
+    )
+    return (
+        ggplot(plot_df, aes("mf_pct", "dev_pct"))
+        + geom_hline(yintercept=0, color="#B3B3B3", size=0.6)
+        + geom_abline(slope=fit.slope, intercept=fit.intercept, color="#333333", size=0.8)
+        + geom_point(aes(color="state"), size=2.5)
+        + scale_color_manual(values=STATE_COLOR, limits=["CT", "NY", "RI"])
+        + scale_x_continuous(
+            limits=(-2, 102),
+            breaks=[0, 20, 40, 60, 80, 100],
+            labels=lambda breaks: [f"{value:.0f}%" for value in breaks],
+            expand=(0, 0),
+        )
+        + scale_y_continuous(
+            limits=(Y_LO, Y_HI),
+            breaks=Y_BREAKS,
+            labels=lambda breaks: [f"{value:.0f}%" for value in breaks],
+            expand=(0, 0),
+        )
+        + labs(
+            title=f"Slope: {fit.slope:.3f}. R²: {fit.r_squared:.3f}\n{test_line}",
+            subtitle="Percentage points of the EIA-861 gap per percentage point of multifamily share.",
+            x="Multifamily share of sample buildings",
+            y="ResStock minus EIA-861",
+            color="State",
+        )
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 7.6), legend_position="bottom")
+    ).draw()
+
+
+display_figure(
+    draw_scatter(
+        comparison,
+        fit_raw,
+        f"F(1, {fit_raw.df_den}) = {fit_raw.f_stat:.2f}. One-sided p = {fmt_p(fit_raw.p_positive)}.",
+    )
+)
+```
+
+The source is non-HVAC electricity consumption intensity: consumption from plug loads, lighting, and other non-HVAC related appliances, per square foot of floor area. Multifamily buildings use `{python} times(intensity_ratio["NY"])` as much of it per square foot as single-family homes in New York, `{python} times(intensity_ratio["RI"])` as much in Rhode Island, and `{python} times(intensity_ratio["CT"])` as much in Connecticut. Our adjustment scales those end uses so the multifamily buildings' consumption intensity matches the single-family intensity. This adjustment significantly reduces the correlation between the multifamily share and the ResStock-EIA gap. A statistical test performed on the significance of the new regresion fit shows that this correlation is no longer statistically significant, with an F score of `{python} f"{fit_sb.f_stat:.2f}"` and a two-sided p-value of `{python} fmt_p(fit_sb.p_nonzero)`. That is, there is not enough evident to claim that the multifamily share is correlated with the ResStock-EIA gap after the adjustment.
+
+```{python}
+#| echo: false
+#| label: fig-mf-eia-sb
+#| fig-cap: "Switchbox sb release, upgrade 0, same utilities and the same vertical scale as the original-release figure. Connecticut uses the consolidated annual file. New York and Rhode Island sum monthly total electricity for the bldg_ids in metadata-sb. The line is the ordinary least-squares fit through these utilities."
+#| fig-cap-location: margin
+
+display_figure(
+    draw_scatter(
+        comparison_sb,
+        fit_sb,
+        f"F(1, {fit_sb.df_den}) = {fit_sb.f_stat:.2f}. Two-sided p = {fmt_p(fit_sb.p_nonzero)}.",
+    )
+)
+```

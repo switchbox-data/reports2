@@ -1,0 +1,662 @@
+---
+title: "CT Eversource: Synapse (OCC) Seasonal TOU Rate"
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+execute:
+  warning: false
+  message: false
+
+format:
+  html:
+    page-layout: full
+---
+
+This notebook asks how the seasonal time-of-use (TOU) electrification rate proposed by
+OCC witness Whited (Synapse) in PURA Docket 26-05-10 compares with the rates analyzed
+elsewhere in this report: proposed Rate 1, proposed Rate 6, Rate 6 with Block 2 at
+marginal cost, and a fair rate that removes each home's overpayment. It produces two
+kinds of output:
+
+1. **Delivery overpayment histograms** for homes switching to heat pumps, following
+   the methodology of [`overpayment.qmd`](overpayment.qmd): the change in a home's
+   delivery bill (plus customer charge) minus the change in the delivery marginal cost
+   it imposes.
+2. **Bill-change quadrant charts**: the share of homes whose total annual energy bill
+   would rise or fall, and by how much, after switching to a heat pump.
+
+The rate is Whited's Table 5 (direct testimony, printed p. 36):
+
+| Period | Delivery (\$/kWh) | Delivery + supply (\$/kWh) |
+| --- | --- | --- |
+| Winter off-peak | 0.036709 | 0.162668 |
+| Winter on-peak | 0.121742 | 0.273801 |
+| Summer off-peak | 0.193961 | 0.270022 |
+| Summer on-peak | 0.780408 | 1.168645 |
+
+Summer is June through September. On-peak is 4pm to 8pm on weekdays, all year;
+weekends are off-peak. The customer charge is $30.95 a month.
+
+::: {.callout-note}
+Caveats on how this rate was modeled:
+
+- **Uncalibrated.** CAIRO bills the tariff exactly as written in Table 5. It is not
+  rescaled to any revenue requirement.
+- **Riders left out.** Delivery is Table 5's distribution plus transmission only. The
+  other delivery riders (−$0.00911/kWh in total) that every other CT tariff here
+  includes are excluded, because Table 5 has no line for them.
+- **Different supply.** Supply is Whited's TOU supply column, not the Genability
+  seasonal commodity rate used by every other scenario. Total-bill comparisons
+  (the quadrant charts) therefore mix the TOU design with a different supply price
+  level. The overpayment histograms are delivery only and are not affected.
+:::
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+import math
+import pickle
+from pathlib import Path
+
+import plotnine as p9
+import polars as pl
+import yaml
+
+from lib.plotnine import SB_COLORS, theme_switchbox
+from lib.quarto import display_svg
+from lib.rdp import fetch_rdp_file
+from lib.rates_analysis.cos_funcs import compute_building_seasonal_mc
+from lib.rates_analysis.rate_case_funcs import (
+    MONTH_ORDER,
+    QUADRANT_COLORS,
+    QUADRANT_ORDER,
+    bat_component_delta,
+    bill_change_incidence,
+    bill_delta_between_segments,
+    fair_rate_heating_types,
+    load_billing_kwh_8760,
+    load_delivery_mc_heatmap,
+    load_master_bills,
+    plot_bill_change_quadrant_comparison,
+    plot_bill_change_quadrants,
+    segment_name,
+    weighted_quantile,
+)
+
+report_vars: dict = {}
+```
+
+## Parameters
+
+The Synapse TOU runs live in their own batch, `SYNAPSE_TOU_BATCH`, rather than the
+report's main `BATCH`. So that every comparison can be made within one batch, the Rate
+1 and Rate 6 master tables this notebook needs were copied from the main batch into the
+Synapse batch (they're listed in `batch_config.yaml`). The two batches share the same
+building sample, weights, ResStock release and marginal cost files.
+
+```{python}
+#| label: params
+
+_batch_config = yaml.safe_load(Path("../batch_config.yaml").read_text())
+
+STATE = _batch_config["STATE"]
+BATCH = _batch_config["SYNAPSE_TOU_BATCH"]
+RDP_REF = _batch_config["RDP_REF"]
+FAIR_RATE_POPULATION = _batch_config["FAIR_RATE_POPULATION"]
+UTILITY = "ct_eversource"
+YEAR = 2025
+
+# Quadrant charts: total energy bill net of CT's LIDR discount at observed (53%) participation.
+BILL_COL = "energy_total_bill_lmi_53"
+# Overpayment: "delivery bill" = elec_delivery_bill + elec_fixed_charge.
+INCLUDE_FIXED_CHARGE = True
+
+RATE1_SCENARIO = _batch_config["BASELINE_BILL_SCENARIO"]
+RATE6_SCENARIO = "default_ry1_r6_uncalibrated"
+RATE6_MC_SCENARIO = "default_ry1_r6_ratemc_mfc0_trans_uncalibrated"
+SYNAPSE_SCENARIO = "default_ry1_synapse_tou_uncalibrated"
+
+SEG_R1_PRECALC = segment_name(RATE1_SCENARIO, "precalc")
+SEG_R1_CALIBRATED = segment_name(RATE1_SCENARIO, "calibrated")
+SEG_R6_CALIBRATED = segment_name(RATE6_SCENARIO, "calibrated")
+SEG_R6_MC_CALIBRATED = segment_name(RATE6_MC_SCENARIO, "calibrated")
+SEG_SYNAPSE_PRECALC = segment_name(SYNAPSE_SCENARIO, "precalc")
+SEG_SYNAPSE_CALIBRATED = segment_name(SYNAPSE_SCENARIO, "calibrated")
+
+# (label, upgrade-02 segment). Every rate starts from the same Rate 1 precalc bill.
+CAIRO_RATES: list[tuple[str, str]] = [
+    ("Rate 1", SEG_R1_CALIBRATED),
+    ("Rate 6", SEG_R6_CALIBRATED),
+    ("Rate 6\n(Block 2 at MC)", SEG_R6_MC_CALIBRATED),
+    ("Synapse TOU", SEG_SYNAPSE_CALIBRATED),
+]
+FAIR_LABEL = "Fair rate"
+
+FAIR_RATE_HTS = fair_rate_heating_types(FAIR_RATE_POPULATION)
+
+_period_yaml = yaml.safe_load(
+    fetch_rdp_file(f"rate_design/hp_rates/{STATE.lower()}/config/periods/{UTILITY}.yaml", ref=RDP_REF)
+)
+WINTER_MONTHS: list[int] = _period_yaml["winter_months"]
+SUMMER_MONTHS: list[int] = [m for m in range(1, 13) if m not in WINTER_MONTHS]
+PERIODS: dict[str, str | list[str]] = {
+    "Annual": "Annual",
+    "Winter": [MONTH_ORDER[m - 1] for m in WINTER_MONTHS],
+    "Summer": [MONTH_ORDER[m - 1] for m in SUMMER_MONTHS],
+}
+
+print(f"state={STATE}  batch={BATCH}  bill_col={BILL_COL}  fair_rate_population={FAIR_RATE_POPULATION}")
+print(f"winter={PERIODS['Winter']}  summer={PERIODS['Summer']}")
+```
+
+Winter and summer here follow the Rate 6 heating season from the period YAML (the same
+split `overpayment.qmd` uses), not Whited's own seasons. Her June–September summer falls
+entirely inside our summer.
+
+## Import data
+
+Each master-bills segment has one row per building per month (plus an `Annual` row).
+Let's look at the Synapse TOU calibrated segment: upgrade 02 (the same homes after a
+heat pump retrofit), billed under Whited's rate.
+
+```{python}
+#| label: show-synapse-bills
+
+load_master_bills(STATE, BATCH, SEG_SYNAPSE_CALIBRATED).filter(
+    (pl.col("month") == "Annual") & (pl.col("sb.electric_utility") == UTILITY)
+).select(
+    "bldg_id", "postprocess_group.heating_type_v2", "weight", "elec_fixed_charge",
+    "elec_delivery_bill", "elec_supply_bill", "energy_total_bill", BILL_COL, "elec_grid_kwh",
+).head(5).collect()
+```
+
+Because some segments were copied in from another batch, let's check that every segment
+covers the same buildings with the same weights, and see what each rate collects on
+average.
+
+```{python}
+#| label: segment-sanity-check
+
+_segments = [SEG_R1_PRECALC, SEG_SYNAPSE_PRECALC] + [seg for _, seg in CAIRO_RATES]
+_ref: pl.DataFrame | None = None
+_rows = []
+for _seg in _segments:
+    _df = (
+        load_master_bills(STATE, BATCH, _seg)
+        .filter((pl.col("month") == "Annual") & (pl.col("sb.electric_utility") == UTILITY))
+        .select("bldg_id", "weight", "upgrade", "elec_fixed_charge", "elec_delivery_bill", "elec_supply_bill")
+        .collect()
+        .sort("bldg_id")
+    )
+    if _ref is None:
+        _ref = _df.select("bldg_id", "weight")
+    assert _df.select("bldg_id", "weight").equals(_ref), f"{_seg}: buildings or weights differ"
+    _w = _df["weight"]
+    _rows.append({
+        "segment": _seg,
+        "upgrade": _df["upgrade"][0],
+        "buildings": _df.height,
+        "avg_fixed": float((_df["elec_fixed_charge"] * _w).sum() / _w.sum()),
+        "avg_delivery": float((_df["elec_delivery_bill"] * _w).sum() / _w.sum()),
+        "avg_supply": float((_df["elec_supply_bill"] * _w).sum() / _w.sum()),
+    })
+pl.DataFrame(_rows)
+```
+
+Synapse TOU, like Rate 6, has a $371 a year customer charge against Rate 1's $148. That
+jump is part of the delivery bill increase, so it counts toward overpayment for both.
+
+## Delivery marginal cost
+
+Overpayment needs each building's delivery marginal cost before and after the retrofit,
+split by season. We take each building's 8760 hourly grid load times the hourly
+delivery marginal cost and sum by season. Marginal cost depends only on load, not on
+the tariff, so the Synapse batch's own precalc (upgrade 00) and calibrated (upgrade 02)
+runs supply the hourly loads; they're the same loads as the Rate 1 runs.
+
+```{python}
+#| label: compute-seasonal-mc
+
+mc_8760 = load_delivery_mc_heatmap(STATE, UTILITY, YEAR)
+kwh_8760_before = load_billing_kwh_8760(STATE, UTILITY, BATCH, SEG_SYNAPSE_PRECALC)
+kwh_8760_after = load_billing_kwh_8760(STATE, UTILITY, BATCH, SEG_SYNAPSE_CALIBRATED)
+
+mc_before = compute_building_seasonal_mc(kwh_8760_before, mc_8760, WINTER_MONTHS)
+mc_after = compute_building_seasonal_mc(kwh_8760_after, mc_8760, WINTER_MONTHS)
+
+mc_delta = (
+    mc_before.rename({"mc_delivery": "mc_before"})
+    .join(mc_after.rename({"mc_delivery": "mc_after"}), on=["bldg_id", "season"], how="inner")
+    .with_columns((pl.col("mc_after") - pl.col("mc_before")).alias("delta_mc"))
+)
+mc_delta.group_by("season").agg(
+    pl.len().alias("buildings"), pl.col("delta_mc").mean().alias("mean_delta_mc")
+).sort("season")
+```
+
+As a sanity check, the annual hourly marginal cost should match CAIRO's own annual
+`economic_burden_delivery` in the master BAT table (Rate 1 precalc → calibrated) to
+within a dollar per building.
+
+```{python}
+#| label: validate-mc
+
+bat_mc_delta = bat_component_delta(
+    STATE, BATCH, SEG_R1_PRECALC, SEG_R1_CALIBRATED,
+    components=["economic_burden_delivery"], utility=UTILITY,
+)
+_check = mc_delta.filter(pl.col("season") == "annual").join(
+    bat_mc_delta.select("bldg_id", "delta_economic_burden_delivery"), on="bldg_id"
+)
+_max_disc = float((_check["delta_mc"] - _check["delta_economic_burden_delivery"]).abs().max())
+print(f"{_check.height:,} buildings matched; max |hourly − BAT| = ${_max_disc:,.4f}")
+assert _max_disc < 1.0, "Hourly marginal cost doesn't match BAT"
+```
+
+## Delivery overpayment
+
+For each rate and period, overpayment is the delivery bill change (Rate 1 precalc →
+that rate's calibrated bill, plus the customer charge) minus the marginal cost change.
+The marginal cost change is the same for every rate, so differences between rates come
+entirely from the bill side.
+
+```{python}
+#| label: delivery-bill-helper
+
+def delivery_bill_delta(seg_after: str, month: str | list[str]) -> pl.DataFrame:
+    """Delivery bill change from Rate 1 precalc, plus the customer-charge change when INCLUDE_FIXED_CHARGE."""
+    delta = bill_delta_between_segments(
+        STATE, BATCH, SEG_R1_PRECALC, seg_after, bill_col="elec_delivery_bill", month=month
+    )
+    if not INCLUDE_FIXED_CHARGE:
+        return delta
+    fixed = bill_delta_between_segments(
+        STATE, BATCH, SEG_R1_PRECALC, seg_after, bill_col="elec_fixed_charge", month=month
+    ).select("bldg_id", pl.col("bill_before").alias("fc_before"), pl.col("bill_after").alias("fc_after"))
+    return (
+        delta.join(fixed, on="bldg_id")
+        .with_columns(
+            (pl.col("bill_before") + pl.col("fc_before")).alias("bill_before"),
+            (pl.col("bill_after") + pl.col("fc_after")).alias("bill_after"),
+        )
+        .with_columns((pl.col("bill_after") - pl.col("bill_before")).alias("delta"))
+        .drop("fc_before", "fc_after")
+    )
+```
+
+The fair rate is Rate 1 minus each building's own overpayment, so its overpayment is
+zero by construction for every building and period. It isn't a histogram worth drawing
+and is left out here; it appears in the quadrant charts below.
+
+In each frame, `bill_delta` is the delivery bill change and `delta` is overpayment
+(`bill_delta − delta_mc`). A negative `delta` means the bill rose by less than the cost
+the home added, not that the bill fell.
+
+```{python}
+#| label: compute-overpayment
+
+all_overpayment: dict[tuple[str, str], pl.DataFrame] = {}
+
+for period_label, months in PERIODS.items():
+    _mc = mc_delta.filter(pl.col("season") == period_label.lower()).select("bldg_id", "delta_mc")
+    for rate_label, seg_after in CAIRO_RATES:
+        all_overpayment[(rate_label, period_label)] = (
+            delivery_bill_delta(seg_after, months)
+            .join(_mc, on="bldg_id", how="inner")
+            .with_columns(
+                pl.col("delta").alias("bill_delta"),
+                (pl.col("delta") - pl.col("delta_mc")).alias("delta"),
+            )
+        )
+
+for (rate_label, period_label), _df in all_overpayment.items():
+    _fossil = _df.filter(pl.col("heating_type_v2").is_in(FAIR_RATE_HTS))
+    _mean = float((_fossil["delta"] * _fossil["weight"]).sum() / _fossil["weight"].sum())
+    print(f"{period_label:>6}  {rate_label.replace(chr(10), ' '):<24} mean overpayment (fossil) = ${_mean:,.0f}")
+```
+
+### Incidence summary
+
+For each rate, period and heating type: the weighted share of homes that overpay
+(positive `delta`) or underpay, and the mean and median overpayment.
+
+```{python}
+#| label: incidence-summary
+
+HEATING_GROUPS: list[tuple[str, str, str]] = [
+    ("all-fossil", "Fossil-fuel-heated homes", "all_fossil"),
+    ("natgas", "Natural-gas-heated homes", "natgas"),
+    ("delivered", "Oil/propane-heated homes", "delivered_fuels"),
+]
+
+
+def filter_heating(df: pl.DataFrame, ht_code: str) -> pl.DataFrame:
+    if ht_code == "all_fossil":
+        return df.filter(pl.col("heating_type_v2").is_in(FAIR_RATE_HTS))
+    return df.filter(pl.col("heating_type_v2") == ht_code)
+
+
+_rows = []
+for (rate_label, period_label), _df in all_overpayment.items():
+    for _slug, _name, ht_code in HEATING_GROUPS:
+        _inc = bill_change_incidence(filter_heating(_df, ht_code))
+        _rows.append({
+            "period": period_label,
+            "rate": rate_label.replace("\n", " "),
+            "heating_type": ht_code,
+            "pct_overpay": _inc["pct_increase"],
+            "pct_underpay": _inc["pct_decrease"],
+            "mean_overpayment": _inc["mean_delta"],
+            "median_overpayment": _inc["median_delta"],
+        })
+incidence_df = pl.DataFrame(_rows)
+
+for _r in incidence_df.filter(pl.col("period") == "Annual").iter_rows(named=True):
+    _slug = _r["rate"].lower().replace(" ", "_").replace("(", "").replace(")", "")
+    report_vars[f"overpay_mean_{_slug}_{_r['heating_type']}"] = _r["mean_overpayment"]
+    report_vars[f"pct_overpay_{_slug}_{_r['heating_type']}"] = _r["pct_overpay"]
+
+incidence_df.filter(pl.col("period") == "Annual")
+```
+
+## Overpayment histograms
+
+Each chart bins weighted households by overpayment, colored by the same four bins as
+the quadrant charts (overpaying or underpaying by up to or over $1,000), with dashed
+lines at the weighted mean (orange) and median (navy). Facets within a chart share both
+axes. The x-axis spans the 1st to 99th weighted percentile of the rates being compared.
+
+```{python}
+#| label: hist-helpers
+
+NICE_STEPS = [10, 20, 25, 50, 100, 200, 250, 500, 1000]
+
+
+def _axis_params(rate_labels: list[str], ht_code: str, period: str) -> dict:
+    """Shared bin width, x range and ticks for a set of rates, over their 1st–99th weighted percentile.
+
+    Bin widths divide $1,000, so no bin straddles the ±$1,000 quadrant boundaries.
+    """
+    combined = pl.concat([
+        filter_heating(all_overpayment[(r, period)], ht_code).select("delta", "weight") for r in rate_labels
+    ])
+    q01 = weighted_quantile(combined, "delta", 0.01)
+    q99 = weighted_quantile(combined, "delta", 0.99)
+    bin_width = next(s for s in NICE_STEPS if s >= (q99 - q01) / 20)
+    tick_step = next(s for s in NICE_STEPS if s >= (q99 - q01) / 10)
+    x_lo = math.floor(q01 / bin_width) * bin_width
+    x_hi = math.ceil(q99 / bin_width) * bin_width
+    return {
+        "bin_width": bin_width,
+        "x_lo": x_lo,
+        "x_hi": x_hi,
+        "breaks": list(range(math.floor(x_lo / tick_step) * tick_step, x_hi + tick_step, tick_step)),
+    }
+
+
+def _bin_overpayment(rate_label: str, ht_code: str, period: str, bin_width: int) -> tuple[pl.DataFrame, dict]:
+    raw = filter_heating(all_overpayment[(rate_label, period)], ht_code).select("delta", "weight")
+    binned = (
+        raw.with_columns(((pl.col("delta") / bin_width).floor() * bin_width + bin_width / 2).alias("bin_center"))
+        .with_columns(
+            pl.when(pl.col("bin_center") <= -1000).then(pl.lit("savings > $1k"))
+            .when(pl.col("bin_center") < 0).then(pl.lit("savings $0-1k"))
+            .when(pl.col("bin_center") < 1000).then(pl.lit("losses $0-1k"))
+            .otherwise(pl.lit("losses > $1k"))
+            .alias("quadrant")
+        )
+        .group_by("bin_center", "quadrant")
+        .agg(pl.col("weight").sum().alias("weight_sum"))
+    )
+    stats = {
+        "w_mean": float((raw["delta"] * raw["weight"]).sum() / raw["weight"].sum()),
+        "w_median": weighted_quantile(raw, "delta", 0.5),
+    }
+    return binned, stats
+
+
+def _dollar(x: float) -> str:
+    return f"${x:,.0f}" if x >= 0 else f"-${abs(x):,.0f}"
+
+
+def overpayment_hist(
+    rate_labels: list[str],
+    ht_code: str,
+    period: str,
+    title: str,
+    *,
+    axis_rates: list[str] | None = None,
+) -> p9.ggplot:
+    """One facet per rate, top to bottom. *axis_rates* sets the shared axes (defaults to *rate_labels*)."""
+    axis_rates = axis_rates or rate_labels
+    ax = _axis_params(axis_rates, ht_code, period)
+    bw = ax["bin_width"]
+    display = [r.replace("\n", " ") for r in rate_labels]
+
+    panels, stats_rows, y_max = [], [], 0.0
+    for r in axis_rates:
+        binned, stats = _bin_overpayment(r, ht_code, period, bw)
+        y_max = max(y_max, float(binned["weight_sum"].max()))
+        if r in rate_labels:
+            panels.append(binned.with_columns(pl.lit(r.replace("\n", " ")).alias("rate")))
+            stats_rows.append({"rate": r.replace("\n", " "), **stats})
+
+    binned_all = pl.concat(panels).with_columns(
+        pl.col("rate").cast(pl.Enum(display)), pl.col("quadrant").cast(pl.Enum(QUADRANT_ORDER))
+    )
+    stats_df = pl.DataFrame(stats_rows).with_columns(
+        pl.col("rate").cast(pl.Enum(display)),
+        pl.col("w_mean").map_elements(lambda v: f"Mean {_dollar(v)}", return_dtype=pl.String).alias("mean_label"),
+        pl.col("w_median").map_elements(lambda v: f"Median {_dollar(v)}", return_dtype=pl.String).alias("median_label"),
+        pl.lit(y_max * 0.97).alias("y_mean"),
+        pl.lit(y_max * 0.82).alias("y_median"),
+    )
+
+    fig = (
+        p9.ggplot(binned_all, p9.aes(x="bin_center", y="weight_sum", fill="quadrant"))
+        + p9.geom_col(width=bw * 0.9)
+        + p9.geom_vline(xintercept=[-1000, 0, 1000], linetype="dotted", color="gray")
+        + p9.geom_vline(stats_df, p9.aes(xintercept="w_mean"), linetype="dashed", color=SB_COLORS["carrot"], size=0.8)
+        + p9.geom_vline(stats_df, p9.aes(xintercept="w_median"), linetype="dashed", color=SB_COLORS["midnight"], size=0.8)
+        + p9.geom_text(
+            stats_df, p9.aes(x="w_mean", y="y_mean", label="mean_label"), inherit_aes=False,
+            ha="left", va="top", color=SB_COLORS["carrot"], size=11, fontweight="bold", nudge_x=bw * 0.4,
+        )
+        + p9.geom_text(
+            stats_df, p9.aes(x="w_median", y="y_median", label="median_label"), inherit_aes=False,
+            ha="left", va="top", color=SB_COLORS["midnight"], size=11, fontweight="bold", nudge_x=bw * 0.4,
+        )
+        + p9.scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
+        + p9.scale_x_continuous(breaks=ax["breaks"], labels=lambda xs: [_dollar(x) for x in xs])
+        + p9.scale_y_continuous(labels=lambda ys: [f"{y:,.0f}" for y in ys])
+        + p9.coord_cartesian(xlim=(ax["x_lo"], ax["x_hi"]), ylim=(0, y_max * 1.05))
+        + p9.labs(x=f"{period} delivery overpayment ($)", y="Weighted households", title=title)
+        + p9.guides(fill=False)
+        + theme_switchbox()
+        + p9.theme(
+            figure_size=(10.5, 4.5 if len(rate_labels) == 1 else 2.6 * len(rate_labels)),
+            panel_spacing_y=0.03,
+        )
+    )
+    if len(rate_labels) > 1:
+        fig += p9.facet_wrap("rate", ncol=1)
+    return fig
+
+
+ANNUAL_COMPARE = [label for label, _ in CAIRO_RATES]
+SEASONAL_COMPARE = ["Rate 1", "Synapse TOU"]
+```
+
+### Annual: Rate 1, Rate 6, Rate 6 (Block 2 at MC) and Synapse TOU
+
+```{python}
+#| label: fig-overpayment-annual-all-fossil-compare
+#| fig-cap: "Annual delivery overpayment for fossil-fuel-heated CT Eversource homes switching to heat pumps, under Rate 1, Rate 6, Rate 6 with Block 2 at marginal cost, and the Synapse TOU rate."
+
+overpayment_hist(ANNUAL_COMPARE, "all_fossil", "Annual", "Fossil-fuel-heated homes: annual delivery overpayment by rate")
+```
+
+```{python}
+#| label: fig-overpayment-annual-natgas-compare
+#| fig-cap: "Annual delivery overpayment for natural-gas-heated CT Eversource homes switching to heat pumps, by rate."
+
+overpayment_hist(ANNUAL_COMPARE, "natgas", "Annual", "Natural-gas-heated homes: annual delivery overpayment by rate")
+```
+
+```{python}
+#| label: fig-overpayment-annual-delivered-compare
+#| fig-cap: "Annual delivery overpayment for oil/propane-heated CT Eversource homes switching to heat pumps, by rate."
+
+overpayment_hist(ANNUAL_COMPARE, "delivered_fuels", "Annual", "Oil/propane-heated homes: annual delivery overpayment by rate")
+```
+
+A standalone version of the Synapse TOU panel, on the same axes as the comparison above,
+for embedding on its own.
+
+```{python}
+#| label: fig-overpayment-annual-all-fossil-synapse
+#| fig-cap: "Annual delivery overpayment for fossil-fuel-heated CT Eversource homes switching to heat pumps, under the Synapse TOU rate."
+
+overpayment_hist(
+    ["Synapse TOU"], "all_fossil", "Annual",
+    "Fossil-fuel-heated homes: annual delivery overpayment under the Synapse TOU rate",
+    axis_rates=ANNUAL_COMPARE,
+)
+```
+
+### Winter and summer: Rate 1 vs. Synapse TOU
+
+The TOU rate shifts delivery charges from winter to summer: its winter delivery rates
+are low, and its summer rates are high. Splitting overpayment by season shows where the
+heat pump's added load is charged under each rate.
+
+```{python}
+#| label: fig-overpayment-winter-all-fossil-r1-synapse
+#| fig-cap: "Winter delivery overpayment for fossil-fuel-heated CT Eversource homes switching to heat pumps: Rate 1 vs. Synapse TOU."
+
+overpayment_hist(SEASONAL_COMPARE, "all_fossil", "Winter", "Fossil-fuel-heated homes: winter delivery overpayment")
+```
+
+```{python}
+#| label: fig-overpayment-summer-all-fossil-r1-synapse
+#| fig-cap: "Summer delivery overpayment for fossil-fuel-heated CT Eversource homes switching to heat pumps: Rate 1 vs. Synapse TOU."
+
+overpayment_hist(SEASONAL_COMPARE, "all_fossil", "Summer", "Fossil-fuel-heated homes: summer delivery overpayment")
+```
+
+## Bill-change quadrant charts
+
+These charts move from delivery overpayment to what households would actually pay: the
+change in each home's total annual energy bill (electricity, gas and delivered fuels,
+net of the LIDR discount) after switching to a heat pump. As everywhere else in this
+report, the starting point is the home's Rate 1 bill before the retrofit.
+
+The fair rate subtracts each building's own annual overpayment from its Rate 1 bill
+change, as in `analysis.qmd`. That overpayment comes from the master BAT table's
+annual marginal cost (validated against the hourly marginal cost above).
+
+```{python}
+#| label: quadrant-deltas
+
+_r1_overpayment = (
+    delivery_bill_delta(SEG_R1_CALIBRATED, "Annual")
+    .select("bldg_id", pl.col("delta").alias("delta_delivery"))
+    .join(bat_mc_delta.select("bldg_id", "delta_economic_burden_delivery"), on="bldg_id")
+    .select("bldg_id", (pl.col("delta_delivery") - pl.col("delta_economic_burden_delivery")).alias("bldg_overpayment"))
+)
+
+bill_deltas: dict[str, pl.DataFrame] = {
+    label: bill_delta_between_segments(STATE, BATCH, SEG_R1_PRECALC, seg_after, bill_col=BILL_COL)
+    for label, seg_after in CAIRO_RATES
+}
+bill_deltas[FAIR_LABEL] = (
+    bill_deltas["Rate 1"]
+    .join(_r1_overpayment, on="bldg_id")
+    .with_columns((pl.col("delta") - pl.col("bldg_overpayment")).alias("delta"))
+    .drop("bldg_overpayment")
+)
+
+QUADRANT_ROWS = ["Rate 1", "Rate 6", "Rate 6\n(Block 2 at MC)", "Synapse TOU", FAIR_LABEL]
+
+_rows = []
+for ht_code in ["natgas", "delivered_fuels"]:
+    for label in QUADRANT_ROWS:
+        _inc = bill_change_incidence(bill_deltas[label].filter(pl.col("heating_type_v2") == ht_code))
+        _rows.append({"heating_type": ht_code, "rate": label.replace("\n", " "), **_inc})
+quadrant_incidence = pl.DataFrame(_rows)
+
+for _r in quadrant_incidence.filter(pl.col("rate") == "Synapse TOU").iter_rows(named=True):
+    _ht = _r["heating_type"]
+    report_vars[f"pct_{_ht}_hp_bill_increase_synapse"] = _r["pct_increase"]
+    report_vars[f"pct_{_ht}_hp_bill_decrease_synapse"] = _r["pct_decrease"]
+    report_vars[f"mean_{_ht}_hp_bill_delta_synapse"] = _r["mean_delta"]
+
+quadrant_incidence.select("heating_type", "rate", "pct_increase", "pct_decrease", "mean_delta", "median_delta")
+```
+
+```{python}
+#| label: fig-bill-change-quadrants-natgas-r1-r6-r6mc-synapse-fair
+#| fig-cap: "Change in total annual energy bill for natural-gas-heated CT Eversource homes switching to a heat pump, under Rate 1, Rate 6, Rate 6 with Block 2 at marginal cost, the Synapse TOU rate, and a fair rate."
+
+display_svg(
+    plot_bill_change_quadrant_comparison(
+        [(label, bill_deltas[label].filter(pl.col("heating_type_v2") == "natgas")) for label in QUADRANT_ROWS],
+        title_parts=[
+            ("How bills would change for ", "#000000"),
+            ("natural gas", "#7A8A10"),
+            (" heated homes after switching to ", "#000000"),
+            ("heat pumps", "#c47600"),
+            (", under different rates", "#000000"),
+        ],
+    )
+)
+```
+
+```{python}
+#| label: fig-bill-change-quadrants-delivered-r1-r6-r6mc-synapse-fair
+#| fig-cap: "Change in total annual energy bill for oil/propane-heated CT Eversource homes switching to a heat pump, under Rate 1, Rate 6, Rate 6 with Block 2 at marginal cost, the Synapse TOU rate, and a fair rate."
+
+display_svg(
+    plot_bill_change_quadrant_comparison(
+        [(label, bill_deltas[label].filter(pl.col("heating_type_v2") == "delivered_fuels")) for label in QUADRANT_ROWS],
+        title_parts=[
+            ("How bills would change for ", "#000000"),
+            ("oil/propane", "#fc9706"),
+            (" heated homes after switching to ", "#000000"),
+            ("heat pumps", "#c47600"),
+            (", under different rates", "#000000"),
+        ],
+    )
+)
+```
+
+Finally, the Synapse TOU rate on its own, with one bar per baseline heating type.
+
+```{python}
+#| label: fig-bill-change-quadrants-synapse
+#| fig-cap: "Change in total annual energy bill after switching to a heat pump, by baseline heating type, under the Synapse TOU rate."
+
+plot_bill_change_quadrants(
+    STATE, BATCH, SEG_R1_PRECALC, SEG_SYNAPSE_CALIBRATED,
+    bill_col=BILL_COL,
+    rate_name="Synapse TOU rate",
+)
+```
+
+## Export report variables
+
+These go to their own file so that `analysis.qmd`'s `report_variables.pkl` isn't
+overwritten.
+
+```{python}
+#| label: export-report-vars
+
+Path("../cache").mkdir(exist_ok=True)
+Path("../cache/synapse_tou_report_variables.pkl").write_bytes(pickle.dumps(report_vars))
+report_vars
+```

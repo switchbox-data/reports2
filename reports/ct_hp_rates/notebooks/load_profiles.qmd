@@ -1,0 +1,503 @@
+---
+title: "Load Profiles: Pre- vs. Post-Heat-Pump Electricity Consumption"
+reference-location: margin
+fig-cap-location: bottom
+execute:
+  warning: false
+  message: false
+format:
+  html:
+    page-layout: full
+---
+
+This notebook analyzes how residential electricity consumption changes when
+homes switch from fossil-fuel heating to heat pumps. It answers questions like
+"how much does the typical home's annual load double?" and "how much does
+winter load triple?" — with the full distribution, not just averages.
+
+The functions doing the data crunching live in
+[`lib/rates_analysis/load_profile_funcs.py`](../../../lib/rates_analysis/load_profile_funcs.py),
+a module parameterized by state/batch/segment so it can be reused for any
+utility in any state. This notebook just calls those functions with
+CT Eversource-specific values.
+
+**To adapt this notebook to another state or utility**, change only the
+Parameters section below and the winter/summer month definitions.
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import cast
+
+import polars as pl
+import yaml
+from great_tables import GT
+
+from lib.plotnine import SB_COLORS, theme_switchbox
+from lib.great_tables import get_switchbox_gt_tab_options
+from lib.quarto import display_figure, display_gt
+from lib.rates_analysis.rate_case_funcs import (
+    HEATING_ORDER,
+    HEATING_TYPE_LABELS,
+    MONTH_ORDER,
+    add_heating_label,
+    load_master_bills,
+    segment_name,
+    weighted_mean,
+    weighted_quantile,
+)
+from lib.rates_analysis.load_profile_funcs import (
+    build_load_profile_base,
+    build_peak_kw_base,
+    load_profile_summary,
+    plot_annual_kwh_hist,
+    plot_before_after_scatter,
+    plot_dumbbell_summary,
+    plot_incremental_kw_hist,
+    plot_incremental_kwh_hist,
+    plot_multiplier_bar,
+    plot_outcome_spread,
+    plot_pct_change_hist,
+    plot_pct_change_vs_base_load,
+)
+```
+
+## Parameters
+
+Everything below this section is derived from these inputs. To run this
+notebook for a different state or utility, change only these values.
+
+```{python}
+#| label: params
+
+_batch_config = yaml.safe_load(Path("../batch_config.yaml").read_text())
+
+STATE = _batch_config["STATE"]
+BATCH = _batch_config["BATCH"]
+ELECTRIC_UTILITY = "ct_eversource"
+UTILITY_LABEL = "Eversource CT"
+
+# Segment names: precalc = baseline population (upgrade 0),
+# calibrated = same buildings modeled with heat pumps (upgrade 2).
+BASELINE_SCENARIO = _batch_config["BASELINE_BILL_SCENARIO"]
+SEG_BEFORE = segment_name(BASELINE_SCENARIO, "precalc")
+SEG_AFTER = segment_name(BASELINE_SCENARIO, "calibrated")
+
+# Seasonal definitions: winter is November–March for CT Eversource
+# (Rate 6 heating season, Exhibit CLP-RATES-1). Summer is everything else.
+WINTER_MONTH_NUMS = [11, 12, 1, 2, 3]
+SUMMER_MONTH_LABELS: set[str] = {
+    MONTH_ORDER[m - 1] for m in range(1, 13) if m not in WINTER_MONTH_NUMS
+}
+WINTER_MONTH_LABELS: set[str] = {MONTH_ORDER[m - 1] for m in WINTER_MONTH_NUMS}
+
+print(f"state={STATE}  batch={BATCH}  utility={ELECTRIC_UTILITY}")
+print(f"seg_before={SEG_BEFORE}  seg_after={SEG_AFTER}")
+print(f"winter={sorted(WINTER_MONTH_LABELS)}  summer={sorted(SUMMER_MONTH_LABELS)}")
+```
+
+## Import data
+
+We load CAIRO's master bills for two segments of the same scenario:
+
+- **Precalc** (upgrade 0): today's mixed population with their existing
+  heating systems. `elec_grid_kwh` reflects current electricity usage.
+- **Calibrated** (upgrade 2): the same buildings modeled as if they had
+  heat pumps. `elec_grid_kwh` reflects post-HP electricity usage.
+
+Joining on `bldg_id` gives us the before/after kWh for every building.
+Fuel-type labels (natural gas, oil/propane, electric resistance) always come
+from the baseline (upgrade 0) metadata, so they describe what the home heated
+with *before* the heat pump.
+
+```{python}
+#| label: ingest
+
+profiles = build_load_profile_base(
+    STATE,
+    BATCH,
+    SEG_BEFORE,
+    SEG_AFTER,
+    summer_month_labels=SUMMER_MONTH_LABELS,
+    electric_utility=ELECTRIC_UTILITY,
+)
+
+print(f"Buildings loaded: {profiles.height:,}")
+print(f"Columns: {profiles.columns}")
+profiles.head(5)
+```
+
+Let's see how many buildings we have by baseline heating type, and what their
+average annual electricity consumption looks like before and after heat pumps.
+
+```{python}
+#| label: population-overview
+
+summary = load_profile_summary(profiles)
+summary
+```
+
+```{python}
+#| label: tbl-population-overview
+#| tbl-cap: "Population overview: weighted-mean kWh by baseline heating type"
+
+_tbl = (
+    summary.select(
+        pl.col("group").alias("Heating type"),
+        pl.col("n_unweighted").alias("Buildings (unweighted)"),
+        pl.col("n_weighted").cast(pl.Int64).alias("Households (weighted)"),
+        pl.col("mean_annual_kwh_before").round(0).cast(pl.Int64).alias("Annual kWh (before)"),
+        pl.col("mean_annual_kwh_after").round(0).cast(pl.Int64).alias("Annual kWh (after)"),
+        pl.col("multiplier_annual").alias("Annual multiplier"),
+        pl.col("multiplier_winter").alias("Winter multiplier"),
+        pl.col("multiplier_summer").alias("Summer multiplier"),
+    )
+)
+
+gt_tbl = (
+    GT(_tbl.to_pandas())
+    .tab_header(title=f"Load profile summary: {UTILITY_LABEL}")
+    .fmt_number(columns=["Buildings (unweighted)", "Households (weighted)", "Annual kWh (before)", "Annual kWh (after)"], decimals=0, use_seps=True)
+    .fmt_number(columns=["Annual multiplier", "Winter multiplier", "Summer multiplier"], decimals=2)
+    .tab_options(**get_switchbox_gt_tab_options())
+)
+display_gt(gt_tbl)
+```
+
+## Annual electricity consumption
+
+### All homes by baseline fuel
+
+The first chart shows how the full distribution of annual electricity
+consumption shifts when homes install heat pumps. Each panel (Before / After)
+shows the weighted histogram, with bars colored by baseline heating fuel.
+
+The rightward shift in the "After" panel — especially the long right tail —
+shows the increased electricity usage from heat pump heating. Natural-gas homes
+(dark blue) tend to start with lower electricity consumption and shift the most.
+
+```{python}
+#| label: fig-annual-kwh-hist-all
+#| fig-cap: "Annual electricity consumption before and after heat pump installation, by baseline heating fuel"
+
+plot_annual_kwh_hist(profiles, x_max=50_000)
+```
+
+### By fuel type
+
+Now the same chart filtered to each major fuel group, so we can see the
+shape of each distribution without the others overlapping.
+
+```{python}
+#| label: fig-annual-kwh-hist-natgas
+#| fig-cap: "Annual electricity consumption: natural-gas-heated homes"
+
+plot_annual_kwh_hist(profiles, fuel_filter="natgas", x_max=40_000)
+```
+
+```{python}
+#| label: fig-annual-kwh-hist-delivered
+#| fig-cap: "Annual electricity consumption: oil/propane-heated homes"
+
+plot_annual_kwh_hist(profiles, fuel_filter="delivered_fuels", x_max=40_000)
+```
+
+```{python}
+#| label: fig-annual-kwh-hist-er
+#| fig-cap: "Annual electricity consumption: electric-resistance-heated homes"
+
+plot_annual_kwh_hist(profiles, fuel_filter="electrical_resistance", x_max=40_000)
+```
+
+### Before vs. after scatter
+
+Each dot is one building. The x-axis is the building's annual kWh before the
+heat pump, and the y-axis is after. Buildings above the dashed diagonal line
+use more electricity after installation (which is most of them — heat pumps
+run on electricity). The farther above the line, the bigger the increase.
+
+This chart captures the full story in one glance: the level, the spread,
+and the relationship between starting point and ending point.
+
+```{python}
+#| label: fig-scatter-annual
+#| fig-cap: "Annual kWh before vs. after heat pump, by baseline heating fuel"
+
+display_figure(plot_before_after_scatter(profiles, "annual", axis_max=50_000))
+```
+
+### Percent change vs. baseline load
+
+Does the percent change in electricity consumption depend on how much a home
+used before the heat pump? This scatter puts baseline annual kWh on the x-axis
+and percent change on the y-axis, faceted by fuel type.
+
+```{python}
+#| label: fig-pct-vs-base-annual
+#| fig-cap: "Annual percent change in electricity vs. baseline consumption, by heating fuel"
+
+display_figure(plot_pct_change_vs_base_load(profiles, "annual", x_max=30_000, y_range=(-0.5, 10.0)))
+```
+
+### Outcome spread vs. baseline load
+
+The scatter above suggests that homes with higher baseline electricity may
+show more variable outcomes. This chart confirms it: for each 1,000 kWh
+bin of baseline consumption, the shaded ribbon spans the interquartile range
+(Q25–Q75) of percent change, and the line is the weighted median. If the
+ribbon widens to the right, outcome variance increases with baseline load.
+
+```{python}
+#| label: fig-outcome-spread-annual
+#| fig-cap: "IQR of annual percent change in electricity, by baseline consumption and heating fuel"
+
+plot_outcome_spread(profiles, "annual", x_max=30_000)
+```
+
+### Dumbbell: mean annual kWh by fuel type
+
+Each row shows one fuel type's weighted-mean annual kWh. The dark dot is
+"before," the light dot is "after," and the number above is the multiplier.
+This is the simplest possible answer to "how much does the load change?"
+
+```{python}
+#| label: fig-dumbbell-annual
+#| fig-cap: "Mean annual electricity consumption before and after heat pump, by baseline heating fuel"
+
+display_figure(plot_dumbbell_summary(summary, "annual"))
+```
+
+### Multiplier bar chart
+
+The same multipliers from the dumbbell chart, but broken out by season. This
+directly answers the question "your annual load doubles and your winter load
+triples" — with the actual numbers.
+
+```{python}
+#| label: fig-multiplier-bar
+#| fig-cap: "Electricity consumption multiplier (after / before) by fuel type and season"
+
+plot_multiplier_bar(summary)
+```
+
+## Summer electricity consumption
+
+Heat pumps are also air conditioners, and high-efficiency ones at that. For
+homes that already had central air conditioning, summer electricity consumption
+often *decreases* slightly after switching to a heat pump. For homes without
+prior cooling, summer may increase (they gain air conditioning for the first
+time).
+
+### Percent change in summer kWh
+
+```{python}
+#| label: fig-pct-change-summer-all
+#| fig-cap: "Percent change in summer electricity consumption after heat pump, by baseline fuel"
+
+plot_pct_change_hist(profiles, "summer", x_max=2.0)
+```
+
+```{python}
+#| label: fig-pct-change-summer-natgas
+#| fig-cap: "Percent change in summer electricity consumption: natural-gas-heated homes"
+
+plot_pct_change_hist(profiles, "summer", fuel_filter="natgas", x_max=2.0)
+```
+
+```{python}
+#| label: fig-pct-change-summer-delivered
+#| fig-cap: "Percent change in summer electricity consumption: oil/propane-heated homes"
+
+plot_pct_change_hist(profiles, "summer", fuel_filter="delivered_fuels")
+```
+
+```{python}
+#| label: fig-pct-change-summer-er
+#| fig-cap: "Percent change in summer electricity consumption: electric-resistance-heated homes"
+
+plot_pct_change_hist(profiles, "summer", fuel_filter="electrical_resistance")
+```
+
+## Winter electricity consumption
+
+Winter is where the action is. When a home switches from a gas furnace or oil
+boiler to a heat pump, virtually all of the heating load moves to the electric
+meter. The winter electricity consumption increase is the dominant driver of
+the annual load change.
+
+### Percent change in winter kWh
+
+```{python}
+#| label: fig-pct-change-winter-all
+#| fig-cap: "Percent change in winter electricity consumption after heat pump, by baseline fuel"
+
+plot_pct_change_hist(profiles, "winter", x_max=10.0)
+```
+
+```{python}
+#| label: fig-pct-change-winter-natgas
+#| fig-cap: "Percent change in winter electricity consumption: natural-gas-heated homes"
+
+plot_pct_change_hist(profiles, "winter", fuel_filter="natgas", x_max=10.0)
+```
+
+```{python}
+#| label: fig-pct-change-winter-delivered
+#| fig-cap: "Percent change in winter electricity consumption: oil/propane-heated homes"
+
+plot_pct_change_hist(profiles, "winter", fuel_filter="delivered_fuels", x_max=10.0)
+```
+
+```{python}
+#| label: fig-pct-change-winter-er
+#| fig-cap: "Percent change in winter electricity consumption: electric-resistance-heated homes"
+
+plot_pct_change_hist(profiles, "winter", fuel_filter="electrical_resistance")
+```
+
+### Before vs. after scatter (winter only)
+
+The winter scatter shows the relationship even more dramatically than the
+annual one — the cloud of points is well above the diagonal for gas and
+oil/propane homes, reflecting the 2-4x increase in winter kWh.
+
+```{python}
+#| label: fig-scatter-winter
+#| fig-cap: "Winter kWh before vs. after heat pump, by baseline heating fuel"
+
+display_figure(plot_before_after_scatter(profiles, "winter", axis_max=40_000))
+```
+
+### Dumbbell: mean winter kWh by fuel type
+
+```{python}
+#| label: fig-dumbbell-winter
+#| fig-cap: "Mean winter electricity consumption before and after heat pump, by baseline heating fuel"
+
+display_figure(plot_dumbbell_summary(summary, "winter"))
+```
+
+## Incremental kWh
+
+The incremental kWh is the absolute increase in electricity consumption
+(after minus before). Unlike percent change, it shows the actual volume of
+new load — which matters for infrastructure planning and cost allocation.
+
+### Annual incremental kWh
+
+```{python}
+#| label: fig-incremental-kwh-annual-all
+#| fig-cap: "Incremental annual kWh after heat pump, by baseline heating fuel"
+
+plot_incremental_kwh_hist(profiles, "annual", x_range=(-8_000, 8_000))
+```
+
+### Summer incremental kWh
+
+```{python}
+#| label: fig-incremental-kwh-summer-all
+#| fig-cap: "Incremental summer kWh after heat pump, by baseline heating fuel"
+
+plot_incremental_kwh_hist(profiles, "summer", x_range=(-6_000, 6_000))
+```
+
+### Winter incremental kWh
+
+```{python}
+#| label: fig-incremental-kwh-winter-all
+#| fig-cap: "Incremental winter kWh after heat pump, by baseline heating fuel"
+
+plot_incremental_kwh_hist(profiles, "winter")
+```
+
+## Incremental peak demand (kW)
+
+Peak demand (the single highest hour of electricity consumption) matters for
+distribution and transmission capacity planning. Here we look at how each
+building's peak kW changes after installing a heat pump.
+
+For CT Eversource, the system peak is in summer, but residential heat pump
+peaks occur in winter. The winter incremental peak is the most policy-relevant
+metric for understanding future infrastructure needs.
+
+```{python}
+#| label: load-peak-kw
+
+peak_kw = build_peak_kw_base(
+    STATE,
+    ELECTRIC_UTILITY,
+    BATCH,
+    SEG_BEFORE,
+    SEG_AFTER,
+    summer_month_labels=SUMMER_MONTH_LABELS,
+    weights=profiles.select("bldg_id", "weight"),
+)
+heating_labels = profiles.select("bldg_id", "heating_type_v2", "heating_label")
+
+print(f"Buildings with hourly data: {peak_kw.height:,}")
+```
+
+### Annual incremental peak kW
+
+```{python}
+#| label: fig-incremental-kw-annual
+#| fig-cap: "Incremental annual peak kW after heat pump, by baseline heating fuel"
+
+plot_incremental_kw_hist(peak_kw, "annual", heating_labels=heating_labels)
+```
+
+### Summer incremental peak kW
+
+```{python}
+#| label: fig-incremental-kw-summer
+#| fig-cap: "Incremental summer peak kW after heat pump, by baseline heating fuel"
+
+plot_incremental_kw_hist(peak_kw, "summer", heating_labels=heating_labels)
+```
+
+### Winter incremental peak kW
+
+```{python}
+#| label: fig-incremental-kw-winter
+#| fig-cap: "Incremental winter peak kW after heat pump, by baseline heating fuel"
+
+plot_incremental_kw_hist(peak_kw, "winter", heating_labels=heating_labels)
+```
+
+## Summary statistics
+
+```{python}
+#| label: tbl-summary-stats
+#| tbl-cap: "Detailed load profile statistics by baseline heating type"
+
+_detail = summary.select(
+    pl.col("group").alias("Heating type"),
+    pl.col("n_unweighted").alias("n"),
+    pl.col("mean_annual_kwh_before").round(0).cast(pl.Int64).alias("Annual kWh before"),
+    pl.col("mean_annual_kwh_after").round(0).cast(pl.Int64).alias("Annual kWh after"),
+    (pl.col("multiplier_annual")).alias("Annual mult."),
+    pl.col("mean_winter_kwh_before").round(0).cast(pl.Int64).alias("Winter kWh before"),
+    pl.col("mean_winter_kwh_after").round(0).cast(pl.Int64).alias("Winter kWh after"),
+    (pl.col("multiplier_winter")).alias("Winter mult."),
+    pl.col("mean_summer_kwh_before").round(0).cast(pl.Int64).alias("Summer kWh before"),
+    pl.col("mean_summer_kwh_after").round(0).cast(pl.Int64).alias("Summer kWh after"),
+    (pl.col("multiplier_summer")).alias("Summer mult."),
+    (pl.col("mean_pct_change_winter") * 100).round(0).alias("Winter Δ% (mean)"),
+    (pl.col("median_pct_change_winter") * 100).round(0).alias("Winter Δ% (median)"),
+)
+
+gt_detail = (
+    GT(_detail.to_pandas())
+    .tab_header(title=f"Load profile statistics: {UTILITY_LABEL}")
+    .fmt_number(columns=["n", "Annual kWh before", "Annual kWh after", "Winter kWh before", "Winter kWh after", "Summer kWh before", "Summer kWh after"], decimals=0, use_seps=True)
+    .fmt_number(columns=["Annual mult.", "Winter mult.", "Summer mult."], decimals=2)
+    .fmt_number(columns=["Winter Δ% (mean)", "Winter Δ% (median)"], decimals=0, pattern="{x}%")
+    .tab_options(**get_switchbox_gt_tab_options())
+)
+display_gt(gt_detail)
+```

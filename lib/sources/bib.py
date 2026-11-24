@@ -7,8 +7,9 @@ collection. Its only transformations are:
    (``Citation Key:``, ``tex.shortauthor:``, and the public-copy lines ingest writes) are removed from ``note``, and the duplicate
    ``citation-key`` variable is dropped.
 2. ``author-short`` comes from ``tex.shortauthor:`` in Extra.
-3. Items without a pinned key are excluded (reported as "not yet processed").
-4. Serialization: pandoc's CSL-YAML writer (which applies the Markdown escaping pandoc
+3. ``abstract`` is dropped: citeproc and our Chicago style never use it; catalog text stays in Zotero.
+4. Items without a pinned key are excluded (reported as "not yet processed").
+5. Serialization: pandoc's CSL-YAML writer (which applies the Markdown escaping pandoc
    needs to read the values back verbatim), lowercase variable names, records sorted by
    ``id``, a fixed key order, invalid dates written as ``literal``, and yamlfmt.
 
@@ -73,6 +74,7 @@ def build_record(item: Mapping[str, Any], key: str) -> tuple[dict[str, Any], dic
     data, csl = item["data"], copy.deepcopy(item["csljson"])
     csl["id"] = key
     csl.pop("citation-key", None)
+    csl.pop("abstract", None)
     note = extra.remove_fields(csl.get("note"), extra.MANAGED)
     if note:
         csl["note"] = note

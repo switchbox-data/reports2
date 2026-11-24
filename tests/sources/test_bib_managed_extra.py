@@ -26,6 +26,26 @@ def test_managed_lines_are_stripped_from_the_csl_note():
     assert record["author-short"] == "MA DPU"
 
 
+def test_abstract_is_omitted_from_csl_records():
+    item = {
+        "key": "A1",
+        "data": {
+            "key": "A1",
+            "itemType": "journalArticle",
+            "extra": "Citation Key: smith_HeatPumps_2024",
+            "citationKey": "",
+        },
+        "csljson": {
+            "id": "1/A1",
+            "type": "article-journal",
+            "title": "Heat Pumps",
+            "abstract": "Publisher-supplied abstract that should not reach references.yaml.",
+        },
+    }
+    record, _ = bib.build_record(item, "smith_HeatPumps_2024")
+    assert "abstract" not in record
+
+
 def test_note_disappears_when_only_managed_lines_remain():
     only = EXTRA.split("\n_eprint")[0]
     item = {

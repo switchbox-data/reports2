@@ -60,7 +60,7 @@ def plan_item(
     citekey = bib.pinned_key(data)
     if not citekey:
         return None
-    current = data.get("abstract") or ""
+    current = data.get("abstractNote") or ""
     c, co, w = triple_for_citekey(citekey, index)
     block = catalog.format_zotero_abstract(c, co, w)
     new_abstract = catalog.merge_with_existing(current or None, block)

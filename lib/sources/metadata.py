@@ -254,7 +254,7 @@ class SourceMetadata(BaseModel):
             data[field] = self.container
         if self.access_date:
             data["accessDate"] = self.access_date
-        data["abstract"] = catalog.build_from_card(self)
+        data["abstractNote"] = catalog.build_from_card(self)
         return data
 
     # --- validation ----------------------------------------------------------------------------

@@ -442,16 +442,16 @@ def update_from_card(item_key: str, data: Mapping[str, Any], project_keys: Itera
         fields["extra"] = text
         kept = [c for c in current.get("collections") or [] if c != inbox]
         fields["collections"] = sorted({*kept, *project_keys})
-        if "abstract" in fields:
-            fields["abstract"] = catalog.merge_with_existing(current.get("abstract"), fields["abstract"])
+        if "abstractNote" in fields:
+            fields["abstractNote"] = catalog.merge_with_existing(current.get("abstractNote"), fields["abstractNote"])
         return fields
 
     return _patch(item_key, change)
 
 
 def set_abstract(item_key: str, abstract: str) -> dict[str, Any]:
-    """Replace the item's Zotero ``abstract`` (logged via :mod:`lib.sources.zotero_write`)."""
-    return _patch(item_key, lambda _data: {"abstract": abstract})
+    """Replace the item's Zotero ``abstractNote`` (logged via :mod:`lib.sources.zotero_write`)."""
+    return _patch(item_key, lambda _data: {"abstractNote": abstract})
 
 
 def create_project_collection(name: str) -> str:

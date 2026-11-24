@@ -43,5 +43,5 @@ def test_build_from_card_uses_front_matter():
 
 def test_zotero_data_includes_abstract():
     card = make_card(front_matter={"context": "a", "contents": "b", "why_here": "c", "docket": "25-55"})
-    assert "abstract" in card.zotero_data()
-    assert card.zotero_data()["abstract"].startswith("Context:")
+    assert "abstractNote" in card.zotero_data()
+    assert card.zotero_data()["abstractNote"].startswith("Context:")

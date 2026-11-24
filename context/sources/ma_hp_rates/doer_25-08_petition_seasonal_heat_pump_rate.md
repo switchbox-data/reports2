@@ -1,6 +1,9 @@
 ---
 citekey: doer_Docket2508Petition_2025
 citation_scheme: page
+context: DOER petition of January 31, 2025 asking the Massachusetts DPU to open D.P.U. 25-08, an investigation into optional seasonal heat pump rates for all electric distribution companies, after work of the Interagency Rates Working Group.
+contents: Nine-page petition with an 18-point request list, IRWG stakeholder engagement, revenue-neutral seasonal volumetric delivery rates inclusive of base distribution and reconciling mechanisms, citations to D.P.U. 23-150 and 23-80/81, CECP and Mass Save targets, and four named exhibits (A–D) not included in the PDF.
+why_here: Opens the Massachusetts proceeding and states the policy case for seasonal heat pump rates that our MA heat pump rate work and D.P.U. 25-08 source set build on.
 ---
 
 # DOER Petition Requesting DPU Open an Investigation into a Seasonal Heat Pump Rate

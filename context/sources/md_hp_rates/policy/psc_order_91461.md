@@ -1,6 +1,9 @@
 ---
 citekey: mdpsc_Docket9705Order_2024
 citation_scheme: page
+context: Maryland PSC Order No. 91461 (Case 9705, December 27, 2024) on revised 2024–2026 EmPOWER Maryland utility plans following HB 864.
+contents: 'Forty-four-page order with thirty-four ordering paragraphs and 154 footnotes: approves revised plans, shifts EmPOWER from energy savings toward GHG reduction, approves DHCD electrification authority and MEEHA adder, and denies CAC incentive phase-out and gas appliance incentive elimination.'
+why_here: Defines the current EmPOWER program framework for Maryland electrification context in MD heat pump and affordability work.
 ---
 
 # Order No. 91461: Order on Revised 2024–2026 EmPOWER Plans, Semi-Annual Reports, and Work Group Reports

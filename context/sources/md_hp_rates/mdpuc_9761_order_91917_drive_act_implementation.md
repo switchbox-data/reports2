@@ -1,6 +1,9 @@
 ---
 citekey: mdpsc_Docket9761Order_2025
 citation_scheme: page
+context: Maryland Public Service Commission Order No. 91917 (Case 9761, October 21, 2025) on utility proposals to implement the DRIVE Act time-of-use and demand-response provisions.
+contents: Sixty-two-page order approving modified opt-in TOU tariffs for BGE, PHI, and Potomac Edison (including BGE RD and RL ratio changes), denying EDSSS/VPP pilots as filed with 90-day refiling, and setting holdings on ratio methodology, enrollment targets, regulatory asset cost recovery, and Rate Design Work Group follow-ups.
+why_here: Governs Maryland DRIVE Act TOU implementation and ratio choices; pairs with `domain/md_drive_act_tou.md` and BGE rate design analysis.
 ---
 
 # Order on DRIVE Act Implementation Proposals

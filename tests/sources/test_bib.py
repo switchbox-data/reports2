@@ -1,4 +1,4 @@
-"""sync-bib's generator: the four allowed transformations, and nothing else.
+"""sync-bib's generator: the allowed transformations, and nothing else.
 
 Tests that call pandoc (via Quarto) or yamlfmt are skipped when those aren't installed.
 """
@@ -68,7 +68,7 @@ def test_transformations():
 def test_faithful_mirror_apart_from_allowed_changes():
     for it, rec in zip(ITEMS[:2], bib.build_references(ITEMS).records, strict=True):
         source = dict(it["csljson"])
-        allowed = {"id", "note", "citation-key", "author-short"}
+        allowed = {"id", "note", "citation-key", "author-short", "abstract"}
         assert {k: v for k, v in rec.items() if k not in allowed} == {
             k: v for k, v in source.items() if k not in allowed
         }

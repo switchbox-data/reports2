@@ -13,9 +13,11 @@ if TYPE_CHECKING:
 
 PENDING_CATALOG = "(pending catalog description)"
 
-_LABEL_CONTEXT = "Context:"
-_LABEL_CONTENTS = "Contents:"
-_LABEL_WHY = "Why here:"
+_LABEL_CONTEXT = "CONTEXT:"
+_LABEL_CONTENTS = "CONTENTS:"
+_LABEL_WHY = "WHY HERE:"
+# Prior backfill used title case; still recognized when merging publisher tails.
+_LEGACY_CONTEXT = "Context:"
 _PUBLISHER_PREFIX = "\n\nAbstract:"
 
 
@@ -25,8 +27,9 @@ def format_zotero_abstract(context: str, contents: str, why_here: str) -> str:
 
 
 def has_switchbox_layout(text: str) -> bool:
-    """Whether ``text`` already uses the Context / Contents / Why here layout."""
-    return text.strip().startswith(_LABEL_CONTEXT)
+    """Whether ``text`` already uses the catalog section layout."""
+    s = text.strip()
+    return s.startswith(_LABEL_CONTEXT) or s.startswith(_LEGACY_CONTEXT)
 
 
 def publisher_tail(existing: str | None) -> str | None:

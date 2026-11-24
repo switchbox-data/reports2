@@ -8,7 +8,7 @@ from tests.sources.conftest import make_card
 
 def test_format_zotero_abstract():
     block = catalog.format_zotero_abstract("ctx", "cont", "why")
-    assert block == "Context: ctx\n\nContents: cont\n\nWhy here: why"
+    assert block == "CONTEXT: ctx\n\nCONTENTS: cont\n\nWHY HERE: why"
 
 
 def test_merge_keeps_publisher_tail_when_not_switchbox_layout():
@@ -16,14 +16,14 @@ def test_merge_keeps_publisher_tail_when_not_switchbox_layout():
     block = catalog.format_zotero_abstract("c", "o", "w")
     merged = catalog.merge_with_existing(existing, block)
     assert merged.endswith("Abstract: Publisher summary from a journal.")
-    assert merged.startswith("Context: c")
+    assert merged.startswith("CONTEXT: c")
 
 
 def test_merge_preserves_abstract_tail_on_rerun():
     existing = "Context: old\nContents: old\nWhy here: old\n\nAbstract: pub"
     block = catalog.format_zotero_abstract("new", "new", "new")
     merged = catalog.merge_with_existing(existing, block)
-    assert "Context: new" in merged
+    assert "CONTEXT: new" in merged
     assert merged.endswith("Abstract: pub")
 
 
@@ -44,4 +44,4 @@ def test_build_from_card_uses_front_matter():
 def test_zotero_data_includes_abstract():
     card = make_card(front_matter={"context": "a", "contents": "b", "why_here": "c", "docket": "25-55"})
     assert "abstractNote" in card.zotero_data()
-    assert card.zotero_data()["abstractNote"].startswith("Context:")
+    assert card.zotero_data()["abstractNote"].startswith("CONTEXT:")

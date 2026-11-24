@@ -109,6 +109,10 @@ sources-cite path_md quote:
 sources-backfill-links *flags:
     uv run python -m lib.sources.cli backfill-links {{ flags }}
 
+# Copy extract catalog triples (or pending sentinels) into Zotero abstract; dry run unless --apply
+sources-backfill-catalog *flags:
+    uv run python -m lib.sources.cli backfill-catalog {{ flags }}
+
 # One-time Google login (opens a browser) that caches the token ingest uses for Drive uploads; same login as the Sheets helpers
 google-login:
     uv run python -m lib.data.gsheets

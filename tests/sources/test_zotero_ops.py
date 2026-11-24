@@ -169,6 +169,19 @@ def test_update_from_card_merges_extra_and_moves_collections(fake):
     assert extra.get(data["extra"], extra.CITATION_KEY) == "k_A_2025" and "free text" in data["extra"]
 
 
+def test_update_from_card_merges_publisher_abstract(fake):
+    fake.client._collections = collections_fixture()
+    fake.server.items["K1"]["data"]["abstract"] = "Journal publisher summary."
+    block = "Context: c\nContents: o\nWhy here: w"
+    zotero.update_from_card(
+        "K1",
+        {"title": "T", "extra": "Citation Key: k_A_2025", "itemType": "document", "abstract": block},
+        ["MA"],
+    )
+    assert "Abstract: Journal publisher summary." in fake.server.items["K1"]["data"]["abstract"]
+    assert fake.server.items["K1"]["data"]["abstract"].startswith("Context: c")
+
+
 def test_missing_inbox_is_none_not_an_error(fake):
     fake.client._collections = collections_fixture(with_inbox=False)
     assert zotero.inbox_key() is None

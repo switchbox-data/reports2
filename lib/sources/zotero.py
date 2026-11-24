@@ -26,7 +26,7 @@ from typing import Any
 from pyzotero import zotero
 from rapidfuzz import fuzz
 
-from lib.sources import env, extra, zotero_write
+from lib.sources import catalog, env, extra, zotero_write
 
 NON_BIB_TYPES = frozenset({"attachment", "note", "annotation"})
 REPORTS = "Reports"
@@ -442,9 +442,16 @@ def update_from_card(item_key: str, data: Mapping[str, Any], project_keys: Itera
         fields["extra"] = text
         kept = [c for c in current.get("collections") or [] if c != inbox]
         fields["collections"] = sorted({*kept, *project_keys})
+        if "abstract" in fields:
+            fields["abstract"] = catalog.merge_with_existing(current.get("abstract"), fields["abstract"])
         return fields
 
     return _patch(item_key, change)
+
+
+def set_abstract(item_key: str, abstract: str) -> dict[str, Any]:
+    """Replace the item's Zotero ``abstract`` (logged via :mod:`lib.sources.zotero_write`)."""
+    return _patch(item_key, lambda _data: {"abstract": abstract})
 
 
 def create_project_collection(name: str) -> str:

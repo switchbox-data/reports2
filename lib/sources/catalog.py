@@ -1,4 +1,4 @@
-"""Format library catalog text (Context / Contents / Why here) for Zotero's ``abstract`` field.
+"""Format library catalog text (Context / Contents / Why here) for Zotero's ``abstractNote`` field.
 
 Ingest and ``just sources-backfill-catalog`` write this shape; pre-existing publisher abstracts are
 preserved under an ``Abstract:`` tail. See ``context/code/source_metadata_conventions.md``.
@@ -70,5 +70,5 @@ def triple_for_card(meta: SourceMetadata) -> tuple[str, str, str]:
 
 
 def build_from_card(meta: SourceMetadata) -> str:
-    """Zotero ``abstract`` for a details card (catalog block only)."""
+    """Zotero ``abstractNote`` for a details card (catalog block only)."""
     return format_zotero_abstract(*triple_for_card(meta))

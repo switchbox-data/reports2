@@ -1,3 +1,24 @@
+---
+source_file: 2025-12-05 CMP Final Report and Attachments 2025 (2022-152).pdf
+citekey: cmp_Docket202200152Final_2025
+zotero_item: "ZQIUUZ5H"
+short_url: https://pub.switch.box/cmp_Docket202200152Final_2025
+source_url: https://mpuc-cms.maine.gov/CQM.Public.WebUI/Common/CaseMaster.aspx?CaseNumber=2022-00152
+md5: "f458a2ba5b6bffdd323c341909a52c20"
+docket: 2022-00152
+utility: Central Maine Power
+rate: A-Seasonal / ET rates
+filing_date: 2025-12-05
+filer: CENTRAL MAINE POWER COMPANY
+document_type: report
+pages_total: 159
+extraction_scope: full
+citation_scheme: attachment
+context: CMP's Dec. 5, 2025 final report in Docket 2022-00152 on the follow-on rate design proceeding after its 2023 rate case stipulation, with six attachments on ET and Seasonal Heat Pump rate extensions, enrollment closure, and DSA's evaluation.
+contents: CMP's narrative report plus attachments including stakeholder-session summaries, rate comparison and enrollment tables (Attachment 1), and the Demand Side Analytics impact evaluation of ET and SHP rates (Attachment 6). Raw pymupdf4llm extraction; some OCR artifacts on scanned attachment pages.
+why_here: Enrollment counts (including ~3,134 on SHP in December 2024), rate design history, and DSA's finding that neither rate meaningfully changed usage; the report CT CIEC cites for Maine opt-in uptake.
+---
+
 STATE OF MAINE PUBLIC Docket No. 2022-00152 UTILITIES COMMISSION December 5, 2025 CENTRAL MAINE POWER FINAL REPORT COMPANY, Request for Approval of Distribution Rate Increase and Rate Design Changes Pursuant to 35-A M.R.S. § 307
 
 Central Maine Power Company (“CMP”) hereby submits the following final report and status update resulting from the collaborative sessions in the Expedited Follow-On Rate Design Proceeding held pursuant to the Commission’s June 6, 2023 Order Approving Stipulation in CMP’s last rate case.<sup>1</sup>

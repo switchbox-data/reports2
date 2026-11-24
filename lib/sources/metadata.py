@@ -17,7 +17,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from lib.sources import checks, citekeys, docket_titles, extra, title_case
+from lib.sources import catalog, checks, citekeys, docket_titles, extra, title_case
 
 SHORT_LINK_BASE = "https://pub.switch.box"
 # Where PDFs' public copies go. Google Drive stands in while DocumentCloud blocks our servers; set back to
@@ -254,6 +254,7 @@ class SourceMetadata(BaseModel):
             data[field] = self.container
         if self.access_date:
             data["accessDate"] = self.access_date
+        data["abstract"] = catalog.build_from_card(self)
         return data
 
     # --- validation ----------------------------------------------------------------------------

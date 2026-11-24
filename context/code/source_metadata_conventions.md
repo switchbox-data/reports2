@@ -198,6 +198,8 @@ Every source's index row answers three questions, in this order, in two or three
 
 The extract's front matter (or a workbook stub's) carries the same three answers as separate fields, so agents reading the file get them without the index: `context`, `contents` and `why_here`. The card sets them in `front_matter`.
 
+**Zotero `abstract`:** ingest and `just sources-backfill-catalog` copy the same three answers into the item's Zotero `abstract` field as labeled lines (`Context:`, `Contents:`, `Why here:`). Items with no extract yet get `(pending catalog description)` on each line. When an item already had publisher text in `abstract` (for example a journal article), that text moves under a trailing `Abstract:` section and is preserved on reruns. `just sync-bib` does not copy `abstract` into `reports/references.yaml` (cite-only bibliography).
+
 Only state what the document and the record around it show. If what a document responds to cannot be found in what we have, say so ("responds to an IR set not in our collection") rather than guessing.
 
 ## Project placement

@@ -5,7 +5,8 @@ Read-only (never write to Zotero or any public host):
     zotero-verify, sync-bib [--checks warn|strict] [--force], check-citekeys,
     pending [--brief], status, dedupe, org, person, doctor (read-only checks), fetch, projects, key,
     check-card, find-doi, draft-cards, convert-frontmatter (dry run unless --apply),
-    backfill-links (dry run unless --apply), page-skeleton, check-pages, cite
+    backfill-links (dry run unless --apply), backfill-catalog (dry run unless --apply),
+    page-skeleton, check-pages, cite
 
 Writing (after the person approves the details card):
 
@@ -434,6 +435,19 @@ def cmd_backfill_links(args: argparse.Namespace) -> int:
     return 1 if failures else 0
 
 
+def cmd_backfill_catalog(args: argparse.Namespace) -> int:
+    """Context / Contents / Why here in Zotero ``abstract``. Dry run unless ``--apply``."""
+    from lib.sources import backfill_catalog
+
+    plan, failures = backfill_catalog.run(apply=args.apply)
+    print(backfill_catalog.report(plan, apply=args.apply))
+    if not args.apply:
+        print("\nDry run: nothing was written (pass --apply).")
+    for f in failures:
+        print(f"FAILED: {f}")
+    return 1 if failures else 0
+
+
 def _extract_pdf(path_md: Path, path_pdf: str | None) -> Path | None:
     """The original PDF for an extract: as given, else the front matter's ``source_file`` beside the extract."""
     from lib.sources import frontmatter
@@ -602,6 +616,9 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("backfill-links", help="doi.org urls and pub.switch.box short links for old items")
     p.add_argument("--apply", action="store_true", help="write to Zotero and pub (default: dry run)")
     p.set_defaults(func=cmd_backfill_links)
+    p = sub.add_parser("backfill-catalog", help="library catalog text in Zotero abstract for Reports items")
+    p.add_argument("--apply", action="store_true", help="write to Zotero (default: dry run)")
+    p.set_defaults(func=cmd_backfill_catalog)
     p = sub.add_parser("page-skeleton", help="a PDF's text with page markers and line numbers, to extract into")
     p.add_argument("path_pdf", metavar="PATH_PDF")
     p.add_argument("--path-output", help="write here instead of stdout")

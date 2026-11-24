@@ -20,8 +20,8 @@ _PUBLISHER_PREFIX = "\n\nAbstract:"
 
 
 def format_zotero_abstract(context: str, contents: str, why_here: str) -> str:
-    """The catalog block only (no publisher tail)."""
-    return f"{_LABEL_CONTEXT} {context}\n{_LABEL_CONTENTS} {contents}\n{_LABEL_WHY} {why_here}"
+    """The catalog block only (no publisher tail). Blank lines separate sections for readability in Zotero."""
+    return f"{_LABEL_CONTEXT} {context}\n\n{_LABEL_CONTENTS} {contents}\n\n{_LABEL_WHY} {why_here}"
 
 
 def has_switchbox_layout(text: str) -> bool:

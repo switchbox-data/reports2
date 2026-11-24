@@ -8,7 +8,7 @@ from tests.sources.conftest import make_card
 
 def test_format_zotero_abstract():
     block = catalog.format_zotero_abstract("ctx", "cont", "why")
-    assert block == "Context: ctx\nContents: cont\nWhy here: why"
+    assert block == "Context: ctx\n\nContents: cont\n\nWhy here: why"
 
 
 def test_merge_keeps_publisher_tail_when_not_switchbox_layout():

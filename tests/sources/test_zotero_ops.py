@@ -172,14 +172,14 @@ def test_update_from_card_merges_extra_and_moves_collections(fake):
 def test_update_from_card_merges_publisher_abstract(fake):
     fake.client._collections = collections_fixture()
     fake.server.items["K1"]["data"]["abstractNote"] = "Journal publisher summary."
-    block = "Context: c\nContents: o\nWhy here: w"
+    block = "CONTEXT: c\n\nCONTENTS: o\n\nWHY HERE: w"
     zotero.update_from_card(
         "K1",
         {"title": "T", "extra": "Citation Key: k_A_2025", "itemType": "document", "abstractNote": block},
         ["MA"],
     )
     assert "Abstract: Journal publisher summary." in fake.server.items["K1"]["data"]["abstractNote"]
-    assert fake.server.items["K1"]["data"]["abstractNote"].startswith("Context: c")
+    assert fake.server.items["K1"]["data"]["abstractNote"].startswith("CONTEXT: c")
 
 
 def test_missing_inbox_is_none_not_an_error(fake):

@@ -14,7 +14,9 @@ document_type: testimony
 pages_total: 30
 extraction_scope: full
 citation_scheme: page_line
-why_here: BGE rebuttal testimony in the Maryland PSC rate case (Case No. 9888) responding to CCAN's heat pump rate proposal, with Exhibit JAK-5 showing average monthly kWh by OHEP benefit level and heat source
+why_here: BGE rebuttal testimony in the Maryland PSC rate case (Case No. 9888) responding to CCAN's heat pump rate proposal, with Exhibit JAK-5 showing average monthly kWh by OHEP benefit level and heat source.
+context: BGE prepared rebuttal testimony of Jennifer A. Karas in Maryland PSC Case 9888 (filed October 16, 2026) responding to intervenors and Staff on rate design and related issues.
+contents: Thirty-page testimony plus Exhibit JAK-5; Section V.C responds to CCAN/Switchbox on a residential heat-pump rate; remainder covers revenue allocation, customer charges, Schedules RD/GL, large-load tariff, and storm rider; exhibit tabulates average monthly kWh by OHEP benefit level and heat source.
 ---
 
 # Prepared Rebuttal Testimony of Jennifer A. Karas

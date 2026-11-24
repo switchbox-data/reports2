@@ -7,6 +7,9 @@ document_type: report
 pages_total: 276
 extraction_scope: "partial: PDF pp. 1-11, front matter; the other files of this folder hold the rest of the manual"
 citation_scheme: page
+context: Regulatory Assistance Project manual (Lazar, Chernick, Marcus; LeBel ed., January 2020) on electric utility cost allocation for regulators and practitioners.
+contents: Practitioner guide in five parts—regulation and the electric system, COS frameworks, embedded studies (generation through differential treatment), marginal studies through reconciliation, and applying results to rate design—plus appendices A–E and a glossary; 276 PDF pages split across this folder.
+why_here: Authoritative reference for embedded and marginal cost of service, allocation methods, and the link to rate design used across Switchbox cost-allocation and heat pump rate analysis.
 ---
 
 _Extractor note (not source text): this file holds PDF pp. 1-11 of the manual, front matter; the rest of the manual is in the other files of this folder (see README.md), so those pages are marked not transcribed here. Page markers were added from the PDF on 2026-11-07 without re-transcribing the text; footnote definitions now sit on the page they are printed on._

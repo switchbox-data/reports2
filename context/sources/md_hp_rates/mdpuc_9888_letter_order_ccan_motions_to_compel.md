@@ -14,6 +14,8 @@ document_type: letter order (with Attachment A)
 pages_total: 8
 extraction_scope: full
 why_here: "Commission ruling on which of Switchbox's feeder- and substation-transformer-level data requests to BGE (filed through CCAN) BGE must answer in its rate case, relevant to Maryland heat pump rate design work."
+context: Maryland PSC letter order in Case 9888 (October 15, 2026) ruling on CCAN motions to compel BGE to answer discovery on feeder- and substation-transformer ratings and hourly loading sought by Switchbox.
+contents: Letter order with Attachment A listing each data request (CCAN DRs 1-12 through 1-21, 2-1, 2-2); grants in part—BGE must produce data for investments under review in the rate case and answer planning-criteria requests in full.
 ---
 
 # Letter Order: Chesapeake Climate Action Network's Motions to Compel Responses to Certain Discovery Requests — Case No. 9888
